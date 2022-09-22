@@ -45,7 +45,7 @@ jobs:
         run: npm run build-ts -- --release
 
       - name: Build dotnet packages
-        run: npm run build-cs -- --release
+        run: dotnet build --configuration Release --no-restore
 
       - name: Pack TypeScript packages
         run: npm run pack-ts -- --release
