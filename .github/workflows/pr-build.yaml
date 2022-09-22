@@ -39,8 +39,11 @@ jobs:
       - name: Build dotnet packages
         run: npm run build-cs
 
-      - name: Test TypeScript packages
-        run: npm run test-ts
+      - name: Pack TypeScript packages
+        run: npm run pack-ts
 
-      - name: Test dotnet packages
-        run: npm run test-cs
+      - name: Pack dotnet packages
+        run: npm run pack-cs
+
+      - name: Test
+        run: npm run test --release --serial --coverage
