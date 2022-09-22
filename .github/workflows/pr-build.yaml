@@ -20,11 +20,11 @@ jobs:
 
       - name: Install dotnet versions
         uses: actions/setup-dotnet@v2
-          with:
-            dotnet-version: |
-              2.1.x
-              3.1.x
-              5.0.x
+        with:
+          dotnet-version: |
+            2.1.x
+            3.1.x
+            5.0.x
 
       - name: Use global.json dotnet version
         uses: actions/setup-dotnet@v2
