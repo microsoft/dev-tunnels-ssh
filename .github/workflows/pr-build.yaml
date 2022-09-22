@@ -34,16 +34,16 @@ jobs:
         run: dotnet restore
 
       - name: Build TypeScript packages
-        run: npm run build-ts
+        run: npm run build-ts -- --release
 
       - name: Build dotnet packages
-        run: npm run build-cs
+        run: npm run build-cs -- --release
 
       - name: Pack TypeScript packages
-        run: npm run pack-ts
+        run: npm run pack-ts -- --release
 
       - name: Pack dotnet packages
-        run: npm run pack-cs
+        run: npm run pack-cs -- --release
 
       - name: Test
         run: npm run test --release --serial --coverage
