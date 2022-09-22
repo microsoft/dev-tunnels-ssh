@@ -1,7 +1,6 @@
 name: PR Build
 
 on:
-  push:
   pull_request:
     branches:
       - main
@@ -16,6 +15,8 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
 
       - name: Use global.json dotnet version
         uses: actions/setup-dotnet@v2
