@@ -1,0 +1,45 @@
+name: PR Build
+
+on:
+  push:
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  builds:
+    strategy:
+      matrix:
+        os: [macOS-latest, windows-latest]
+
+    name: Build SSH on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Use global.json dotnet version
+        uses: actions/setup-dotnet@v2
+        with:
+          global-json-file: global.json
+
+      - uses: actions/setup-node@v3
+        with:
+          node-version: '12.x'
+
+      - name: Restore npm packages
+        run: npm install
+
+      - name: Restore dotnet packages
+        run: dotnet restore
+
+      - name: Build TypeScript packages
+        run: npm run build-ts
+
+      - name: Build dotnet packages
+        run: npm run build-cs
+
+      - name: Test TypeScript packages
+        run: npm run test-ts
+
+      - name: Test dotnet packages
+        run: npm run test-cs
