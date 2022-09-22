@@ -1,0 +1,23 @@
+{
+	"extends": "../../../tsconfig.json",
+	"compilerOptions": {
+		"outDir": "../../../out/lib/ssh-test",
+		"tsBuildInfoFile": "../../../out/lib/ssh-test/tsbuildinfo.json",
+		"rootDir": "."
+	},
+	"include": [
+		"**/*.ts",
+		"package.json"
+	],
+	"references": [
+		{
+			"path": "../../../src/ts/ssh"
+		},
+		{
+			"path": "../../../src/ts/ssh-keys"
+		},
+		{
+			"path": "../../../src/ts/ssh-tcp"
+		}
+	]
+}

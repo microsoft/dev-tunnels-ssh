@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<title>SSH Tests</title>
+		<link rel="stylesheet" href="https://unpkg.com/mocha/mocha.css" />
+	</head>
+	<body>
+		<div id="mocha"></div>
+		<script src="https://unpkg.com/mocha/mocha.js"></script>
+		<script class="mocha-init">
+			mocha.setup('bdd');
+			mocha.checkLeaks();
+		</script>
+
+		<script src="../../../out/lib/ssh-test/bundle.js"></script>
+
+		<script class="mocha-exec">
+			// Enable tracing while running tests.
+			window.localStorage.debug = 'dev-tunnels-ssh,dev-tunnels-ssh-tcp,dev-tunnels-ssh-keys,dev-tunnels-ssh-test';
+
+			mocha.run();
+		</script>
+	</body>
+</html>

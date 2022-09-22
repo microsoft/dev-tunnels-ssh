@@ -1,0 +1,18 @@
+{
+	"name": "@microsoft/dev-tunnels-ssh-keys",
+	"description": "SSH key import/export library for Dev Tunnels",
+	"repository":"https://github.com/microsoft/dev-tunnels-ssh.git",
+	"keywords": [
+		"SSH"
+	],
+	"scripts": {
+		"compile": "npm run -C ../../.. compile",
+		"eslint": "npm run -C ../../.. eslint",
+		"eslint-fix": "npm run -C ../../.. eslint-fix",
+		"watch": "npm run -C ../../.. watch .",
+		"test": "npm run -C ../../.. test"
+	},
+	"dependencies": {
+		"@microsoft/dev-tunnels-ssh": "^3.1.0"
+	}
+}

@@ -1,0 +1,69 @@
+{
+	// Use IntelliSense to learn about possible attributes.
+	// Hover to view descriptions of existing attributes.
+	// For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+	"version": "0.2.0",
+	"configurations": [
+		{
+			"type": "node",
+			"request": "launch",
+			"name": "Launch Tests",
+			"program": "${workspaceFolder}/node_modules/mocha/bin/_mocha",
+			"args": [
+				"--require",
+				"source-map-support/register",
+				"out/lib/ssh-test/*Tests.js"
+			],
+			"skipFiles": [
+				"<node_internals>/**/*.js"
+			],
+			"env": {
+				"DEBUG": "dev-tunnels-ssh"
+			},
+			"console": "integratedTerminal"
+		},
+		{
+			"type": "node",
+			"request": "launch",
+			"name": "Launch Benchmarks",
+			"program": "${workspaceFolder}/out/lib/ssh-bench/main",
+			"args": [
+			],
+			"skipFiles": [
+				"<node_internals>/**/*.js"
+			],
+			"env": {
+				"DEBUG": "dev-tunnels-ssh"
+			},
+			"console": "integratedTerminal"
+		},
+		{
+			"type": "node",
+			"request": "launch",
+			"name": "Launch Browser Test Server",
+			"program": "${workspaceFolder}/out/lib/ssh-test/cli",
+			"args": [
+				"sshd",
+				"-w",
+				"-p",
+				"9880"
+			],
+			"skipFiles": [
+				"<node_internals>/**/*.js"
+			],
+			"env": {
+				"DEBUG": "dev-tunnels-ssh"
+			},
+			"console": "integratedTerminal"
+		},
+		{
+			"type": "node",
+			"request": "attach",
+			"name": "Attach Debugger",
+			"skipFiles": [
+				"<node_internals>/**/*.js"
+			],
+			"stopOnEntry": false
+		}
+	]
+}

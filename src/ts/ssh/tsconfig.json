@@ -1,0 +1,13 @@
+{
+	"extends": "../../../tsconfig.json",
+	"compilerOptions": {
+		"outDir": "../../../out/lib/ssh",
+		"tsBuildInfoFile": "../../../out/lib/SSH/tsbuildinfo.json",
+		"rootDir": "."
+	},
+	"include": [
+		"**/*.ts",
+		"package.json"
+	],
+	"references": []
+}

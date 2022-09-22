@@ -1,0 +1,49 @@
+{
+	"compilerOptions": {
+		"composite": true,
+		"module": "commonjs",
+		"target": "es2017",
+		"lib": [
+			"es2017",
+			"dom"
+		],
+		"declaration": true,
+		"declarationMap": true,
+		"sourceMap": true,
+		"strict": true,
+		"stripInternal": true,
+		"resolveJsonModule": true,
+		"forceConsistentCasingInFileNames": true,
+		"experimentalDecorators": true,
+		"baseUrl": ".",
+		"paths": {
+			"@microsoft/dev-tunnels-ssh": [
+				"./src/ts/ssh"
+			],
+			"@microsoft/dev-tunnels-ssh-keys": [
+				"./src/ts/ssh-keys"
+			],
+			"@microsoft/dev-tunnels-ssh-tcp": [
+				"./src/ts/ssh-tcp"
+			]
+		}
+	},
+	"include": [],
+	"references": [
+		{
+			"path": "./src/ts/ssh"
+		},
+		{
+			"path": "./src/ts/ssh-keys"
+		},
+		{
+			"path": "./src/ts/ssh-tcp"
+		},
+		{
+			"path": "./bench/ts/ssh-bench"
+		},
+		{
+			"path": "./test/ts/ssh-test"
+		}
+	]
+}

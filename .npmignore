@@ -1,0 +1,4 @@
+*
+!/out/lib/SSH/**/*
+!/src/ts/SSH/**/*
+tsbuildinfo.json
