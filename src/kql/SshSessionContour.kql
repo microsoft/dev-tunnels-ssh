@@ -1,0 +1,41 @@
+// Copyright (c) Microsoft. All rights reserved.
+
+// VS-SSH Session Contour decoder for Azure Data Explorer
+
+// Decodes a "session contour" string exported by the VS-SSH library.
+// Outputs a table suitable for rendering in a split timechart.
+// Example: DecodeSessionContour(sc) | render timechart with (ysplit=panels, legend=hidden)
+let DecodeSessionContour = (input: string) {
+    let data = base64_decode_toarray(input);           // Input is a base64-encoded array of bytes
+    let version = toint(data[0]);                      // Version of this encoded data stream
+    let N = toint(data[1]);                            // Number of measurements in each interval
+    let scales = array_slice(data, 2, N + 2);          // Log2 of time and measurement scales
+    let timeScale = exp2(toint(scales[0])) * 1s;       // Length of each contour interval
+    let ids = array_slice(data, N + 3, N * 2 + 2);     // ID of each measurement in the tuple
+    let values = array_slice(data, 2 + 1 + N * 2, -1); // Remaining bytes are measurement tuples
+    let GetMeasurementSeries = (id: int) {
+        case (
+            id ==  1, "min",
+            id ==  2, "max",
+            id ==  3, "avg",
+            id == 11, "sent",
+            id == 12, "rcvd",
+            "unknown")
+    };
+    range i from 0 to array_length(values) - 1 step 1
+    | where assert(version == 1, "Unsupported session contour version")
+    | project i, id = ids[i % N]
+    | project
+        series = GetMeasurementSeries(id),
+        sessionTime = i / N * timeScale,
+        value = values[i] * exp2(toint(scales[1 + i % N])),
+        isLatency = 0 <= id and id < 10,
+        isBytes = 10 <= id and id < 20
+    | where not (series == "unkown")
+    | where not (isLatency and value == 0) // Omit if no latency masurements during the interval
+    | project
+        sessionTime,
+        series,
+        latency = iif (isLatency, value, real(null)), // Separate columns enable ysplit
+        bytes = iif(isBytes, value, real(null))
+};

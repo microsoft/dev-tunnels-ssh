@@ -1,0 +1,32 @@
+// Place your settings in this file to overwrite default and user settings.
+{
+	"editor.rulers": [
+		100
+	],
+	"files.associations": {
+		".prettierrc": "json",
+		"tslint.json": "jsonc"
+	},
+	"files.exclude": {
+		 "out": false // set this to true to hide the "out" folder with the compiled JS files,
+	},
+	"search.exclude": {
+		 "out": true // set this to false to include "out" folder in search results
+	},
+	"[typescript]": {
+	  "editor.formatOnSave": true
+	},
+	"[javascript]": {
+	  "editor.formatOnSave": true
+	},
+	"files.insertFinalNewline": false,
+	"dotnetCoreExplorer.searchpatterns": "out/bin/Debug/*/netcoreapp3.1/*.Test.dll",
+	"typescript.tsdk": "node_modules/typescript/lib",
+	"mochaExplorer.debuggerConfig": "Attach Debugger",
+	"mochaExplorer.env": {
+		// "DEBUG": "dev-tunnels-ssh"
+	},
+	"yaml.schemas": {
+		"https://json.schemastore.org/github-workflow.json": "file:///c%3A/Repos/SSH/.github/workflows/pr-build.yml"
+	}
+}

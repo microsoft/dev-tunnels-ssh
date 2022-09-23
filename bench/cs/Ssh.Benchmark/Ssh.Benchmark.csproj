@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+	<PropertyGroup>
+		<AssemblyName>Microsoft.DevTunnels.Ssh.Benchmark</AssemblyName>
+		<RootNamespace>Microsoft.DevTunnels.Ssh.Benchmark</RootNamespace>
+		<OutputType>Exe</OutputType>
+		<StartupObject>Microsoft.DevTunnels.Ssh.Benchmark.Benchmark</StartupObject>
+		<ApplicationManifest>app.manifest</ApplicationManifest>
+		<_EnableMacOSCodeSign>false</_EnableMacOSCodeSign>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<ProjectReference Include="$(SshSourceDirectory)Ssh/Ssh.csproj" />
+		<ProjectReference Include="$(SshSourceDirectory)Ssh.Tcp/Ssh.Tcp.csproj" />
+	</ItemGroup>
+
+</Project>

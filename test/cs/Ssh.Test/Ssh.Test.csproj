@@ -1,0 +1,43 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+	<PropertyGroup>
+		<AssemblyName>Microsoft.DevTunnels.Ssh.Test</AssemblyName>
+		<RootNamespace>Microsoft.DevTunnels.Ssh.Test</RootNamespace>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<PackageReference Include="Nerdbank.Streams" Version="2.4.60" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<ProjectReference Include="$(SshSourceDirectory)Ssh/Ssh.csproj" />
+		<ProjectReference Include="$(SshSourceDirectory)Ssh.Keys/Ssh.Keys.csproj" />
+		<ProjectReference Include="$(SshSourceDirectory)Ssh.Tcp/Ssh.Tcp.csproj" />
+	</ItemGroup>
+
+	<ItemGroup>
+	  <Content Include="..\..\data\*" LinkBase="Data">
+	    <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+	  </Content>
+	</ItemGroup>
+
+	<ItemGroup>
+		<None Update="xunit.runner.json">
+			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+		</None>
+	</ItemGroup>
+
+	<Target Name="ReportCodeCoverage" AfterTargets="AltCoverGenerateCoverageResult" Condition=" '$(CodeCoverage)' == 'true' ">
+		<ItemGroup>
+			<CoverageData Include="$(TestResultsDirectory)\*-coverage*.xml" />
+		</ItemGroup>
+		<PropertyGroup>
+			<CoverageDir>$(TestResultsDirectory)\CodeCoverage</CoverageDir>
+		</PropertyGroup>
+		<Exec
+			Condition=" '@(CoverageData)' != '' "
+			Command="&quot;$(ReportGeneratorTool)&quot; -verbosity:Info -reports:&quot;@(CoverageData)&quot; -targetdir:&quot;$(CoverageDir)&quot; -reporttypes:&quot;Cobertura;TextSummary;CsvSummary;HtmlInline_AzurePipelines_Dark&quot;"
+			ContinueOnError="True" />
+	</Target>
+
+</Project>

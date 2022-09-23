@@ -1,0 +1,30 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+	<PropertyGroup>
+		<OutputType>Library</OutputType>
+		<AssemblyName>Microsoft.DevTunnels.Ssh</AssemblyName>
+		<RootNamespace>Microsoft.DevTunnels.Ssh</RootNamespace>
+		<DocumentationFile>$(TargetDirectory)$(AssemblyName).xml</DocumentationFile>
+		<Description>.NET SSH Library: A flexible implementation of the Secure Shell (SSH2) client and server protocol
+for .NET.
+ - SSH over any .NET Stream (including but not limited to a TCP socket stream)
+ - Configurable, extensible, negotiated algorithms for key-exchange, encryption,
+   integrity (HMAC), and public-key authentication
+ - Channel multiplexing, with ability to stream data to/from channels
+ - Extensible channel request handling (for "exec", "shell", or custom requests)
+ - Compatible with common SSH software. (Tested against OpenSSH.)</Description>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<PackageReference Include="System.Security.Cryptography.Cng" Version="4.7.0" PrivateAssets="All" Condition="'$(NetStandard20)'!='true'" />
+		<PackageReference Include="System.Security.Cryptography.OpenSsl" Version="4.7.0" PrivateAssets="All" Condition="'$(NetStandard20)'!='true'" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<None Include="README.md" Pack="true" PackagePath="." />
+	</ItemGroup>
+
+	<ItemGroup>
+		<None Remove="Microsoft.DevTunnels.Ssh.xml" />
+	</ItemGroup>
+</Project>

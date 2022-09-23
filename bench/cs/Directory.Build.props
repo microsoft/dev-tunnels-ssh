@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project>
+	<Import Project="../../Directory.Build.props" />
+
+	<PropertyGroup>
+		<TargetFrameworks>netcoreapp2.1;netcoreapp3.1;net6.0</TargetFrameworks>
+		<IsPackable>false</IsPackable>
+		<CodeAnalysisFile></CodeAnalysisFile>
+		<NoWarn>$(NoWarn);NU1701</NoWarn><!-- Package was restored using different target framework. -->
+		<NoWarn>$(NoWarn);NETSDK1138</NoWarn><!-- 'netcoreapp2.1' is out of support. It's only used for benchmarking netstandard2.0. -->
+	</PropertyGroup>
+
+	<PropertyGroup Condition="'$(Configuration)' == 'Release'">
+		<Optimize>true</Optimize>
+	</PropertyGroup>
+
+</Project>

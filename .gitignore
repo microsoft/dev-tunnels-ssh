@@ -1,0 +1,14 @@
+/out/
+
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+.vs/
+
+node_modules/
+
+/src/**/*.xml
+
+launchSettings.json

@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project>
+	<PropertyGroup>
+		<SshRootDirectory>$(MSBuildThisFileDirectory)</SshRootDirectory>
+		<SshBuildDirectory>$(SshRootDirectory)build/</SshBuildDirectory>
+		<SshSourceDirectory>$(SshRootDirectory)src/cs/</SshSourceDirectory>
+		<SshTestDirectory>$(SshRootDirectory)test/cs/</SshTestDirectory>
+	</PropertyGroup>
+
+	<Import Project="$(SshBuildDirectory)config.props" />
+</Project>
