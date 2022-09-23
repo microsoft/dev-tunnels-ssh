@@ -58,6 +58,7 @@ jobs:
       
       - name: Test dotnet 2.1
         run: npm run test-cs -- --release --serial --framework netcoreapp2.1
+        continue-on-error: true
 
       - name: Test dotnet 6.0
         run: npm run test-cs -- --release --serial --framework net6.0
