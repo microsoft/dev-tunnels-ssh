@@ -45,13 +45,19 @@ jobs:
         run: npm run build-ts -- --release
 
       - name: Build dotnet packages
-        run: dotnet build --configuration Release --no-restore
+        run: dotnet build -c Release --no-restore
 
       - name: Pack TypeScript packages
-        run: npm run pack-ts -- --release
+        run: npm run pack-ts
 
       - name: Pack dotnet packages
-        run: npm run pack-cs -- --release
+        run: dotnet pack -c Release --no-restore
 
-      - name: Test
-        run: npm run test --release --serial --coverage
+      - name: Test TypeScript
+        run: npm run test-ts
+      
+      - name: Test dotnet 2.1
+        run: npm run test-cs -- --release --serial --framework netcoreapp2.1
+
+      - name: Test dotnet 6.0
+        run: npm run test-cs -- --release --serial --framework net6.0
