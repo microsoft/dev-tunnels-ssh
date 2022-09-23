@@ -52,7 +52,7 @@
 		"mocha": "^9.2.2",
 		"mocha-junit-reporter": "^2.0.2",
 		"mocha-multi-reporters": "^1.1.7",
-		"moment": "^2.29.2",
+		"moment": "^2.29.4",
 		"nerdbank-gitversioning": "^3.5.113",
 		"node-rsa": "^1.0.5",
 		"prettier": "^1.19.1",
