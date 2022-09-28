@@ -12,8 +12,6 @@
 			<_SymPortablePath>$(_SymPortableDir)$(TargetName).pdb</_SymPortablePath>
 			<_SymWindowsDir>$(SymbolsOutputPath)windows/</_SymWindowsDir>
 			<_SymWindowsPath>$(_SymWindowsDir)$(TargetName).pdb</_SymWindowsPath>
-
-			<_Pdb2Pdb>$(PkgMicrosoft_DiaSymReader_Pdb2Pdb)\tools\Pdb2Pdb.exe</_Pdb2Pdb>
 		</PropertyGroup>
 
 		<MakeDir Directories="$(_SymPortableDir);$(_SymWindowsDir)" />
@@ -21,6 +19,5 @@
 		<Copy SourceFiles="$(TargetPath)" DestinationFiles="$(_SymAssemblyPath)" UseHardlinksIfPossible="true" />
 		<Copy SourceFiles="$(_TargetPdbPath)" DestinationFiles="$(_SymPortablePath)" UseHardlinksIfPossible="true" />
 
-		<Exec Command='"$(_Pdb2Pdb)" "$(TargetPath)" /out "$(_SymWindowsPath)"' IgnoreExitCode="false" />
 	</Target>
 </Project>
