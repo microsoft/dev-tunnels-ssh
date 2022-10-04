@@ -100,14 +100,14 @@ Legend:
 
 | Type         | Algorithm Name                  | Status   |
 | -------------| ------------------------------- | -------- |
-|
+| | |
 | key-exchange | `diffie-hellman-group16-sha512` | ✔✔
 | key-exchange | `diffie-hellman-group14-sha256` | ✔✔
 | key-exchange | `ecdh-sha2-nistp521`            | ✔
 | key-exchange | `ecdh-sha2-nistp384`            | ✔✔✔
 | key-exchange | `ecdh-sha2-nistp256`            | ✔✔
 | key-exchange | `curve25519-sha256`             | ??   [1]
-|
+| | |
 | public-key   | `rsa-sha2-512`                  | ✔✔✔
 | public-key   | `rsa-sha2-256`                  | ✔✔
 | public-key   | `ecdsa-sha2-nistp256`           | ✔✔
@@ -115,7 +115,7 @@ Legend:
 | public-key   | `ecdsa-sha2-nistp521`           | ✔
 | public-key   | `ssh-ed25519`                   | ??   [1]
 | public-key   | `*-cert-v01@openssh.com`        | ??   [2]
-|
+| | |
 | cipher       | `aes256-cbc`                    | ✔✔  [3]
 | cipher       | `aes256-ctr`                    | ✔✔
 | cipher       | `aes192-cbc`                    | ✔
@@ -125,7 +125,7 @@ Legend:
 | cipher       | `aes256-gcm@openssh.com`        | ✔✔✔
 | cipher       | `aes128-gcm@openssh.com`        | ✔
 | cipher       | `chacha20-poly1305@openssh.com` | ??   [1]
-|
+| | |
 | mac          | `hmac-sha2-512`                 | ✔✔
 | mac          | `hmac-sha2-256`                 | ✔✔
 | mac          | `hmac-sha2-512-etm@openssh.com` | ✔✔✔
