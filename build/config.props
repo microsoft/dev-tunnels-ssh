@@ -4,9 +4,10 @@
 	<PropertyGroup>
 		<Authors>Microsoft</Authors>
 		<Owners>Microsoft</Owners>
-		<Copyright>Microsoft</Copyright>
+		<Copyright>© Microsoft Corporation. All rights reserved.</Copyright>
 		<RepositoryUrl>https://github.com/microsoft/dev-tunnels-ssh.git</RepositoryUrl>
-
+		<PackageProjectUrl>https://github.com/microsoft/dev-tunnels-ssh/blob/main/README.md</PackageProjectUrl>
+		<PackageLicenseExpression>MIT</PackageLicenseExpression>
 		<LangVersion>10.0</LangVersion>
 		<Configuration Condition="'$(Configuration)'==''">Debug</Configuration>
 		<BaseOutputPath>$(SshRootDirectory)out/</BaseOutputPath>
