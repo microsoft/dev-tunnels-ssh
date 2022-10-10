@@ -54,11 +54,10 @@ internal class TaskChain : IDisposable
 				(runInSequenceTask.IsCanceled || runInSequenceTask.Exception != null))
 			{
 				// If one task in the sequence is cancelled we have to reset runInSequenceTask 
-				// so that all subeequent queueing will succeed.
+				// so that all subsequent queueing will succeed.
 				runInSequenceTask = null;
 			}
 
-			cancellation.ThrowIfCancellationRequested();
 			if (runInSequenceTask == null)
 			{
 				runInSequenceTask = Task.Run(
