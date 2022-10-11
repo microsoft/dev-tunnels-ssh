@@ -49,6 +49,15 @@ internal class TaskChain : IDisposable
 		try
 		{
 			await semaphore.WaitAsync(cancellation).ConfigureAwait(false);
+			
+			if (runInSequenceTask != null && 
+				(runInSequenceTask.IsCanceled || runInSequenceTask.Exception != null))
+			{
+				// If one task in the sequence is cancelled we have to reset runInSequenceTask 
+				// so that all subsequent queueing will succeed.
+				runInSequenceTask = null;
+			}
+
 			if (runInSequenceTask == null)
 			{
 				runInSequenceTask = Task.Run(
