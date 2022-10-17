@@ -187,8 +187,14 @@ public class InteropTests
 				};
 			};
 
-			server.SessionAuthenticating += (__, e) =>
+			server.SessionAuthenticating += (s, e) =>
 			{
+				var session = s as SshSession;
+				if (session == null || !session.RemoteIPAddress.ToString().Contains("127.0.0.1"))
+				{
+					return;
+				}
+
 				if (e.AuthenticationType == SshAuthenticationType.ClientPublicKey)
 				{
 					if (e.PublicKey.GetPublicKeyBytes().Equals(clientKey.GetPublicKeyBytes()))
@@ -421,8 +427,14 @@ public class InteropTests
 				}
 			}
 
-			session.Authenticating += (_, e) =>
+			session.Authenticating += (s, e) =>
 			{
+				var session = s as SshSession;
+				if (session == null || !session.RemoteIPAddress.ToString().Contains("127.0.0.1"))
+				{
+					return;
+				}
+
 				if (e.AuthenticationType == SshAuthenticationType.ServerPublicKey &&
 					e.PublicKey.GetPublicKeyBytes().Equals(serverKey.GetPublicKeyBytes()))
 				{
@@ -893,11 +905,11 @@ public class InteropTests
 		{
 		}
 
-		protected override async Task<Stream> OpenConnectionAsync(
+		protected override async Task<(Stream Stream, IPAddress RemomoteIPAddress)> OpenConnectionAsync(
 			string host, int port, CancellationToken cancellation)
 		{
-			this.stream = await base.OpenConnectionAsync(host, port, cancellation);
-			return this.stream;
+			(this.stream, var ipAddress) = await base.OpenConnectionAsync(host, port, cancellation);
+			return (this.stream, ipAddress);
 		}
 
 		public void Disconnect()

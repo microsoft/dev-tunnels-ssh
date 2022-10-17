@@ -29,7 +29,7 @@ import { SshSessionConfiguration } from '../sshSessionConfiguration';
 import { Trace, TraceLevel, SshTraceEventIds } from '../trace';
 
 class SequencedMessage {
-	public constructor(public readonly sequence: number, public readonly message: SshMessage) {}
+	public constructor(public readonly sequence: number, public readonly message: SshMessage) { }
 	public sentTime!: number;
 }
 
@@ -132,7 +132,9 @@ export class SshProtocol implements Disposable {
 		return Promise.resolve();
 	}
 
-	public async readProtocolVersion(cancellation?: CancellationToken): Promise<string> {
+	public async readProtocolVersionAndRemoteIPAddress(
+		cancellation?: CancellationToken,
+	): Promise<{ version: string, ipAddress: string | undefined }> {
 		const stream = this.stream;
 		if (!stream) throw new Error('SSH session disconnected.');
 
@@ -140,6 +142,7 @@ export class SshProtocol implements Disposable {
 
 		const buffer = Buffer.alloc(255);
 		let lineCount = 0;
+		let ipAddress: string | undefined = undefined;
 		for (let i = 0; i < buffer.length; i++) {
 			const byteBuffer = await stream.read(1, cancellation);
 			if (!byteBuffer) {
@@ -154,15 +157,20 @@ export class SshProtocol implements Disposable {
 				const line = buffer.toString('utf8', 0, i - 1);
 				if (line.startsWith('SSH-')) {
 					this.metrics.addMessageReceived(i + 1);
-					return line;
+					return { version: line, ipAddress: ipAddress };
+				} else if (line.startsWith('PROXY ')) {
+					let split = line.split(' ');
+					if (split.length > 2) {
+						ipAddress = split[2];
+					}
 				} else if (lineCount > 20) {
 					// Give up if a version string was not found after 20 lines.
 					break;
-				} else {
-					// Ignore initial lines before the version line.
-					lineCount++;
-					i = -1;
 				}
+
+				// Ignore initial lines before the version line.
+				lineCount++;
+				i = -1;
 			}
 		}
 
@@ -489,8 +497,8 @@ export class SshProtocol implements Disposable {
 		const firstBlockSize = !isLengthEncrypted
 			? SshProtocol.packetLengthSize
 			: encryption
-			? Math.max(8, encryption.blockLength)
-			: 8;
+				? Math.max(8, encryption.blockLength)
+				: 8;
 
 		this.receiveWriter.position = firstBlockSize;
 		let firstBlock = this.receiveWriter.toBuffer();

@@ -54,7 +54,7 @@ export class SshServer implements Disposable {
 	 * (part of) the `msg` parameter, the error object may contain additional useful context
 	 * such as the stack trace.
 	 */
-	public trace: Trace = (level, eventId, msg, err) => {};
+	public trace: Trace = (level, eventId, msg, err) => { };
 
 	private readonly errorEmitter = new Emitter<Error>();
 	public readonly onError: Event<Error> = this.errorEmitter.event;
@@ -120,6 +120,7 @@ export class SshServer implements Disposable {
 		const session = new SshServerSession(this.config, this.reconnectableSessions);
 		session.trace = this.trace;
 		session.credentials = this.credentials;
+		session.remoteIPAddress = socket.remoteAddress;
 		this.sessions.push(session);
 
 		session.onClosed((e) => {

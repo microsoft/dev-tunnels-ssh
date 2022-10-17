@@ -164,10 +164,10 @@ class SessionSetupBenchmark : Benchmark
 	{
 		public SshServerWithLatency(SshSessionConfiguration config, TraceSource trace) : base(config, trace) { }
 
-		protected override async Task<Stream> AcceptConnectionAsync(TcpListener listener)
+		protected override async Task<(Stream Stream, IPAddress RemoteIPAddress)> AcceptConnectionAsync(TcpListener listener)
 		{
-			var stream = await base.AcceptConnectionAsync(listener);
-			return stream == null ? null : new SlowStream(stream, SessionSetupBenchmark.latency);
+			(var stream, var ipAddress) = await base.AcceptConnectionAsync(listener);
+			return stream == null ? (null, null) : (new SlowStream(stream, SessionSetupBenchmark.latency), ipAddress);
 		}
 	}
 
@@ -175,12 +175,11 @@ class SessionSetupBenchmark : Benchmark
 	{
 		public SshClientWithLatency(SshSessionConfiguration config, TraceSource trace) : base(config, trace) { }
 
-		protected override async Task<Stream> OpenConnectionAsync(
+		protected override async Task<(Stream Stream, IPAddress RemomoteIPAddress)> OpenConnectionAsync(
 			string host, int port, CancellationToken cancellation)
 		{
-			return new SlowStream(
-				await base.OpenConnectionAsync(host, port, cancellation),
-				SessionSetupBenchmark.latency);
+			(var stream, var ipAddress) = await base.OpenConnectionAsync(host, port, cancellation);
+			return (new SlowStream(stream,SessionSetupBenchmark.latency), ipAddress);
 		}
 	}
 }

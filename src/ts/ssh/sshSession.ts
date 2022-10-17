@@ -68,6 +68,7 @@ export class SshSession implements Disposable {
 	public static readonly localVersion = SshVersionInfo.getLocalVersion();
 
 	public remoteVersion: SshVersionInfo | null = null;
+	public remoteIPAddress: string | undefined = undefined;
 
 	private readonly activatedServices = new Map<SshServiceConstructor, SshService>();
 	protected kexService: KeyExchangeService | null;
@@ -159,7 +160,7 @@ export class SshSession implements Disposable {
 	 * @param eventId Integer identifier of the event being traced.
 	 * @param msg Message (non-localized) describing the event.
 	 */
-	public trace: Trace = (level, eventId, msg, err) => {};
+	public trace: Trace = (level, eventId, msg, err) => { };
 
 	public constructor(public readonly config: SshSessionConfiguration, isClientSession?: boolean) {
 		if (!config) throw new TypeError('Session configuration is required.');
@@ -328,19 +329,19 @@ export class SshSession implements Disposable {
 			SshSession.localVersion.toString(),
 			cancellation,
 		);
-		const readPromise = this.protocol!.readProtocolVersion(cancellation);
+		const readPromise = this.protocol!.readProtocolVersionAndRemoteIPAddress(cancellation);
 
 		// Don't wait for and verify the other side's version info yet.
 		// Instead save a promise that can be awaited later.
-		this.versionExchangePromise = readPromise.then(async (remoteVersion) => {
+		this.versionExchangePromise = readPromise.then(async (remote) => {
 			this.trace(
 				TraceLevel.Info,
 				SshTraceEventIds.protocolVersion,
-				`Local version: ${SshSession.localVersion}, remote version: ${remoteVersion}`,
+				`Local version: ${SshSession.localVersion}, remote version: ${remote.version}`,
 			);
 
 			let errorMessage: string;
-			const remoteVersionInfo = SshVersionInfo.tryParse(remoteVersion);
+			const remoteVersionInfo = SshVersionInfo.tryParse(remote.version);
 			if (remoteVersionInfo) {
 				this.remoteVersion = remoteVersionInfo;
 				if (remoteVersionInfo.protocolVersion === '2.0') {
@@ -351,7 +352,11 @@ export class SshSession implements Disposable {
 					`Remote SSH version ${this.remoteVersion} is not supported. ` +
 					'This library only supports SSH v2.0.';
 			} else {
-				errorMessage = `Could not parse remote SSH version ${remoteVersion}`;
+				errorMessage = `Could not parse remote SSH version ${remote.version}`;
+			}
+
+			if (remote.ipAddress) {
+				this.remoteIPAddress = remote.ipAddress;
 			}
 
 			await this.close(
@@ -808,8 +813,8 @@ export class SshSession implements Disposable {
 		TFailure extends SessionRequestFailureMessage
 	>(
 		request: SessionRequestMessage,
-		successType: { new (): TSuccess },
-		failureType: { new (): TFailure },
+		successType: { new(): TSuccess },
+		failureType: { new(): TFailure },
 		cancellation?: CancellationToken,
 	): Promise<TSuccess | TFailure> {
 		if (!request) throw new TypeError('Request is required.');

@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Net;
 using System.Security.Claims;
 using System.Threading;
 using System.Threading.Tasks;
@@ -117,6 +118,8 @@ public class SshSession : IDisposable
 	public static SshVersionInfo LocalVersion { get; } = SshVersionInfo.GetLocalVersion();
 
 	public SshVersionInfo? RemoteVersion { get; private set; }
+
+	public IPAddress? RemoteIPAddress { get; set; }
 
 #pragma warning disable CA1819 // Properties should not return arrays
 	public byte[]? SessionId { get; internal set; }
@@ -264,19 +267,24 @@ public class SshSession : IDisposable
 	private async Task ExchangeVersionsAsync(CancellationToken cancellation)
 	{
 		var writeTask = Protocol!.WriteProtocolVersionAsync(LocalVersion.ToString(), cancellation);
-		var readTask = Protocol!.ReadProtocolVersionAsync(cancellation);
+		var readTask = Protocol!.ReadProtocolVersionAndIPAddressAsync(cancellation);
 
 		// Don't wait for and verify the other side's version info yet.
 		// Instead create a task that can be awaited later.
 		this.versionExchangeTask = Task.Run(
 			async () =>
 			{
-				var remoteVersion = await readTask.ConfigureAwait(false);
+				(var remoteVersion, var ipAddress) = await readTask.ConfigureAwait(false);
 
 				Trace.TraceEvent(
 					TraceEventType.Verbose,
 					SshTraceEventIds.ProtocolVersion,
 					$"Local version: {LocalVersion}, remote version: {remoteVersion}");
+
+				if (ipAddress != null)
+				{
+					RemoteIPAddress = ipAddress;
+				}
 
 				string errorMessage;
 				if (SshVersionInfo.TryParse(remoteVersion, out var remoteVersionInfo))

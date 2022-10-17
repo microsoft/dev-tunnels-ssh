@@ -47,7 +47,7 @@ public class SshClient : IDisposable
 		int serverPort = DefaultServerPort,
 		CancellationToken cancellation = default)
 	{
-		var stream = await this.OpenConnectionAsync(
+		(var stream, var ipAddress) = await this.OpenConnectionAsync(
 			serverHost, serverPort, cancellation).ConfigureAwait(false);
 		var session = new SshClientSession(this.config, this.trace);
 
@@ -56,6 +56,7 @@ public class SshClient : IDisposable
 			this.sessions.Add(session);
 		}
 
+		session.RemoteIPAddress = ipAddress;
 		session.Closed += (s, e) =>
 		{
 			if (e.Exception != null)
@@ -87,7 +88,7 @@ public class SshClient : IDisposable
 		return session;
 	}
 
-	protected virtual async Task<Stream> OpenConnectionAsync(
+	protected virtual async Task<(Stream Stream, IPAddress? RemomoteIPAddress)> OpenConnectionAsync(
 		string host, int port, CancellationToken cancellation)
 	{
 #pragma warning disable CA2000 // Dispose objects before losing scope
@@ -104,7 +105,14 @@ public class SshClient : IDisposable
 		tcpClient.Client.ConfigureSocketOptionsForSsh();
 
 		NetworkStream stream = tcpClient.GetStream();
-		return stream;
+		var ipEndpoint = tcpClient.Client.RemoteEndPoint as IPEndPoint;
+		IPAddress? ipAddress = null;
+		if (ipEndpoint != null)
+		{
+			ipAddress = ipEndpoint.Address;
+		}
+
+		return (stream, ipAddress);
 	}
 
 	public async Task ReconnectSessionAsync(
@@ -112,7 +120,7 @@ public class SshClient : IDisposable
 	{
 		if (session == null) throw new ArgumentNullException(nameof(session));
 
-		var stream = await this.OpenConnectionAsync(host, port, cancellation)
+		(var stream, _) = await this.OpenConnectionAsync(host, port, cancellation)
 			.ConfigureAwait(false);
 		await session.ReconnectAsync(stream, cancellation).ConfigureAwait(false);
 	}

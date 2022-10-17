@@ -107,7 +107,8 @@ public class SshServer : IDisposable
 			{
 				while (true)
 				{
-					var stream = await AcceptConnectionAsync(listener).ConfigureAwait(false);
+					(var stream, var ipAddress) = await AcceptConnectionAsync(listener)
+						.ConfigureAwait(false);
 					if (stream == null)
 					{
 						// The server was disposed.
@@ -122,6 +123,7 @@ public class SshServer : IDisposable
 					var session = new SshServerSession(
 						this.config, this.reconnectableSessions, this.trace);
 					session.Credentials = Credentials;
+					session.RemoteIPAddress = ipAddress;
 
 					lock (this.sessionsLock)
 					{
@@ -187,7 +189,8 @@ public class SshServer : IDisposable
 		}
 	}
 
-	protected virtual async Task<Stream?> AcceptConnectionAsync(TcpListener listener)
+	protected virtual async Task<(Stream? Stream, IPAddress? RemoteIPAddress)> AcceptConnectionAsync(
+		TcpListener listener)
 	{
 		TcpClient tcpClient;
 		try
@@ -198,18 +201,25 @@ public class SshServer : IDisposable
 		catch (SocketException) when (this.disposeCancellationSource.IsCancellationRequested)
 		{
 			// The server was disposed.
-			return null;
+			return (null, null);
 		}
 		catch (ObjectDisposedException) when (this.disposeCancellationSource.IsCancellationRequested)
 		{
 			// The server was disposed.
-			return null;
+			return (null, null);
 		}
 
 		tcpClient.Client.ConfigureSocketOptionsForSsh();
 
 		NetworkStream stream = tcpClient.GetStream();
-		return stream;
+		var ipEndpoint = tcpClient.Client.RemoteEndPoint as IPEndPoint;
+		IPAddress? ipAddress = null;
+		if (ipEndpoint != null)
+		{
+			ipAddress = ipEndpoint.Address;
+		}
+
+		return (stream, ipAddress);
 	}
 
 	public void Dispose()

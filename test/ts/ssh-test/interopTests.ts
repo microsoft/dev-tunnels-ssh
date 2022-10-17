@@ -20,6 +20,7 @@ import {
 	CommandRequestMessage,
 	SshAuthenticationType,
 	SshClientSession,
+	SshServerSession,
 } from '@microsoft/dev-tunnels-ssh';
 import { PortForwardingService, SshClient, SshServer } from '@microsoft/dev-tunnels-ssh-tcp';
 import {
@@ -119,13 +120,13 @@ export class InteropTests {
 		var clientKey = pkAlg.startsWith('rsa-')
 			? InteropTests.clientRsaKey
 			: await config.publicKeyAlgorithms
-					.find((a) => a?.keyAlgorithmName === pkAlg)!
-					.generateKeyPair();
+				.find((a) => a?.keyAlgorithmName === pkAlg)!
+				.generateKeyPair();
 		var serverKey = pkAlg.startsWith('rsa-')
 			? InteropTests.serverRsaKey
 			: await config.publicKeyAlgorithms
-					.find((a) => a?.keyAlgorithmName === pkAlg)!
-					.generateKeyPair();
+				.find((a) => a?.keyAlgorithmName === pkAlg)!
+				.generateKeyPair();
 		server.credentials.publicKeys = [serverKey];
 
 		let serverError: Error | undefined;
@@ -143,8 +144,13 @@ export class InteropTests {
 		try {
 			const authenticateCompletion = new PromiseCompletionSource<boolean>();
 			const requestCompletion = new PromiseCompletionSource<CommandRequestMessage>();
-			server.onSessionOpened((session) => {
+			server.onSessionOpened((session: SshServerSession) => {
 				session.onAuthenticating((e) => {
+					if (!session.remoteIPAddress) {
+						processOutput += 'remoteIPAddress not found';
+						return;
+					}
+
 					if (e.authenticationType !== SshAuthenticationType.clientPublicKey) {
 						return;
 					}
@@ -314,13 +320,13 @@ export class InteropTests {
 		var clientKey = pkAlg.startsWith('rsa-')
 			? InteropTests.clientRsaKey
 			: await config.publicKeyAlgorithms
-					.find((a) => a?.keyAlgorithmName === pkAlg)!
-					.generateKeyPair();
+				.find((a) => a?.keyAlgorithmName === pkAlg)!
+				.generateKeyPair();
 		var serverKey = pkAlg.startsWith('rsa-')
 			? InteropTests.serverRsaKey
 			: await config.publicKeyAlgorithms
-					.find((a) => a?.keyAlgorithmName === pkAlg)!
-					.generateKeyPair();
+				.find((a) => a?.keyAlgorithmName === pkAlg)!
+				.generateKeyPair();
 
 		const configFile = await InteropTests.createTempFile();
 		const hostKeyFile = await InteropTests.createTempFile();
@@ -385,6 +391,7 @@ export class InteropTests {
 			await withTimeout(serverListeningCompletion.promise, 2000);
 
 			const session = await client.openSession('localhost', testPort);
+			assert(session.remoteIPAddress);
 
 			session.onAuthenticating((e: SshAuthenticatingEventArgs) => {
 				if (e.authenticationType !== SshAuthenticationType.serverPublicKey) {
@@ -423,7 +430,7 @@ export class InteropTests {
 				try {
 					const pid = fs.readFileSync(pidFile);
 					require('process').kill(pid);
-				} catch (e) {}
+				} catch (e) { }
 			}
 
 			client.dispose();
@@ -567,7 +574,7 @@ export class InteropTests {
 
 			console.warn(
 				`    SSH executable not found: '${name}.exe'\n` +
-					'    To run this test, install the OpenSSH optional Windows feature.',
+				'    To run this test, install the OpenSSH optional Windows feature.',
 			);
 			return null;
 		}

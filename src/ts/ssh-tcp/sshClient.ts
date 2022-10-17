@@ -45,7 +45,7 @@ export class SshClient implements Disposable {
 	 * (part of) the `msg` parameter, the error object may contain additional useful context
 	 * such as the stack trace.
 	 */
-	public trace: Trace = (level, eventId, msg, err) => {};
+	public trace: Trace = (level, eventId, msg, err) => { };
 
 	public async openSession(
 		serverHost: string,
@@ -54,10 +54,11 @@ export class SshClient implements Disposable {
 	): Promise<SshClientSession> {
 		if (!serverHost) throw new TypeError('Server host is reqiured.');
 
-		const stream = await this.openConnection(serverHost, serverPort, cancellation);
+		const connectionResult = await this.openConnection(serverHost, serverPort, cancellation);
 		const session = new SshClientSession(this.config);
 		session.trace = this.trace;
-		await session.connect(stream, cancellation);
+		session.remoteIPAddress = connectionResult.ipAddress;
+		await session.connect(connectionResult.stream, cancellation);
 		this.sessions.push(session);
 		return session;
 	}
@@ -66,7 +67,7 @@ export class SshClient implements Disposable {
 		serverHost: string,
 		serverPort?: number,
 		cancellation?: CancellationToken,
-	): Promise<Stream> {
+	): Promise<{ stream: Stream, ipAddress: string | undefined }> {
 		let socket = new net.Socket();
 		await new Promise((resolve, reject) => {
 			socket.on('connect', resolve);
@@ -83,7 +84,7 @@ export class SshClient implements Disposable {
 
 			socket.connect(serverPort || SshClient.defaultServerPort, serverHost);
 		});
-		return new NodeStream(socket);
+		return { stream: new NodeStream(socket), ipAddress: socket.remoteAddress };
 	}
 
 	public async reconnectSession(

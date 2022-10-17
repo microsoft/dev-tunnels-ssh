@@ -5,6 +5,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Net;
 using System.Security.Cryptography;
 using System.Text;
 using System.Threading;
@@ -128,7 +129,8 @@ internal class SshProtocol : IDisposable
 			.ToArray();
 	}
 
-	internal async Task<string> ReadProtocolVersionAsync(CancellationToken cancellation)
+	internal async Task<(string ProtocolVersion, IPAddress? IPAddress)> ReadProtocolVersionAndIPAddressAsync(
+		CancellationToken cancellation)
 	{
 		var stream = this.stream;
 		if (stream == null)
@@ -139,6 +141,7 @@ internal class SshProtocol : IDisposable
 		// http://tools.ietf.org/html/rfc4253#section-4.2
 		var buffer = new Buffer(255).Array;
 		int lineCount = 0;
+		IPAddress? proxyIPAddress = null;
 		for (int i = 0; i < buffer.Length; i++)
 		{
 #if SSH_ENABLE_SPAN
@@ -160,19 +163,25 @@ internal class SshProtocol : IDisposable
 				if (line.StartsWith("SSH-", StringComparison.Ordinal))
 				{
 					this.metrics.AddMessageReceived(i + 1);
-					return line;
+					return (line, proxyIPAddress);
+				}
+				else if (line.StartsWith("PROXY ", StringComparison.Ordinal))
+				{
+					var split = line.Split(' ');
+					if (split.Length > 2 && IPAddress.TryParse(split[2], out var ipAddress))
+					{
+						proxyIPAddress = ipAddress;
+					}
 				}
 				else if (lineCount > 20)
 				{
 					// Give up if a version string was not found after 20 lines.
 					break;
 				}
-				else
-				{
-					// Ignore initial lines before the version line.
-					lineCount++;
-					i = -1;
-				}
+				
+				// Ignore initial lines before the version line.
+				lineCount++;
+				i = -1;
 			}
 		}
 
