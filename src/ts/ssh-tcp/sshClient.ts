@@ -93,8 +93,8 @@ export class SshClient implements Disposable {
 		serverPort?: number,
 		cancellation?: CancellationToken,
 	): Promise<void> {
-		const stream = await this.openConnection(serverHost, serverPort, cancellation);
-		await session.reconnect(stream, cancellation);
+		const connectionResult = await this.openConnection(serverHost, serverPort, cancellation);
+		await session.reconnect(connectionResult.stream, cancellation);
 	}
 
 	public dispose(): void {
