@@ -160,7 +160,7 @@ class SshClientWithLatency extends SshClient {
 		serverHost: string,
 		serverPort?: number,
 		cancellation?: CancellationToken,
-	): Promise<{ stream: Stream, ipAddress: string | undefined }> {
+	): Promise<{ stream: Stream; ipAddress: string | undefined }> {
 		const connectionResult = await super.openConnection(serverHost, serverPort, cancellation);
 		return {
 			stream: new SlowStream(connectionResult.stream, latencyInMilliseconds),

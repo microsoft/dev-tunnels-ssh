@@ -105,13 +105,8 @@ public class SshClient : IDisposable
 		tcpClient.Client.ConfigureSocketOptionsForSsh();
 
 		NetworkStream stream = tcpClient.GetStream();
-		var ipEndpoint = tcpClient.Client.RemoteEndPoint as IPEndPoint;
-		IPAddress? ipAddress = null;
-		if (ipEndpoint != null)
-		{
-			ipAddress = ipEndpoint.Address;
-		}
-
+		IPAddress? ipAddress = 
+			tcpClient.Client.RemoteEndPoint is IPEndPoint ipEndpoint? ipEndpoint.Address : null;
 		return (stream, ipAddress);
 	}
 

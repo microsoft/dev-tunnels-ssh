@@ -29,7 +29,7 @@ import { SshSessionConfiguration } from '../sshSessionConfiguration';
 import { Trace, TraceLevel, SshTraceEventIds } from '../trace';
 
 class SequencedMessage {
-	public constructor(public readonly sequence: number, public readonly message: SshMessage) { }
+	public constructor(public readonly sequence: number, public readonly message: SshMessage) {}
 	public sentTime!: number;
 }
 
@@ -134,7 +134,7 @@ export class SshProtocol implements Disposable {
 
 	public async readProtocolVersionAndRemoteIPAddress(
 		cancellation?: CancellationToken,
-	): Promise<{ version: string, ipAddress: string | undefined }> {
+	): Promise<{ version: string; ipAddress: string | undefined }> {
 		const stream = this.stream;
 		if (!stream) throw new Error('SSH session disconnected.');
 
@@ -497,8 +497,8 @@ export class SshProtocol implements Disposable {
 		const firstBlockSize = !isLengthEncrypted
 			? SshProtocol.packetLengthSize
 			: encryption
-				? Math.max(8, encryption.blockLength)
-				: 8;
+			? Math.max(8, encryption.blockLength)
+			: 8;
 
 		this.receiveWriter.position = firstBlockSize;
 		let firstBlock = this.receiveWriter.toBuffer();

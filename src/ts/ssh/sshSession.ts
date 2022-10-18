@@ -160,7 +160,7 @@ export class SshSession implements Disposable {
 	 * @param eventId Integer identifier of the event being traced.
 	 * @param msg Message (non-localized) describing the event.
 	 */
-	public trace: Trace = (level, eventId, msg, err) => { };
+	public trace: Trace = (level, eventId, msg, err) => {};
 
 	public constructor(public readonly config: SshSessionConfiguration, isClientSession?: boolean) {
 		if (!config) throw new TypeError('Session configuration is required.');
@@ -813,8 +813,8 @@ export class SshSession implements Disposable {
 		TFailure extends SessionRequestFailureMessage
 	>(
 		request: SessionRequestMessage,
-		successType: { new(): TSuccess },
-		failureType: { new(): TFailure },
+		successType: { new (): TSuccess },
+		failureType: { new (): TFailure },
 		cancellation?: CancellationToken,
 	): Promise<TSuccess | TFailure> {
 		if (!request) throw new TypeError('Request is required.');

@@ -45,7 +45,7 @@ export class SshClient implements Disposable {
 	 * (part of) the `msg` parameter, the error object may contain additional useful context
 	 * such as the stack trace.
 	 */
-	public trace: Trace = (level, eventId, msg, err) => { };
+	public trace: Trace = (level, eventId, msg, err) => {};
 
 	public async openSession(
 		serverHost: string,
@@ -67,7 +67,7 @@ export class SshClient implements Disposable {
 		serverHost: string,
 		serverPort?: number,
 		cancellation?: CancellationToken,
-	): Promise<{ stream: Stream, ipAddress: string | undefined }> {
+	): Promise<{ stream: Stream; ipAddress: string | undefined }> {
 		let socket = new net.Socket();
 		await new Promise((resolve, reject) => {
 			socket.on('connect', resolve);
