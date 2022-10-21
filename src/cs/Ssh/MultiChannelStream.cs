@@ -38,6 +38,7 @@ namespace Microsoft.DevTunnels.Ssh;
 public class MultiChannelStream : IDisposable
 {
 	private readonly Stream transportStream;
+	private readonly Func<SshChannel, SshStream> streamFactory;
 	private readonly SshSession session;
 
 	private EventHandler<SshChannelOpeningEventArgs>? channelOpening;
@@ -45,11 +46,27 @@ public class MultiChannelStream : IDisposable
 	/// <summary>
 	/// Creates a new multi-channel stream over an underlying transport stream.
 	/// </summary>
-	/// <param name="transportStream">Stream that is used to multiplex all the channels</param>
-	/// <param name="trace">Optional trace source for SSH protocol tracing</param>
+	/// <param name="transportStream">Stream that is used to multiplex all the channels.</param>
+	/// <param name="trace">Optional trace source for SSH protocol tracing.</param>
 	public MultiChannelStream(Stream transportStream, TraceSource? trace = null)
+		: this(transportStream, streamFactory: null, trace)
+	{
+	}
+
+	/// <summary>
+	/// Creates a new multi-channel stream over an underlying transport stream, with an
+	/// optional stream factory.
+	/// </summary>
+	/// <param name="transportStream">Stream that is used to multiplex all the channels.</param>
+	/// <param name="streamFactory">Optional factory function for creating stream instances.</param>
+	/// <param name="trace">Optional trace source for SSH protocol tracing.</param>
+	public MultiChannelStream(
+		Stream transportStream,
+		Func<SshChannel, SshStream>? streamFactory,
+		TraceSource? trace = null)
 	{
 		this.transportStream = transportStream ?? throw new ArgumentNullException(nameof(transportStream));
+		this.streamFactory = streamFactory ?? ((SshChannel channel) => new SshStream(channel));
 		this.session = new SshSession(
 			SshSessionConfiguration.NoSecurity,
 			trace ?? new TraceSource(nameof(MultiChannelStream)));
@@ -57,6 +74,7 @@ public class MultiChannelStream : IDisposable
 		this.session.Closed += OnSessionClosed;
 		this.session.ChannelOpening += OnChannelOpening;
 	}
+
 
 	/// <summary>
 	/// Gets a value indicating whether the session is closed.
@@ -205,7 +223,8 @@ public class MultiChannelStream : IDisposable
 		string? channelType,
 		CancellationToken cancellation = default)
 	{
-		return new SshStream(await AcceptChannelAsync(channelType, cancellation).ConfigureAwait(false));
+		return this.streamFactory(
+			await AcceptChannelAsync(channelType, cancellation).ConfigureAwait(false));
 	}
 
 	/// <summary>
@@ -258,7 +277,8 @@ public class MultiChannelStream : IDisposable
 		string? channelType,
 		CancellationToken cancellation = default)
 	{
-		return new SshStream(await OpenChannelAsync(channelType, cancellation).ConfigureAwait(false));
+		return this.streamFactory(
+			await OpenChannelAsync(channelType, cancellation).ConfigureAwait(false));
 	}
 
 	/// <summary>
