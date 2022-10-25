@@ -161,7 +161,7 @@ jobs:
           command: push
           searchPatternPush: out/pkg/*.nupkg
           nuGetFeedType: external
-          publishFeedCredentials: 'dev-tunnels-nuget-DevDiv'
+          publishFeedCredentials: 'dev-tunnels-nuget'
           publishPackageMetadata: true
 
       - task: Npm@1
@@ -173,7 +173,7 @@ jobs:
           verbose: false
           customCommand: publish out/pkg/dev-tunnels-ssh-$(Build.BuildNumber).tgz --access public
           customRegistry: useNpmrc
-          customEndpoint: 'dev-tunnels-npm-DevDiv'
+          customEndpoint: 'dev-tunnels-npm'
 
       - task: Npm@1
         displayName: Publish ssh-keys npm package to public feed
