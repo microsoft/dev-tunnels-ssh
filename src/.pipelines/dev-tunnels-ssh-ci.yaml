@@ -201,7 +201,7 @@ jobs:
     displayName: SSH Mac
     timeoutInMinutes: 90
     pool:
-      name: VSEng-Xamarin-VSforMac
+      vmImage: internal-macOS-11
     steps:
       - checkout: self
         clean: true
