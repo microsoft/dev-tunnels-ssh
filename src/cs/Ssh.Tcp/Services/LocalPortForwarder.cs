@@ -75,10 +75,10 @@ public class LocalPortForwarder : SshService
 		var listenAddress = LocalIPAddress;
 		try
 		{
-			// When the requested port number is not 0 (random) then changing the port number
-			// is not compliant with the SSH protocol. Only allow it if the remote side is
-			// this library, which is known to support it.
+			// Older versions of this library don't support the can-change-port extension,
+			// so the version string is checked instead.
 			bool canChangePort = LocalPort == 0 ||
+				this.Session.ProtocolExtensions.ContainsKey(SshProtocolExtensionNames.CanChangePort) ||
 				this.pfs.Session.RemoteVersion?.IsVsSsh == true;
 			var trace = this.pfs.Session.Trace;
 			this.listener = await this.pfs.TcpListenerFactory.CreateTcpListenerAsync(
