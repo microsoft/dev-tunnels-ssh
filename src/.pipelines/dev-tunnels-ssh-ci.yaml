@@ -18,7 +18,7 @@ variables:
     value: 'true'
 
 jobs:
-  - job: ssh-windows
+  - job: windows
     displayName: 'SSH Windows'
     timeoutInMinutes: '90'
     pool:
@@ -197,7 +197,8 @@ jobs:
           customRegistry: useNpmrc
           customEndpoint: 'dev-tunnels-npm-DevDiv'
 
-  - job: SSH Mac
+  - job: mac
+    displayName: SSH Mac
     timeoutInMinutes: 90
     pool:
       name: VSEng-Xamarin-VSforMac
