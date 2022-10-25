@@ -38,7 +38,6 @@ namespace Microsoft.DevTunnels.Ssh;
 public class MultiChannelStream : IDisposable
 {
 	private readonly Stream transportStream;
-	private readonly Func<SshChannel, SshStream> streamFactory;
 	private readonly SshSession session;
 
 	private EventHandler<SshChannelOpeningEventArgs>? channelOpening;
@@ -49,24 +48,8 @@ public class MultiChannelStream : IDisposable
 	/// <param name="transportStream">Stream that is used to multiplex all the channels.</param>
 	/// <param name="trace">Optional trace source for SSH protocol tracing.</param>
 	public MultiChannelStream(Stream transportStream, TraceSource? trace = null)
-		: this(transportStream, streamFactory: null, trace)
-	{
-	}
-
-	/// <summary>
-	/// Creates a new multi-channel stream over an underlying transport stream, with an
-	/// optional stream factory.
-	/// </summary>
-	/// <param name="transportStream">Stream that is used to multiplex all the channels.</param>
-	/// <param name="streamFactory">Optional factory function for creating stream instances.</param>
-	/// <param name="trace">Optional trace source for SSH protocol tracing.</param>
-	public MultiChannelStream(
-		Stream transportStream,
-		Func<SshChannel, SshStream>? streamFactory,
-		TraceSource? trace = null)
 	{
 		this.transportStream = transportStream ?? throw new ArgumentNullException(nameof(transportStream));
-		this.streamFactory = streamFactory ?? ((SshChannel channel) => new SshStream(channel));
 		this.session = new SshSession(
 			SshSessionConfiguration.NoSecurity,
 			trace ?? new TraceSource(nameof(MultiChannelStream)));
@@ -223,7 +206,7 @@ public class MultiChannelStream : IDisposable
 		string? channelType,
 		CancellationToken cancellation = default)
 	{
-		return this.streamFactory(
+		return CreateStream(
 			await AcceptChannelAsync(channelType, cancellation).ConfigureAwait(false));
 	}
 
@@ -277,7 +260,7 @@ public class MultiChannelStream : IDisposable
 		string? channelType,
 		CancellationToken cancellation = default)
 	{
-		return this.streamFactory(
+		return CreateStream(
 			await OpenChannelAsync(channelType, cancellation).ConfigureAwait(false));
 	}
 
@@ -302,6 +285,15 @@ public class MultiChannelStream : IDisposable
 		var channel = await this.session.OpenChannelAsync(openMessage, null, cancellation)
 			.ConfigureAwait(false);
 		return channel;
+	}
+
+	/// <summary>
+	/// Creates a stream instance for a channel. May be overridden to create a
+	/// <see cref="SshStream" /> subclass.
+	/// </summary>
+	protected virtual SshStream CreateStream(SshChannel channel)
+	{
+		return new SshStream(channel);
 	}
 
 	/// <summary>

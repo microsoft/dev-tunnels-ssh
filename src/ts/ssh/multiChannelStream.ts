@@ -21,7 +21,6 @@ import { ChannelOpenMessage } from './messages/connectionMessages';
  * Both side could open multiple channel to send/receive data.
  */
 export class MultiChannelStream implements Disposable {
-	private readonly streamFactory: (channel: SshChannel) => SshStream;
 	private readonly session: SshSession;
 	private disposed: boolean = false;
 	private disposables: Disposable[] = [];
@@ -29,15 +28,9 @@ export class MultiChannelStream implements Disposable {
 	/**
 	 * Creates a new multi-channel stream over an underlying transport stream.
 	 * @param transportStream Stream that is used to multiplex all the channels.
-	 * @param streamFactory Optional factory function for creating stream instances.
 	 */
-	public constructor(
-		private readonly transportStream: Stream,
-		streamFactory?: (channel: SshChannel) => SshStream,
-	) {
+	public constructor(private readonly transportStream: Stream) {
 		if (!transportStream) throw new TypeError('transportStream is required.');
-
-		this.streamFactory = streamFactory ?? ((channel: SshChannel) => new SshStream(channel));
 
 		const noSecurityConfig = new SshSessionConfiguration(false);
 		this.session = new SshSession(noSecurityConfig);
@@ -106,7 +99,7 @@ export class MultiChannelStream implements Disposable {
 		channelType?: string,
 		cancellation?: CancellationToken,
 	): Promise<SshStream> {
-		return this.streamFactory(await this.acceptChannel(channelType, cancellation));
+		return this.createStream(await this.acceptChannel(channelType, cancellation));
 	}
 
 	/**
@@ -136,7 +129,14 @@ export class MultiChannelStream implements Disposable {
 		channelType?: string,
 		cancellation?: CancellationToken,
 	): Promise<SshStream> {
-		return this.streamFactory(await this.openChannel(channelType, cancellation));
+		return this.createStream(await this.openChannel(channelType, cancellation));
+	}
+
+	/**
+	 * Creates a stream instance for a channel. May be overridden to create a `SshStream` subclass.
+	 */
+	protected createStream(channel: SshChannel): SshStream {
+		return new SshStream(channel);
 	}
 
 	/**
