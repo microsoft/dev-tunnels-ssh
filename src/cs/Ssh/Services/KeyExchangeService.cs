@@ -293,9 +293,6 @@ internal class KeyExchangeService : SshService
 						SshTraceEventIds.AlgorithmNegotiation,
 						$"Client's {nameof(ExchangeContext.KeyExchange)} guess was {guessResult}.");
 					this.exchangeContext.DiscardGuessedInit = !negotiatedKexAlgorthmIsPreferred;
-
-					if (negotiatedKexAlgorthmIsPreferred &&
-						Session.RemoteVersion!.IsVsSsh && Session.RemoteVersion!.Version?.Major < 3)
 					{
 						// VS-SSH v2 had a bug in the logic for determining whether the guess was correct.
 						// Use that alternate logic here to preserve compatibility.
@@ -578,14 +575,6 @@ internal class KeyExchangeService : SshService
 		var negotiationDetail = $"{label} negotiation: " +
 			$"Server ({string.Join(", ", serverAlgorithms)}) " +
 			$"Client ({string.Join(", ", clientAlgorithms)})";
-
-		if (Session.RemoteVersion!.IsVsSsh && Session.RemoteVersion.Version?.Major < 3)
-		{
-			// Older versions of ths library got this backward. Swap for back-compatibility.
-			var temp = serverAlgorithms;
-			serverAlgorithms = clientAlgorithms;
-			clientAlgorithms = temp;
-		}
 
 		foreach (var client in clientAlgorithms)
 		{

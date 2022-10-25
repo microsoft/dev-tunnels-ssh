@@ -286,25 +286,6 @@ export class KeyExchangeService extends SshService {
 					`Client's KeyExchange guess was ${guessResult}.`,
 				);
 				this.exchangeContext.discardGuessedInit = !negotiatedKexAlgorthmIsPreferred;
-
-				if (
-					negotiatedKexAlgorthmIsPreferred &&
-					this.session.remoteVersion!.isVsSsh &&
-					this.session.remoteVersion!.version?.startsWith('2.')
-				) {
-					// VS-SSH v2 had a bug in the logic for determining whether the guess was correct.
-					// Use that alternate logic here to preserve compatibility.
-					const clientAndServerHaveSamePreference =
-						message.keyExchangeAlgorithms?.[0] === config.keyExchangeAlgorithms[0]?.name;
-					if (!clientAndServerHaveSamePreference) {
-						this.trace(
-							TraceLevel.Verbose,
-							SshTraceEventIds.algorithmNegotiation,
-							'Ignoring correct guess for compatibility with older client.',
-						);
-						this.exchangeContext.discardGuessedInit = true;
-					}
-				}
 			}
 
 			this.exchangeContext.clientKexInitPayload = message.toBuffer();
@@ -653,16 +634,6 @@ export class KeyExchangeService extends SshService {
 			`${label} negotiation: ` +
 			`Server (${serverAlgorithms.join(', ')}) ` +
 			`Client (${clientAlgorithms.join(', ')})`;
-
-		if (
-			this.session.remoteVersion!.isVsSsh &&
-			this.session.remoteVersion!.version?.startsWith('2.')
-		) {
-			// Older versions of ths library got this backward. Swap for back-compatibility.
-			const temp = serverAlgorithms;
-			serverAlgorithms = clientAlgorithms;
-			clientAlgorithms = temp;
-		}
 
 		for (let client of clientAlgorithms) {
 			for (let server of serverAlgorithms) {
