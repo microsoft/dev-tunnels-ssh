@@ -184,7 +184,7 @@ jobs:
           verbose: false
           customCommand: publish out/pkg/dev-tunnels-ssh-keys-$(Build.BuildNumber).tgz --access public
           customRegistry: useNpmrc
-          customEndpoint: 'dev-tunnels-npm-DevDiv'
+          customEndpoint: 'dev-tunnels-npm'
 
       - task: Npm@1
         displayName: Publish ssh-tcp npm package to public feed
@@ -195,7 +195,7 @@ jobs:
           verbose: false
           customCommand: publish out/pkg/dev-tunnels-ssh-tcp-$(Build.BuildNumber).tgz --access public
           customRegistry: useNpmrc
-          customEndpoint: 'dev-tunnels-npm-DevDiv'
+          customEndpoint: 'dev-tunnels-npm'
 
   - job: mac
     displayName: SSH Mac
