@@ -25,6 +25,11 @@ jobs:
       name: VSEngSS-MicroBuild2022-1ES
 
     steps:
+      - checkout: self
+        fetchDepth: -1
+        clean: true
+        fetchTags: false
+        
       - task: UseDotNet@2
         displayName: Install .NET Core 2.1 Runtime
         inputs:
@@ -204,6 +209,7 @@ jobs:
       vmImage: internal-macOS-11
     steps:
       - checkout: self
+        fetchDepth: -1
         clean: true
         fetchTags: false
 
