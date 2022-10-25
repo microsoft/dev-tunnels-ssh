@@ -66,3 +66,8 @@ Round-trip connection latency between SSH client and server are measured as foll
  1. Include in each sent packet an extra 32-bit value that is the time delta (_`Td`_) since the last-recorded receive time (_`Tr`_). This follows the 64-bit last-received packet sequence number appended for reconnection support.
  1. After receiving each packet, find the message in the reconnect cache that matches the last-received sequence number, and get its send time (_`Ts`_). Also read the remote delta (_`Td`_) time from the end of the packet.
  1. Then the round-trip latency can be computed as _`(Tr - Ts - Td)`_. In other words, it measures the time between sending one packet and receiving the next, not including the time between receiving and sending on the remote side (and avoiding overlaps).
+
+## Extension: Forward non-requested port
+Extension ID: `can-change-port`
+
+The SSH protocol specifies that the port forwarded in response to a port forwarding request must match the requested port. This extension indicates that the SSH session supports forwarding a port that differs from the requested port. When the requested port is not available, this allows the recipient of the request to select an appropriate port and send a single response, instead of informing the sender that it needs to request a different port.
