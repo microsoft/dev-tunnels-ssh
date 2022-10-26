@@ -73,7 +73,8 @@ jobs:
 
       - task: MicroBuildSigningPlugin@3
         displayName: Install Signing Plugin
-        condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
+        # TODO - uncomment before merge: 
+        # condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
         inputs:
           signType: real
 
