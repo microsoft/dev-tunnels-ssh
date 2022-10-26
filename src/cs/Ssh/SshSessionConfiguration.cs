@@ -42,6 +42,7 @@ public class SshSessionConfiguration
 		ProtocolExtensions = new SortedSet<string>();
 		ProtocolExtensions.Add(SshProtocolExtensionNames.ServerSignatureAlgorithms);
 		ProtocolExtensions.Add(SshProtocolExtensionNames.OpenChannelRequest);
+		ProtocolExtensions.Add(SshProtocolExtensionNames.CanChangePort);
 
 		if (enableReconnect)
 		{

@@ -293,22 +293,6 @@ internal class KeyExchangeService : SshService
 						SshTraceEventIds.AlgorithmNegotiation,
 						$"Client's {nameof(ExchangeContext.KeyExchange)} guess was {guessResult}.");
 					this.exchangeContext.DiscardGuessedInit = !negotiatedKexAlgorthmIsPreferred;
-					{
-						// VS-SSH v2 had a bug in the logic for determining whether the guess was correct.
-						// Use that alternate logic here to preserve compatibility.
-						bool clientAndServerHaveSamePreference =
-							message.KeyExchangeAlgorithms?.FirstOrDefault() ==
-							Session.Config.KeyExchangeAlgorithms.FirstOrDefault(
-								(a) => a?.IsAvailable == true)?.Name;
-						if (!clientAndServerHaveSamePreference)
-						{
-							Session.Trace.TraceEvent(
-								TraceEventType.Verbose,
-								SshTraceEventIds.AlgorithmNegotiation,
-								$"Ignoring correct guess for compatibility with older client.");
-							this.exchangeContext.DiscardGuessedInit = true;
-						}
-					}
 				}
 
 				this.exchangeContext.ClientKexInitPayload = message.ToBuffer().ToArray();
