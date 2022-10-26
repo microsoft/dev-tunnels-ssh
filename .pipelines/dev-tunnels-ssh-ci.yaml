@@ -16,6 +16,8 @@ variables:
     value: 'true'
   - name: 'PublishNugetPackage'
     value: 'true'
+  - name: 'TeamName'
+    value: 'DevTunnels'
 
 jobs:
   - job: windows
