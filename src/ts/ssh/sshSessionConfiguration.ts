@@ -44,6 +44,15 @@ export enum SshProtocolExtensionNames {
 	 * it leverages some of the session history info for reconnect to compute latency.
 	 */
 	sessionLatency = 'session-latency@microsoft.com',
+
+	/**
+	 * Enables forwarding of ports other that the requested port.
+	 *
+	 * When the requested port number is not 0 (random) then changing the port number
+	 * is not compliant with the SSH protocol. Only allow it if the remote side is
+	 * this library, which is known to support it.
+	 */
+	canChangePort = 'can-change-port@microsoft.com',
 }
 
 /**
@@ -56,6 +65,7 @@ export class SshSessionConfiguration {
 	public constructor(useSecurity: boolean = true) {
 		this.protocolExtensions.push(SshProtocolExtensionNames.serverSignatureAlgorithms);
 		this.protocolExtensions.push(SshProtocolExtensionNames.openChannelRequest);
+		this.protocolExtensions.push(SshProtocolExtensionNames.canChangePort);
 
 		this.services.set(KeyExchangeService, null);
 		this.services.set(ConnectionService, null);

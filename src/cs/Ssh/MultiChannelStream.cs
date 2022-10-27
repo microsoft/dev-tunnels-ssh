@@ -58,7 +58,6 @@ public class MultiChannelStream : IDisposable
 		this.session.ChannelOpening += OnChannelOpening;
 	}
 
-
 	/// <summary>
 	/// Gets a value indicating whether the session is closed.
 	/// </summary>

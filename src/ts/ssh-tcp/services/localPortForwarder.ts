@@ -11,6 +11,7 @@ import {
 	SshTraceEventIds,
 	TraceLevel,
 	PromiseCompletionSource,
+	SshProtocolExtensionNames,
 } from '@microsoft/dev-tunnels-ssh';
 import { ChannelForwarder } from './channelForwarder';
 import { PortForwardingService } from './portForwardingService';
@@ -74,10 +75,12 @@ export class LocalPortForwarder extends SshService {
 	public async startForwarding(cancellation?: CancellationToken): Promise<void> {
 		let listenAddress = this.localIPAddress;
 		try {
-			// When the requested port number is not 0 (random) then changing the port number
-			// is not compliant with the SSH protocol. Only allow it if the remote side is
-			// this library, which is known to support it.
-			const canChangePort = this.port === 0 || this.pfs.session.remoteVersion?.isVsSsh === true;
+			// Older versions of this library don't support the can-change-port extension,
+			// so the version string is checked instead.
+			const canChangePort =
+				this.port === 0 ||
+				this.session.protocolExtensions?.has(SshProtocolExtensionNames.canChangePort) ||
+				this.pfs.session.remoteVersion?.isVsSsh === true;
 
 			this.tcpListener = await this.pfs.tcpListenerFactory.createTcpListener(
 				listenAddress,
