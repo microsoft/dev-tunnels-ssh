@@ -136,7 +136,7 @@ jobs:
 
       - task: PublishSymbols@2
         displayName: Publish symbols
-        condition: and(succeeded(), eq('${{ paramters.PublishNugetPackage }}', 'true'), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
+        condition: and(succeeded(), eq('${{ parameters.PublishNugetPackage }}', 'true'), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
         continueOnError: True
         inputs:
           SymbolsFolder: $(Build.SourcesDirectory)/out/sym
@@ -168,7 +168,7 @@ jobs:
 
       - task: NuGetCommand@2
         displayName: Publish NuGet packages to public feed
-        condition: and(succeeded(), eq('${{ paramters.PublishNugetPackage }}', 'true'))
+        condition: and(succeeded(), eq('${{ parameters.PublishNugetPackage }}', 'true'))
         continueOnError: True
         inputs:
           command: push
