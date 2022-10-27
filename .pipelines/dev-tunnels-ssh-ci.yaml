@@ -12,12 +12,16 @@ resources:
       ref: refs/heads/main
 
 variables:
-  - name: 'PublishNpmPackage'
-    value: 'true'
-  - name: 'PublishNugetPackage'
-    value: 'true'
   - name: 'TeamName'
     value: 'DevTunnels'
+
+parameters:
+  - name: 'PublishNpmPackage'
+    type: boolean
+    default: false
+  - name: 'PublishNugetPackage'
+    type: boolean
+    default: false
 
 jobs:
   - job: windows
@@ -132,7 +136,7 @@ jobs:
 
       - task: PublishSymbols@2
         displayName: Publish symbols
-        condition: and(succeeded(), eq(variables['PublishNugetPackage'], 'true'), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
+        condition: and(succeeded(), eq('${{ paramters.PublishNugetPackage }}', 'true'), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
         continueOnError: True
         inputs:
           SymbolsFolder: $(Build.SourcesDirectory)/out/sym
@@ -164,7 +168,7 @@ jobs:
 
       - task: NuGetCommand@2
         displayName: Publish NuGet packages to public feed
-        condition: and(succeeded(), eq(variables['PublishNugetPackage'], 'true'))
+        condition: and(succeeded(), eq('${{ paramters.PublishNugetPackage }}', 'true'))
         continueOnError: True
         inputs:
           command: push
@@ -175,7 +179,7 @@ jobs:
 
       - task: Npm@1
         displayName: Publish ssh npm package to public feed
-        condition: and(succeeded(), eq(variables['PublishNpmPackage'], 'true'))
+        condition: and(succeeded(), eq('${{ parameters.PublishNpmPackage }}', 'true'))
         continueOnError: True
         inputs:
           command: custom
@@ -186,7 +190,7 @@ jobs:
 
       - task: Npm@1
         displayName: Publish ssh-keys npm package to public feed
-        condition: and(succeeded(), eq(variables['PublishNpmPackage'], 'true'))
+        condition: and(succeeded(), eq('${{ parameters.PublishNpmPackage }}', 'true'))
         continueOnError: True
         inputs:
           command: custom
@@ -197,7 +201,7 @@ jobs:
 
       - task: Npm@1
         displayName: Publish ssh-tcp npm package to public feed
-        condition: and(succeeded(), eq(variables['PublishNpmPackage'], 'true'))
+        condition: and(succeeded(), eq('${{ parameters.PublishNpmPackage }}', 'true'))
         continueOnError: True
         inputs:
           command: custom
