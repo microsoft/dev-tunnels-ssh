@@ -12,6 +12,8 @@ resources:
       ref: refs/heads/main
 
 variables:
+  - name: Codeql.Enabled
+    value: true
   - name: 'TeamName'
     value: 'DevTunnels'
 
