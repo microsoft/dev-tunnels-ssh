@@ -1,0 +1,301 @@
+trigger:
+  branches:
+    include:
+      - refs/heads/main
+
+name: $(date:yyyyMMdd)$(rev:.r)
+
+resources:
+  repositories:
+    - repository: self
+      type: git
+      ref: refs/heads/main
+
+variables:
+  - name: Codeql.Enabled
+    value: true
+  - name: 'TeamName'
+    value: 'DevTunnels'
+
+parameters:
+  - name: 'PublishNpmPackage'
+    type: boolean
+    default: false
+  - name: 'PublishNugetPackage'
+    type: boolean
+    default: false
+
+jobs:
+  - job: windows
+    displayName: 'SSH Windows'
+    timeoutInMinutes: '90'
+    pool:
+      name: VSEngSS-MicroBuild2022-1ES
+
+    steps:
+      - checkout: self
+        fetchDepth: -1
+        clean: true
+        fetchTags: false
+        
+      - task: UseDotNet@2
+        displayName: Install .NET Core 2.1 Runtime
+        inputs:
+          packageType: runtime
+          version: 2.1.x
+
+      - task: UseDotNet@2
+        displayName: Install .NET Core 3.1 Runtime
+        inputs:
+          packageType: runtime
+          version: 3.1.x
+
+      - task: UseDotNet@2
+        displayName: Install .NET 5 Runtime
+        inputs:
+          packageType: runtime
+          version: 5.0.x
+
+      - task: UseDotNet@2
+        displayName: Use .NET SDK specified by global.json
+        inputs:
+          useGlobalJson: true
+
+      - task: DotNetCoreCLI@2
+        displayName: Restore NuGet packages
+        inputs:
+          command: restore
+          projects: SSH.sln
+          selectOrConfig: config
+          nugetConfigPath: NuGet.config
+
+      - task: NodeTool@0
+        displayName: Use Node 12.x
+        inputs:
+          versionSpec: 12.x
+
+      - task: Npm@1
+        displayName: Restore npm packages
+        inputs:
+          verbose: false
+
+      - task: MicroBuildSigningPlugin@4
+        displayName: Install Signing Plugin
+        inputs:
+          signType: 'real'
+          feedSource: 'https://devdiv.pkgs.visualstudio.com/DefaultCollection/_packaging/MicroBuildToolset/nuget/v3/index.json'
+        env:
+          TeamName: '$(TeamName)'
+
+      - task: MSBuild@1
+        displayName: Build C#
+        inputs:
+          solution: SSH.sln
+          configuration: Release
+          msbuildArguments: -p:RestorePackages=false -t:Build;Pack -p:EnableSigning=true
+
+      - task: Npm@1
+        displayName: Build TS
+        inputs:
+          command: custom
+          verbose: false
+          customCommand: run build-ts -- --release
+
+      - task: Npm@1
+        displayName: Pack TS
+        inputs:
+          command: custom
+          verbose: false
+          customCommand: run pack-ts -- --release
+
+      - task: Npm@1
+        displayName: Test (Node.js)
+        inputs:
+          command: custom
+          verbose: false
+          customCommand: run test-ts -- --release --serial --coverage
+
+      - task: Npm@1
+        displayName: Test (.NET Core 2.1)
+        inputs:
+          command: custom
+          verbose: false
+          customCommand: run test-cs -- --release --serial --coverage --framework netcoreapp2.1
+
+      - task: Npm@1
+        displayName: Test (.NET Core 3.1)
+        inputs:
+          command: custom
+          verbose: false
+          customCommand: run test-cs -- --release --serial --coverage --framework netcoreapp3.1
+
+      - task: Npm@1
+        displayName: Test (.NET 6)
+        inputs:
+          command: custom
+          verbose: false
+          customCommand: run test-cs -- --release --serial --coverage --framework net6.0
+
+      - task: PublishSymbols@2
+        displayName: Publish symbols
+        condition: and(succeeded(), eq('${{ parameters.PublishNugetPackage }}', 'true'), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
+        continueOnError: True
+        inputs:
+          SymbolsFolder: $(Build.SourcesDirectory)/out/sym
+          SearchPattern: '**\*'
+          SymbolServerType: TeamServices
+          SymbolsProduct: Visual Studio
+
+      - task: PublishBuildArtifacts@1
+        displayName: Publish package artifacts
+        inputs:
+          PathtoPublish: out/pkg
+          ArtifactName: packages
+          TargetPath: '\\my\share\$(Build.DefinitionName)\$(Build.BuildNumber)'
+
+      - task: PublishTestResults@2
+        displayName: Publish test results
+        condition: succeededOrFailed()
+        inputs:
+          testResultsFiles: '*.xml'
+          searchFolder: out/testresults
+
+      - task: PublishCodeCoverageResults@1
+        displayName: Publish code coverage
+        inputs:
+          codeCoverageTool: Cobertura
+          summaryFileLocation: out/testresults/CodeCoverage/Cobertura.xml
+          reportDirectory: out/testresults/CodeCoverage
+          failIfCoverageEmpty: true
+
+      - task: NuGetCommand@2
+        displayName: Publish NuGet packages to public feed
+        condition: and(succeeded(), eq('${{ parameters.PublishNugetPackage }}', 'true'))
+        continueOnError: True
+        inputs:
+          command: push
+          searchPatternPush: out/pkg/*.nupkg
+          nuGetFeedType: external
+          publishFeedCredentials: 'dev-tunnels-nuget'
+          publishPackageMetadata: true
+
+      - task: Npm@1
+        displayName: Publish ssh npm package to public feed
+        condition: and(succeeded(), eq('${{ parameters.PublishNpmPackage }}', 'true'))
+        continueOnError: True
+        inputs:
+          command: custom
+          verbose: false
+          customCommand: publish out/pkg/dev-tunnels-ssh-$(Build.BuildNumber).tgz --access public
+          customRegistry: useNpmrc
+          customEndpoint: 'dev-tunnels-npm'
+
+      - task: Npm@1
+        displayName: Publish ssh-keys npm package to public feed
+        condition: and(succeeded(), eq('${{ parameters.PublishNpmPackage }}', 'true'))
+        continueOnError: True
+        inputs:
+          command: custom
+          verbose: false
+          customCommand: publish out/pkg/dev-tunnels-ssh-keys-$(Build.BuildNumber).tgz --access public
+          customRegistry: useNpmrc
+          customEndpoint: 'dev-tunnels-npm'
+
+      - task: Npm@1
+        displayName: Publish ssh-tcp npm package to public feed
+        condition: and(succeeded(), eq('${{ parameters.PublishNpmPackage }}', 'true'))
+        continueOnError: True
+        inputs:
+          command: custom
+          verbose: false
+          customCommand: publish out/pkg/dev-tunnels-ssh-tcp-$(Build.BuildNumber).tgz --access public
+          customRegistry: useNpmrc
+          customEndpoint: 'dev-tunnels-npm'
+
+  - job: mac
+    displayName: SSH Mac
+    timeoutInMinutes: 90
+    pool:
+      vmImage: internal-macOS-11
+    steps:
+      - checkout: self
+        fetchDepth: -1
+        clean: true
+        fetchTags: false
+
+      - task: UseDotNet@2
+        displayName: Install .NET Core 2.1 Runtime
+        inputs:
+          packageType: runtime
+          version: 2.1.x
+
+      - task: UseDotNet@2
+        displayName: Install .NET Core 3.1 Runtime
+        inputs:
+          packageType: runtime
+          version: 3.1.x
+
+      - task: UseDotNet@2
+        displayName: Install .NET 5 Runtime
+        inputs:
+          packageType: runtime
+          version: 5.0.x
+
+      - task: UseDotNet@2
+        displayName: Use .NET SDK specified by global.json
+        inputs:
+          useGlobalJson: true
+
+      - task: DotNetCoreCLI@2
+        displayName: Restore NuGet packages
+        inputs:
+          command: restore
+          projects: SSH.sln
+          selectOrConfig: config
+          nugetConfigPath: NuGet.config
+
+      - task: NodeTool@0
+        displayName: Use Node 12.x
+        inputs:
+          versionSpec: 12.x
+
+      - task: Npm@1
+        displayName: Restore npm packages
+        inputs:
+          verbose: false
+
+      - task: Npm@1
+        displayName: Build
+        inputs:
+          command: custom
+          verbose: false
+          customCommand: run build -- --release
+
+      - task: Npm@1
+        displayName: Test (Node.js)
+        inputs:
+          command: custom
+          verbose: false
+          customCommand: run test-ts -- --release --serial
+
+      - task: Npm@1
+        displayName: Test (.NET Core 2.1)
+        inputs:
+          command: custom
+          verbose: false
+          customCommand: run test-cs -- --release --serial --framework netcoreapp2.1
+
+      - task: Npm@1
+        displayName: Test (.NET Core 3.1)
+        enabled: False
+        inputs:
+          command: custom
+          verbose: false
+          customCommand: run test-cs -- --release --serial --framework netcoreapp3.1
+
+      - task: Npm@1
+        displayName: Test (.NET 6)
+        inputs:
+          command: custom
+          verbose: false
+          customCommand: run test-cs -- --release --serial --framework net6.0
