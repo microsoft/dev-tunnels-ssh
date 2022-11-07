@@ -1,4 +1,4 @@
-# DevTunnels Library Development
+# Dev Tunnels Library Development
 This document contains information about building, debugging, testing,
 and benchmarking the C# and TS SSH libraries.
 
