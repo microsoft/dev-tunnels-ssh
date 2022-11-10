@@ -70,9 +70,17 @@ public class SessionTests : IDisposable
 			this.clientClosedSemaphore.WaitAsync()).WithTimeout(Timeout);
 
 		Assert.NotNull(this.serverClosedEvent);
-		Assert.Null(this.serverClosedEvent.Exception);
+		Assert.Equal(SshDisconnectReason.ConnectionLost, this.serverClosedEvent.Reason);
+		Assert.IsType<SshConnectionException>(this.serverClosedEvent.Exception);
+		Assert.Equal(
+			SshDisconnectReason.ConnectionLost,
+			((SshConnectionException)this.serverClosedEvent.Exception).DisconnectReason);
 		Assert.NotNull(this.clientClosedEvent);
-		Assert.Null(this.clientClosedEvent.Exception);
+		Assert.Equal(SshDisconnectReason.ConnectionLost, this.clientClosedEvent.Reason);
+		Assert.IsType<SshConnectionException>(this.clientClosedEvent.Exception);
+		Assert.Equal(
+			SshDisconnectReason.ConnectionLost,
+			((SshConnectionException)this.clientClosedEvent.Exception).DisconnectReason);
 	}
 
 	[Fact]
@@ -88,7 +96,10 @@ public class SessionTests : IDisposable
 
 		Assert.NotNull(this.clientClosedEvent);
 		Assert.Equal(TestDisconnectReason, this.clientClosedEvent.Reason);
-		Assert.Null(this.clientClosedEvent.Exception);
+		Assert.IsType<SshConnectionException>(this.clientClosedEvent.Exception);
+		Assert.Equal(
+			TestDisconnectReason,
+			((SshConnectionException)this.clientClosedEvent.Exception).DisconnectReason);
 	}
 
 	[Fact]
@@ -104,7 +115,10 @@ public class SessionTests : IDisposable
 
 		Assert.NotNull(this.serverClosedEvent);
 		Assert.Equal(TestDisconnectReason, this.serverClosedEvent.Reason);
-		Assert.Null(this.serverClosedEvent.Exception);
+		Assert.IsType<SshConnectionException>(this.clientClosedEvent.Exception);
+		Assert.Equal(
+			TestDisconnectReason,
+			((SshConnectionException)this.clientClosedEvent.Exception).DisconnectReason);
 	}
 
 	private void OnSessionAuthenticating(object sender, SshAuthenticatingEventArgs e) =>

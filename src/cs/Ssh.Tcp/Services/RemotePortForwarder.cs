@@ -107,11 +107,23 @@ public class RemotePortForwarder : RemotePortConnector
 
 		tcpClient.Client.ConfigureSocketOptionsForSsh();
 
-		// The PortForwardingService takes ownership of the ChannelForwarder; it will be disposed
-		// when the PortForwardingService is diposed.
+		ChannelForwarder channelForwarder;
+		try
+		{
+			// The PortForwardingService takes ownership of the ChannelForwarder; it will be disposed
+			// when the PortForwardingService is diposed.
 #pragma warning disable CA2000 // Dispose objects before losing scope
-		var channelForwarder = new ChannelForwarder(pfs, channel, tcpClient);
+			channelForwarder = new ChannelForwarder(pfs, channel, tcpClient);
 #pragma warning restore CA2000 // Dispose objects before losing scope
+		}
+		catch (ObjectDisposedException ex)
+		{
+			// The TCP connection was closed immediately after it was opened. Close the channel.
+			await channel.CloseAsync(cancellation).ConfigureAwait(false);
+			request.FailureReason = SshChannelOpenFailureReason.ConnectFailed;
+			request.FailureDescription = ex.Message;
+			return;
+		}
 
 		var traceMessage = $"{nameof(PortForwardingService)} forwarded channel " +
 			$"#{channel.ChannelId} connection to {host}:{port}.";

@@ -192,6 +192,12 @@ public class LocalPortForwarder : SshService
 					tcpClient.Client.Abort();
 					continue;
 				}
+				catch (SshConnectionException)
+				{
+					// The session was disconnected.
+					tcpClient.Client.Abort();
+					break;
+				}
 				catch (ObjectDisposedException)
 				{
 					// The session was disposed.

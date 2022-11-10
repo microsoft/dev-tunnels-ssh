@@ -475,8 +475,14 @@ internal class AuthenticationService : SshService
 	{
 		if (disposing)
 		{
-			disposeCancellationSource.Cancel();
-			disposeCancellationSource.Dispose();
+			try
+			{
+				disposeCancellationSource.Cancel();
+				disposeCancellationSource.Dispose();
+			}
+			catch (ObjectDisposedException)
+			{
+			}
 		}
 
 		base.Dispose(disposing);

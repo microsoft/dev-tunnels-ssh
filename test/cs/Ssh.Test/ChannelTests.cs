@@ -852,7 +852,10 @@ public class ChannelTests : IDisposable
 		channels.Client.Closed += (sender, e) => closedEvent = e;
 		await this.clientSession.CloseAsync(SshDisconnectReason.ByApplication);
 		Assert.NotNull(closedEvent);
-		Assert.Null(closedEvent.Exception);
+		Assert.IsType<SshConnectionException>(closedEvent.Exception);
+		Assert.Equal(
+			SshDisconnectReason.ByApplication,
+			((SshConnectionException)closedEvent.Exception).DisconnectReason);
 	}
 
 	[Fact]
