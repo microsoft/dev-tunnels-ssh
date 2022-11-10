@@ -53,6 +53,12 @@ export class DisconnectMessage extends SshMessage {
 			writer.writeString(this.language, 'ascii');
 		}
 	}
+
+	public toString() {
+		return `${super.toString()} (${SshDisconnectReason[this.reasonCode || 0]}: ${
+			this.description
+		})`;
+	}
 }
 
 export class IgnoreMessage extends SshMessage {

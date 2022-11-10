@@ -54,4 +54,9 @@ public class DisconnectMessage : SshMessage
 			writer.Write(Language, Encoding.ASCII);
 		}
 	}
+
+	public override string ToString()
+	{
+		return $"{base.ToString()}(Reason: {ReasonCode}, Description: {Description})";
+	}
 }
