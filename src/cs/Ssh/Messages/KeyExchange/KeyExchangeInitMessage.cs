@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft. All rights reserved.
 
 using System;
+using System.Linq;
 using System.Text;
 using Microsoft.DevTunnels.Ssh.IO;
 
@@ -13,12 +14,16 @@ internal class KeyExchangeInitMessage : KeyExchangeMessage
 
 	public KeyExchangeInitMessage()
 	{
-		Cookie = new Buffer(16);
-		SshAlgorithms.Random.GetBytes(Cookie);
 	}
 
 	public override byte MessageType => MessageNumber;
 
+	private const int CookieLength = 16;
+
+	/// <summary>
+	/// Random bytes that ensure the complete message cannot be guessed,
+	/// because it is an input to deriving the session key.
+	/// </summary>
 	public Buffer Cookie { get; private set; }
 
 #pragma warning disable CA1819 // Properties should not return arrays
@@ -49,7 +54,7 @@ internal class KeyExchangeInitMessage : KeyExchangeMessage
 
 	protected override void OnRead(ref SshDataReader reader)
 	{
-		Cookie = reader.ReadBinary(16);
+		Cookie = reader.ReadBinary(CookieLength);
 		KeyExchangeAlgorithms = reader.ReadList(Encoding.ASCII);
 		ServerHostKeyAlgorithms = reader.ReadList(Encoding.ASCII);
 		EncryptionAlgorithmsClientToServer = reader.ReadList(Encoding.ASCII);
@@ -66,6 +71,12 @@ internal class KeyExchangeInitMessage : KeyExchangeMessage
 
 	protected override void OnWrite(ref SshDataWriter writer)
 	{
+		if (Cookie.Count != CookieLength)
+		{
+			Cookie = new Buffer(CookieLength);
+			SshAlgorithms.Random.GetBytes(Cookie);
+		}
+
 		writer.Write(Cookie);
 		writer.Write(KeyExchangeAlgorithms, Encoding.ASCII);
 		writer.Write(ServerHostKeyAlgorithms, Encoding.ASCII);
@@ -79,5 +90,54 @@ internal class KeyExchangeInitMessage : KeyExchangeMessage
 		writer.Write(LanguagesServerToClient, Encoding.ASCII);
 		writer.Write(FirstKexPacketFollows);
 		writer.Write(Reserved);
+	}
+
+	/// <summary>
+	/// Gets a key-exchange init message that specifies "none" for all algorithms.
+	/// </summary>
+	public static KeyExchangeInitMessage None { get; } = CreateNone();
+
+	private static KeyExchangeInitMessage CreateNone()
+	{
+		var noneArray = new[] { "none" };
+		var emptyArray = new[] { string.Empty };
+
+		var message = new KeyExchangeInitMessage
+		{
+			Cookie = new Buffer(CookieLength),
+			KeyExchangeAlgorithms = noneArray,
+			ServerHostKeyAlgorithms = noneArray,
+			EncryptionAlgorithmsClientToServer = noneArray,
+			EncryptionAlgorithmsServerToClient = noneArray,
+			MacAlgorithmsClientToServer = noneArray,
+			MacAlgorithmsServerToClient = noneArray,
+			CompressionAlgorithmsClientToServer = noneArray,
+			CompressionAlgorithmsServerToClient = noneArray,
+			LanguagesClientToServer = emptyArray,
+			LanguagesServerToClient = emptyArray,
+		};
+
+		// Save the serialized bytes so that the message doesn't have to be re-serialized every time
+		// it is sent.
+		message.RawBytes = message.ToBuffer();
+
+		return message;
+	}
+
+	public bool AllowsNone
+	{
+		get
+		{
+			bool IncludesNone(string[]? algorithms) => algorithms?.Contains("none") == true;
+			return IncludesNone(KeyExchangeAlgorithms) &&
+				IncludesNone(ServerHostKeyAlgorithms) &&
+				IncludesNone(EncryptionAlgorithmsClientToServer) &&
+				IncludesNone(EncryptionAlgorithmsServerToClient) &&
+				IncludesNone(MacAlgorithmsClientToServer) &&
+				IncludesNone(MacAlgorithmsServerToClient) &&
+				IncludesNone(CompressionAlgorithmsClientToServer) &&
+				IncludesNone(CompressionAlgorithmsServerToClient) &&
+				!FirstKexPacketFollows;
+		}
 	}
 }

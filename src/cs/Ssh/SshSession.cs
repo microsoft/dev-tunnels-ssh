@@ -434,6 +434,11 @@ public class SshSession : IDisposable
 				}
 				else
 				{
+					// When there's no key-exchange service configured, send a key-exchange init message
+					// that specifies "none" for all algorithms.
+					await SendMessageAsync(KeyExchangeInitMessage.None, connectCts.Token)
+						.ConfigureAwait(false);
+
 					// When encrypting, the key-exchange step will wait on the version-exchange.
 					// When not encrypting, it must be directly awaited.
 					await this.versionExchangeTask!.WaitAsync(connectCts.Token).ConfigureAwait(false);
@@ -899,25 +904,15 @@ public class SshSession : IDisposable
 	private async Task HandleMessageAsync(
 		KeyExchangeMessage message, CancellationToken cancellation)
 	{
-		if (this.kexService == null)
+		if (this.kexService != null)
 		{
-			var protocol = Protocol;
-			if (message is KeyExchangeInitMessage && protocol != null)
-			{
-				// This side didn't configure security, but the other side still wants to negotiate.
-				// Start the KEX sequence just to try to negotiate 'none'.
-				this.kexService = ActivateService<KeyExchangeService>();
-				protocol.KeyExchangeService = this.kexService;
-				await protocol.ConsiderReExchangeAsync(initial: true, cancellation).ConfigureAwait(false);
-			}
-			else
-			{
-				await CloseAsync(SshDisconnectReason.KeyExchangeFailed).ConfigureAwait(false);
-				return;
-			}
+			await this.kexService.HandleMessageAsync(message, cancellation).ConfigureAwait(false);
 		}
-
-		await this.kexService.HandleMessageAsync(message, cancellation).ConfigureAwait(false);
+		else if (!(message is KeyExchangeInitMessage initMessage && initMessage.AllowsNone))
+		{
+			// The other side required some security, but it's not configured here.
+			await CloseAsync(SshDisconnectReason.KeyExchangeFailed).ConfigureAwait(false);
+		}
 	}
 
 #pragma warning disable CA1801 // Remove unused parameter
