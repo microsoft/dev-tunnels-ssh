@@ -1,8 +1,6 @@
 // Copyright (c) Microsoft. All rights reserved.
 
 using System;
-using System.Linq;
-using System.Security.Cryptography;
 using System.Text;
 
 namespace Microsoft.DevTunnels.Ssh.IO;

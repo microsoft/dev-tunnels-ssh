@@ -27,7 +27,7 @@ public abstract class SshMessage
 
 	public abstract byte MessageType { get; }
 
-	protected Buffer RawBytes { get; private set; }
+	protected Buffer RawBytes { get; set; }
 
 	public void Read(ref SshDataReader reader)
 	{

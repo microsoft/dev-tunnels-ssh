@@ -307,6 +307,10 @@ export class SshSession implements Disposable {
 		if (this.kexService) {
 			await this.encrypt(cancellation);
 		} else {
+			// When there's no key-exchange service configured, send a key-exchange init message
+			// that specifies "none" for all algorithms.
+			await this.sendMessage(KeyExchangeInitMessage.none, cancellation);
+
 			// When encrypting, the key-exchange step will wait on the version-exchange.
 			// When not encrypting, it must be directly awaited.
 			await withCancellation(this.versionExchangePromise!, cancellation);
@@ -682,20 +686,12 @@ export class SshSession implements Disposable {
 		message: KeyExchangeMessage,
 		cancellation?: CancellationToken,
 	): Promise<void> {
-		if (!this.kexService) {
-			if (message instanceof KeyExchangeInitMessage && this.protocol) {
-				// This side didn't configure security, but the other side still wants to negotiate.
-				// Start the KEX sequence just to try to negotiate 'none'.
-				this.kexService = this.activateService(KeyExchangeService);
-				this.protocol.kexService = this.kexService;
-				await this.protocol.considerReExchange(true, cancellation);
-			} else {
-				await this.close(SshDisconnectReason.keyExchangeFailed);
-				return;
-			}
+		if (this.kexService) {
+			await this.kexService.handleMessage(message, cancellation);
+		} else if (!(message instanceof KeyExchangeInitMessage && message.allowsNone)) {
+			// The other side required some security, but it's not configured here.
+			await this.close(SshDisconnectReason.keyExchangeFailed);
 		}
-
-		return this.kexService.handleMessage(message, cancellation);
 	}
 
 	/* @internal */

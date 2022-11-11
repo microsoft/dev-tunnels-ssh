@@ -9,6 +9,8 @@ import { SshAlgorithms } from '../algorithms/sshAlgorithms';
 
 export class KeyExchangeMessage extends SshMessage {}
 
+const keyExchangeInitCookieLength = 16;
+
 export class KeyExchangeInitMessage extends KeyExchangeMessage {
 	public get messageType(): number {
 		return 20;
@@ -29,7 +31,7 @@ export class KeyExchangeInitMessage extends KeyExchangeMessage {
 	public reserved?: number;
 
 	protected onRead(reader: SshDataReader): void {
-		this.cookie = reader.read(16);
+		this.cookie = reader.read(keyExchangeInitCookieLength);
 		this.keyExchangeAlgorithms = reader.readList('ascii');
 		this.serverHostKeyAlgorithms = reader.readList('ascii');
 		this.encryptionAlgorithmsClientToServer = reader.readList('ascii');
@@ -46,7 +48,7 @@ export class KeyExchangeInitMessage extends KeyExchangeMessage {
 
 	protected onWrite(writer: SshDataWriter): void {
 		if (!this.cookie) {
-			this.cookie = Buffer.alloc(16);
+			this.cookie = Buffer.alloc(keyExchangeInitCookieLength);
 			SshAlgorithms.random.getBytes(this.cookie);
 		}
 
@@ -61,10 +63,50 @@ export class KeyExchangeInitMessage extends KeyExchangeMessage {
 		writer.writeList(this.compressionAlgorithmsServerToClient || [], 'ascii');
 		writer.writeList(this.languagesClientToServer || [], 'ascii');
 		writer.writeList(this.languagesServerToClient || [], 'ascii');
-		writer.writeBoolean(
-			this.validateField(this.firstKexPacketFollows, 'first KEX package follows'),
-		);
+		writer.writeBoolean(this.firstKexPacketFollows ?? false);
 		writer.writeUInt32(this.reserved || 0);
+	}
+
+	public static none: KeyExchangeInitMessage = KeyExchangeInitMessage.CreateNone();
+
+	private static CreateNone(): KeyExchangeInitMessage {
+		const noneArray = ['none'];
+		const emptyArray = [''];
+
+		const message = new KeyExchangeInitMessage();
+		message.cookie = Buffer.alloc(keyExchangeInitCookieLength);
+		message.keyExchangeAlgorithms = noneArray;
+		message.serverHostKeyAlgorithms = noneArray;
+		message.encryptionAlgorithmsClientToServer = noneArray;
+		message.encryptionAlgorithmsServerToClient = noneArray;
+		message.macAlgorithmsClientToServer = noneArray;
+		message.macAlgorithmsServerToClient = noneArray;
+		message.compressionAlgorithmsClientToServer = noneArray;
+		message.compressionAlgorithmsServerToClient = noneArray;
+		message.languagesClientToServer = emptyArray;
+		message.languagesServerToClient = emptyArray;
+
+		// Save the serialized bytes so that the message doesn't have to be re-serialized every time
+		// it is sent.
+		message.rawBytes = message.toBuffer();
+
+		return message;
+	}
+
+	public get allowsNone(): boolean {
+		const includesNone = (algorithms?: string[]) => algorithms?.includes('none') === true;
+
+		return (
+			includesNone(this.keyExchangeAlgorithms) &&
+			includesNone(this.serverHostKeyAlgorithms) &&
+			includesNone(this.encryptionAlgorithmsClientToServer) &&
+			includesNone(this.encryptionAlgorithmsServerToClient) &&
+			includesNone(this.macAlgorithmsClientToServer) &&
+			includesNone(this.macAlgorithmsServerToClient) &&
+			includesNone(this.compressionAlgorithmsClientToServer) &&
+			includesNone(this.compressionAlgorithmsServerToClient) &&
+			this.firstKexPacketFollows !== true
+		);
 	}
 }
 
