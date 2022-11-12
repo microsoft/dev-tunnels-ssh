@@ -195,6 +195,8 @@ export class AuthenticationService extends SshService {
 		args: SshAuthenticatingEventArgs,
 		cancellation?: CancellationToken,
 	) {
+		args.cancellation = this.disposeCancellationSource.token;
+
 		let authenticatedPrincipal: object | null = null;
 		try {
 			authenticatedPrincipal = await (<any>this.session).raiseAuthenticatingEvent(args);
@@ -437,5 +439,14 @@ export class AuthenticationService extends SshService {
 		const signer = algorithm.createSigner(key);
 		const signature = await signer.sign(writer.toBuffer());
 		return algorithm.createSignatureData(signature);
+	}
+
+	public dispose() {
+		try {
+			this.disposeCancellationSource.cancel();
+			this.disposeCancellationSource.dispose();
+		} catch {}
+
+		super.dispose();
 	}
 }

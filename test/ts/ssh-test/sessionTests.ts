@@ -14,6 +14,10 @@ import {
 	ObjectDisposedError,
 	formatBuffer,
 	SshSessionConfiguration,
+	SshSessionClosedEventArgs,
+	PromiseCompletionSource,
+	SshDisconnectReason,
+	SshConnectionError,
 } from '@microsoft/dev-tunnels-ssh';
 import { DuplexStream, shutdownWebSocketServer } from './duplexStream';
 import { createSessionPair, connectSessionPair } from './sessionPair';
@@ -28,6 +32,9 @@ export class SessionTests {
 	private static clientKey: KeyPair;
 	private static serverKey: KeyPair;
 
+	private clientClosedCompletion = new PromiseCompletionSource<SshSessionClosedEventArgs>();
+	private serverClosedCompletion = new PromiseCompletionSource<SshSessionClosedEventArgs>();
+
 	@slow(10000)
 	@timeout(20000)
 	public static async before() {
@@ -39,14 +46,78 @@ export class SessionTests {
 		shutdownWebSocketServer();
 	}
 
-	private static async createSessions(): Promise<[SshClientSession, SshServerSession]> {
+	private async createSessions(): Promise<[SshClientSession, SshServerSession]> {
 		const [clientSession, serverSession] = await createSessionPair();
 		clientSession.config.encryptionAlgorithms.splice(0, 0, SshAlgorithms.encryption.aes256Gcm);
 		serverSession.config.encryptionAlgorithms.splice(0, 0, SshAlgorithms.encryption.aes256Gcm);
 
 		serverSession.credentials.publicKeys = [SessionTests.serverKey];
 
+		clientSession.onClosed((e) => this.clientClosedCompletion.resolve(e));
+		serverSession.onClosed((e) => this.serverClosedCompletion.resolve(e));
+
 		return [clientSession, serverSession];
+	}
+
+	@test
+	public async closeSessionStream() {
+		const [clientSession, serverSession] = await this.createSessions();
+		const [clientStream, serverStream] = await connectSessionPair(
+			clientSession,
+			serverSession,
+			undefined,
+			false,
+		);
+
+		serverStream.close();
+		clientStream.close();
+
+		const serverClosedEvent = await this.serverClosedCompletion.promise;
+		const clientClosedEvent = await this.clientClosedCompletion.promise;
+
+		assert.equal(serverClosedEvent.reason, SshDisconnectReason.connectionLost);
+		assert(serverClosedEvent!.error instanceof SshConnectionError);
+		assert.equal(
+			(<SshConnectionError>serverClosedEvent!.error).reason,
+			SshDisconnectReason.connectionLost,
+		);
+
+		assert.equal(clientClosedEvent.reason, SshDisconnectReason.connectionLost);
+		assert(clientClosedEvent!.error instanceof SshConnectionError);
+		assert.equal(
+			(<SshConnectionError>clientClosedEvent!.error).reason,
+			SshDisconnectReason.connectionLost,
+		);
+	}
+
+	@test
+	public async closeServerSession() {
+		const [clientSession, serverSession] = await this.createSessions();
+		await connectSessionPair(clientSession, serverSession, undefined, false);
+
+		const testDisconnectReason = <SshDisconnectReason>9999;
+		await serverSession.close(testDisconnectReason);
+
+		const serverClosedEvent = await this.serverClosedCompletion.promise;
+
+		assert.equal(serverClosedEvent.reason, testDisconnectReason);
+		assert(serverClosedEvent!.error instanceof SshConnectionError);
+		assert.equal((<SshConnectionError>serverClosedEvent!.error).reason, testDisconnectReason);
+	}
+
+	@test
+	public async closeClientSession() {
+		const [clientSession, serverSession] = await this.createSessions();
+		await connectSessionPair(clientSession, serverSession, undefined, false);
+
+		const testDisconnectReason = <SshDisconnectReason>9999;
+		await clientSession.close(testDisconnectReason);
+
+		const clientClosedEvent = await this.clientClosedCompletion.promise;
+
+		assert.equal(clientClosedEvent.reason, testDisconnectReason);
+		assert(clientClosedEvent!.error instanceof SshConnectionError);
+		assert.equal((<SshConnectionError>clientClosedEvent!.error).reason, testDisconnectReason);
 	}
 
 	@test
@@ -82,7 +153,7 @@ export class SessionTests {
 
 	@test
 	public async authenticateClientWithNoCredentials() {
-		const [clientSession, serverSession] = await SessionTests.createSessions();
+		const [clientSession, serverSession] = await this.createSessions();
 
 		let authenticationType: SshAuthenticationType | undefined = undefined;
 		let authenticatedClientUsername: string | null = null;
@@ -154,7 +225,7 @@ export class SessionTests {
 		const alg = Object.values(SshAlgorithms.publicKey).find((a) => a?.name === pkAlg)!;
 		const clientKey = await alg.generateKeyPair(keySize);
 
-		const [clientSession, serverSession] = await SessionTests.createSessions();
+		const [clientSession, serverSession] = await this.createSessions();
 
 		let authenticationType: SshAuthenticationType | undefined = undefined;
 		let authenticatedClientUsername: string | null = null;
@@ -219,7 +290,7 @@ export class SessionTests {
 
 	@test
 	public async authenticateClientWithPassword() {
-		const [clientSession, serverSession] = await SessionTests.createSessions();
+		const [clientSession, serverSession] = await this.createSessions();
 
 		let authenticationType: SshAuthenticationType | undefined = undefined;
 		let authenticatedClientUsername: string | null = null;
@@ -279,7 +350,7 @@ export class SessionTests {
 
 	@test
 	public async authenticateServerFail() {
-		const [clientSession, serverSession] = await SessionTests.createSessions();
+		const [clientSession, serverSession] = await this.createSessions();
 
 		serverSession.onAuthenticating((e) => {
 			e.authenticationPromise = Promise.resolve({});
@@ -297,7 +368,7 @@ export class SessionTests {
 
 	@test
 	public async authenticateClientFail() {
-		const [clientSession, serverSession] = await SessionTests.createSessions();
+		const [clientSession, serverSession] = await this.createSessions();
 
 		let authenticationType: SshAuthenticationType | undefined = undefined;
 		serverSession.onAuthenticating((e) => {
@@ -327,7 +398,7 @@ export class SessionTests {
 
 	@test
 	public async authenticateCallbackError() {
-		const [clientSession, serverSession] = await SessionTests.createSessions();
+		const [clientSession, serverSession] = await this.createSessions();
 
 		let authenticationType: SshAuthenticationType | undefined = undefined;
 		serverSession.onAuthenticating((e) => {
@@ -351,7 +422,7 @@ export class SessionTests {
 
 	@test
 	public async authenticateConnectionError() {
-		const [clientSession, serverSession] = await SessionTests.createSessions();
+		const [clientSession, serverSession] = await this.createSessions();
 
 		const [clientStream, serverStream] = await connectSessionPair(
 			clientSession,

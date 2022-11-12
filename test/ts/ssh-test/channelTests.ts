@@ -20,6 +20,7 @@ import {
 	PromiseCompletionSource,
 	SshChannelOpeningEventArgs,
 	ChannelOpenMessage,
+	SshConnectionError,
 } from '@microsoft/dev-tunnels-ssh';
 import { shutdownWebSocketServer } from './duplexStream';
 import {
@@ -615,7 +616,11 @@ export class ChannelTests {
 		});
 		await clientSession.close(SshDisconnectReason.byApplication, 'test');
 		assert(closedEvent);
-		assert(!closedEvent!.error);
+		assert(closedEvent!.error instanceof SshConnectionError);
+		assert.equal(
+			(<SshConnectionError>closedEvent!.error).reason,
+			SshDisconnectReason.byApplication,
+		);
 	}
 
 	@test

@@ -56,8 +56,19 @@ export class ConnectionService extends SshService {
 	}
 
 	public close(e: Error): void {
+		let channelCompletions = [...this.pendingChannels.values()].map((pc) => pc.completionSource);
+		if (this.pendingAcceptChannels.size > 0) {
+			channelCompletions = channelCompletions.concat(
+				[...this.pendingAcceptChannels.values()].reduce((a, b) => a.concat(b)),
+			);
+		}
+
 		for (let channel of this.channelMap.values()) {
 			channel.close(e);
+		}
+
+		for (let channelCompletion of channelCompletions) {
+			channelCompletion.reject(e);
 		}
 	}
 
