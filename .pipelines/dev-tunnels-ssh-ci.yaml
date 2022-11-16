@@ -217,6 +217,9 @@ jobs:
     timeoutInMinutes: 90
     pool:
       vmImage: internal-macOS-11
+    variables:
+      - name: Codeql.SkipTaskAutoInjection
+        value: true
     steps:
       - checkout: self
         fetchDepth: -1
