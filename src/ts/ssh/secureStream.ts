@@ -54,24 +54,20 @@ export class SecureStream extends Duplex implements Disposable {
 				encoding: BufferEncoding,
 				cb: (error?: Error | null) => void,
 			) {
-				if (!this.stream) throw new Error('Stream is not connected.');
-				return this.stream._write(chunk, encoding, cb);
+				return this.connectedStream._write(chunk, encoding, cb);
 			},
 			writev(
 				this: SecureStream,
 				chunks: { chunk: Buffer; encoding: BufferEncoding }[],
 				cb: (error?: Error | null) => void,
 			) {
-				if (!this.stream) throw new Error('Stream is not connected.');
-				return this.stream._writev!(chunks, cb);
+				return this.connectedStream._writev!(chunks, cb);
 			},
 			final(this: SecureStream, cb: (err?: Error | null) => void) {
-				if (!this.stream) throw new Error('Stream is not connected.');
-				return this.stream._final(cb);
+				return this.connectedStream._final(cb);
 			},
 			read(this: SecureStream, size: number) {
-				if (!this.stream) throw new Error('Stream is not connected.');
-				return this.stream?._read(size);
+				return this.connectedStream._read(size);
 			},
 		});
 
@@ -93,6 +89,11 @@ export class SecureStream extends Duplex implements Disposable {
 		this.session.onClosed(this.onSessionClosed, this, this.disposables);
 	}
 
+	private get connectedStream(): SshStream {
+		if (!this.stream) throw new Error('Stream is not connected.');
+		return this.stream;
+	}
+
 	public get trace(): Trace {
 		return this.session.trace;
 	}
@@ -100,12 +101,6 @@ export class SecureStream extends Duplex implements Disposable {
 	public set trace(trace: Trace) {
 		this.session.trace = trace;
 	}
-
-	/**
-	 * Gets or sets the maximum window size for channels within the multi-channel stream.
-	 * @see `SshChannel.maxWindowSize`
-	 */
-	public channelMaxWindowSize: number = SshChannel.defaultMaxWindowSize;
 
 	public get isClosed(): boolean {
 		return this.disposed || this.session.isClosed;

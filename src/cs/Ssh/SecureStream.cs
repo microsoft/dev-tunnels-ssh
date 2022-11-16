@@ -17,7 +17,7 @@ namespace Microsoft.DevTunnels.Ssh;
 /// <remarks>
 /// This class is a complement to <see cref="MultiChannelStream"/>, which provides only the
 /// channel-multiplexing functions of SSH.
-/// 
+///
 /// To establish a secure connection, the two sides first establish an insecure transport stream
 /// over a pipe, socket, or anything else. Then they encrypt and authenticate the connection
 /// before beginning to send and receive data.
@@ -46,7 +46,7 @@ public class SecureStream : Stream
 			throw new ArgumentNullException(nameof(transportStream));
 		this.session = new SshClientSession(
 			SshSessionConfiguration.Default,
-			trace ?? new TraceSource(nameof(MultiChannelStream)));
+			trace ?? new TraceSource(nameof(SecureStream)));
 
 		this.session.Authenticating += OnSessionAuthenticating;
 		this.session.Closed += OnSessionClosed;
@@ -71,7 +71,7 @@ public class SecureStream : Stream
 			throw new ArgumentNullException(nameof(transportStream));
 		this.session = new SshServerSession(
 			SshSessionConfiguration.Default,
-			trace ?? new TraceSource(nameof(MultiChannelStream)));
+			trace ?? new TraceSource(nameof(SecureStream)));
 
 		this.session.Authenticating += OnSessionAuthenticating;
 		this.session.Closed += OnSessionClosed;
@@ -203,7 +203,9 @@ public class SecureStream : Stream
 	/// </summary>
 	public async Task CloseAsync()
 	{
-		await this.session.CloseAsync(SshDisconnectReason.None, this.session.GetType().Name + " disposed").ConfigureAwait(false);
+		// Diposing the session closes the channel, which causes this SecureStream to be disposed.
+		await this.session.CloseAsync(
+			SshDisconnectReason.None, this.session.GetType().Name + " disposed").ConfigureAwait(false);
 		this.session.Dispose();
 
 #if !NETSTANDARD2_0
@@ -239,30 +241,29 @@ public class SecureStream : Stream
 		this.stream?.Flush();
 	}
 
+	private SshStream ConnectedStream
+		=> this.stream ?? throw new InvalidOperationException("Stream is not connected.");
+
 	public override int Read(byte[] buffer, int offset, int count)
 	{
-		var stream = this.stream ?? throw new InvalidOperationException("Stream is not connected.");
-		return stream.Read(buffer, offset, count);
+		return ConnectedStream.Read(buffer, offset, count);
 	}
 
 	public override void Write(byte[] buffer, int offset, int count)
 	{
-		var stream = this.stream ?? throw new InvalidOperationException("Stream is not connected.");
-		stream.Write(buffer, offset, count);
+		ConnectedStream.Write(buffer, offset, count);
 	}
 
 	public override Task<int> ReadAsync(
 		byte[] buffer, int offset, int count, CancellationToken cancellation)
 	{
-		var stream = this.stream ?? throw new InvalidOperationException("Stream is not connected.");
-		return stream.ReadAsync(buffer, offset, count, cancellation);
+		return ConnectedStream.ReadAsync(buffer, offset, count, cancellation);
 	}
 
 	public override Task WriteAsync(
 		byte[] buffer, int offset, int count, CancellationToken cancellation)
 	{
-		var stream = this.stream ?? throw new InvalidOperationException("Stream is not connected.");
-		return stream.WriteAsync(buffer, offset, count, cancellation);
+		return ConnectedStream.WriteAsync(buffer, offset, count, cancellation);
 	}
 
 	#region Seek / position / length are not supported
