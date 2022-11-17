@@ -12,10 +12,12 @@ using Microsoft.DevTunnels.Ssh.Services;
 namespace Microsoft.DevTunnels.Ssh;
 
 /// <summary>
-/// Multiplexes multiple virtual streams (channels) over a single transport stream.
+/// Multiplexes multiple virtual streams (channels) over a single transport stream, using the
+/// SSH protocol while providing a simplified interface without any encryption or authentication.
 /// </summary>
 /// <remarks>
-/// Uses the channel-multiplexing capabilities of the SSH protocol (without any security).
+/// This class is a complement to <see cref="SecureStream"/>, which provides only the
+/// encryption and authentication functions of SSH.
 ///
 /// To communicate over multiple channels, two sides first establish a transport stream
 /// over a pipe, socket, or anything else. Then one side accepts a channel while the
@@ -119,14 +121,14 @@ public class MultiChannelStream : IDisposable
 	}
 
 	/// <summary>
-	/// Call to bind the transport stream to ssh session and exchange
-	/// initial messages with the remote peer. Waits for the protocol version exchange and
-	/// key exchange; additional message processing is kicked off as a background task chain.
+	/// Initiates the SSH session over the transport stream by exchanging initial messages with the
+	/// remote peer. Waits for the protocol version exchange and key exchange. Additional message
+	/// processing is kicked off as a background task chain.
 	/// </summary>
-	/// <throws>SshConnectionException if the connection failed due to a protocol
-	/// error.</throws>
-	/// <throws>TimeoutException if the ConnectTimeout property is set and the initial
-	/// version exchange could not be completed within the timeout.</throws>
+	/// <exception cref="SshConnectionException">The connection failed due to a protocol
+	/// error.</exception>
+	/// <exception cref="TimeoutException">The ConnectTimeout property is set and the initial
+	/// version exchange could not be completed within the timeout.</exception>
 	public Task ConnectAsync(CancellationToken cancellation = default) =>
 		this.session.ConnectAsync(this.transportStream, cancellation);
 

@@ -23,7 +23,9 @@ namespace Microsoft.DevTunnels.Ssh;
 /// Enables opening and accepting `SshChannel` instances.
 /// </summary>
 [DebuggerDisplay("{ToString(),nq}")]
+#pragma warning disable CA1506 // 'SshSession' is coupled with too many types.
 public class SshSession : IDisposable
+#pragma warning restore CA1506
 {
 	private readonly ConcurrentQueue<SshMessage> blockedMessages =
 		new ConcurrentQueue<SshMessage>();
@@ -638,10 +640,8 @@ public class SshSession : IDisposable
 		{
 			this.disposeCancellationSource.Cancel();
 
-			if (ex != null)
-			{
-				this.GetService<ConnectionService>()?.Close(ex);
-			}
+			ex ??= new SshConnectionException(message, reason);
+			this.GetService<ConnectionService>()?.Close(ex);
 
 			Closed?.Invoke(this, new SshSessionClosedEventArgs(reason, message, ex));
 		}
@@ -685,6 +685,9 @@ public class SshSession : IDisposable
 
 	protected virtual void Dispose(bool disposing)
 	{
+		var closedEx = this.closedException as SshConnectionException ??
+			new SshConnectionException("Session disposed.", this.closedException);
+
 		if (disposing)
 		{
 			if (!IsClosed)
@@ -706,11 +709,10 @@ public class SshSession : IDisposable
 						SshTraceEventIds.SessionClosing,
 						$"{this} Close()");
 					Closed?.Invoke(this, new SshSessionClosedEventArgs(
-						SshDisconnectReason.None, GetType().Name + " disposed", null));
+						closedEx.DisconnectReason, GetType().Name + " disposed", closedEx));
 				}
 			}
 
-			var closedEx = new SshConnectionException("Connection closed.", this.closedException);
 			InvokeRequestHandler(null, null, closedEx);
 			this.connectCompletionSource?.TrySetException(closedEx);
 
@@ -896,9 +898,10 @@ public class SshSession : IDisposable
 		DisconnectMessage message, CancellationToken cancellation)
 	{
 		cancellation.ThrowIfCancellationRequested();
-		await CloseAsync(
-			message.ReasonCode,
-			message.Description ?? "Received disconnect message.").ConfigureAwait(false);
+
+		var description = !string.IsNullOrEmpty(message.Description) ? message.Description :
+			"Received disconnect message.";
+		await CloseAsync(message.ReasonCode, description).ConfigureAwait(false);
 	}
 
 	private async Task HandleMessageAsync(

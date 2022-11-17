@@ -86,7 +86,10 @@ public class MultiChannelStreamTests
 			Assert.Equal(server, sender);
 			Assert.Equal(SshDisconnectReason.None, e.Reason);
 			Assert.Equal(typeof(SshSession).Name + " disposed", e.Message);
-			Assert.Null(e.Exception);
+			Assert.IsType<SshConnectionException>(e.Exception);
+			Assert.Equal(
+				SshDisconnectReason.None,
+				((SshConnectionException)e.Exception).DisconnectReason);
 			closedEventFired = true;
 		}
 	}

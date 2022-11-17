@@ -81,6 +81,7 @@ export class SshSession implements Disposable {
 	private readonly blockedMessagesSemaphore = new Semaphore(1);
 	private connected: boolean = false;
 	private disposed: boolean = false;
+	private closedError?: Error;
 
 	public get algorithms(): SshSessionAlgorithms | null {
 		return this.protocol ? this.protocol.algorithms : null;
@@ -1165,13 +1166,15 @@ export class SshSession implements Disposable {
 		}
 
 		this.disposed = true;
+		this.closedError = error;
 
+		error = error ?? new SshConnectionError(message, reason);
 		if (error) {
 			this.connectionService?.close(error);
 		}
 
 		this.closedEmitter.fire(
-			new SshSessionClosedEventArgs(reason, message || 'Disconnected.', error || null),
+			new SshSessionClosedEventArgs(reason, message || 'Disconnected.', error),
 		);
 
 		this.dispose();
@@ -1190,20 +1193,29 @@ export class SshSession implements Disposable {
 	}
 
 	private async handleDisconnectMessage(message: DisconnectMessage): Promise<void> {
-		await this.close(message.reasonCode ?? SshDisconnectReason.none, message.description);
+		const description = message.description || 'Received disconnect message.';
+		await this.close(message.reasonCode ?? SshDisconnectReason.none, description);
 	}
 
 	public dispose() {
+		const closedError =
+			this.closedError instanceof SshConnectionError
+				? this.closedError
+				: new SshConnectionError('Session disposed.');
 		if (!this.disposed) {
 			this.trace(TraceLevel.Info, SshTraceEventIds.sessionClosing, `${this} disposed.`);
 			this.disposed = true;
 			this.closedEmitter.fire(
-				new SshSessionClosedEventArgs(SshDisconnectReason.none, 'SshSession disposed', null),
+				new SshSessionClosedEventArgs(
+					SshDisconnectReason.none,
+					'SshSession disposed',
+					closedError,
+				),
 			);
 		}
 
 		if (this.requestHandler) {
-			this.requestHandler(new SshConnectionError('Connection closed.'));
+			this.requestHandler(closedError);
 		}
 
 		this.metrics.close();

@@ -17,8 +17,16 @@ import { Trace, TraceLevel, SshTraceEventIds } from './trace';
 import { ChannelOpenMessage } from './messages/connectionMessages';
 
 /**
- * This class allows to establish an ssh session with no security beign defined.
- * Both side could open multiple channel to send/receive data.
+ * Multiplexes multiple virtual streams (channels) over a single transport stream, using the
+ * SSH protocol while providing a simplified interface without any encryption or authentication.
+ *
+ * This class is a complement to `SecureStream`, which provides only the encryption and
+ * authentication functions of SSH.
+ *
+ * To communicate over multiple channels, two sides first establish a transport stream
+ * over a pipe, socket, or anything else. Then one side accepts a channel while the
+ * other side opens a channel. Either side can both open and accept channels over the
+ * same transport stream, as long as the other side does the complementary action.
  */
 export class MultiChannelStream implements Disposable {
 	private readonly session: SshSession;
@@ -69,7 +77,9 @@ export class MultiChannelStream implements Disposable {
 	}
 
 	/**
-	 * Connects ssh session.
+	 * Initiates the SSH session over the transport stream by exchanging initial messages with the
+	 * remote peer. Waits for the protocol version exchange and key exchange. Additional message
+	 * processing is kicked off as a background promise chain.
 	 * @param cancellation optional cancellation token.
 	 */
 	public async connect(cancellation?: CancellationToken) {
@@ -77,7 +87,7 @@ export class MultiChannelStream implements Disposable {
 	}
 
 	/**
-	 * Accept a new channel on the ssh session.
+	 * Asynchronously waits for the other side to open a channel.
 	 * @param channelType optional channel type
 	 * @param cancellation optional cancellation token.
 	 */
@@ -91,7 +101,7 @@ export class MultiChannelStream implements Disposable {
 	}
 
 	/**
-	 * Accept a remote ssh stream.
+	 * Asynchronously waits for the other side to open a channel.
 	 * @param channelType optional channel type
 	 * @param cancellation optional cancellation token.
 	 */
@@ -103,7 +113,7 @@ export class MultiChannelStream implements Disposable {
 	}
 
 	/**
-	 * Open a channel to a remote ssh session
+	 * Opens a channel and asynchronously waits for the other side to accept it.
 	 * @param channelType optional channel type
 	 * @param cancellation optional cancellation token.
 	 */
@@ -121,7 +131,7 @@ export class MultiChannelStream implements Disposable {
 	}
 
 	/**
-	 * open a stream to a remote ssh session
+	 * Opens a channel and asynchronously waits for the other side to accept it.
 	 * @param channelType optional channel type
 	 * @param cancellation optional cancellation token.
 	 */
@@ -140,7 +150,8 @@ export class MultiChannelStream implements Disposable {
 	}
 
 	/**
-	 * Connect ssh session and run it until closed.
+	 * Connects, waits until the session closes or `cancellation` is cancelled, and then disposes the
+	 * session and the transport stream.
 	 * @param cancellation optional cancellation token.
 	 */
 	public async connectAndRunUntilClosed(cancellation?: CancellationToken) {

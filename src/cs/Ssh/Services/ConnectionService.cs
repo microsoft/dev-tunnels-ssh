@@ -49,6 +49,7 @@ internal class ConnectionService : SshService
 	private readonly IDictionary<string, IList<TaskCompletionSource<SshChannel>>> pendingAcceptChannels;
 	private bool disposed;
 	private long channelCounter = -1;
+	private Exception? closedException = null;
 
 	public ConnectionService(SshSession session) : base(session)
 	{
@@ -63,12 +64,25 @@ internal class ConnectionService : SshService
 
 	public void Close(Exception ex)
 	{
+		this.closedException = ex;
+
+		SshChannel[] channels;
+		TaskCompletionSource<SshChannel>[] channelCompletions;
 		lock (this.lockObject)
 		{
-			foreach (var channel in Channels.ToArray())
-			{
-				channel.Close(ex);
-			}
+			channels = Channels.ToArray();
+			channelCompletions = this.pendingChannels.Select((c) => c.Value.CompletionSource)
+				.Concat(this.pendingAcceptChannels.SelectMany(pac => pac.Value)).ToArray();
+		}
+
+		foreach (var channel in channels)
+		{
+			channel.Close(ex);
+		}
+
+		foreach (var channelCompletion in channelCompletions)
+		{
+			channelCompletion.TrySetException(ex);
 		}
 	}
 
@@ -134,7 +148,8 @@ internal class ConnectionService : SshService
 		{
 			if (this.disposed)
 			{
-				throw new ObjectDisposedException(Session.ToString(), "Session closed.");
+				throw this.closedException ??
+					new ObjectDisposedException(Session.ToString(), "Session closed.");
 			}
 
 			this.pendingChannels.Add(
@@ -178,7 +193,8 @@ internal class ConnectionService : SshService
 		{
 			if (this.disposed)
 			{
-				throw new ObjectDisposedException(Session.ToString(), "Session closed.");
+				throw this.closedException ??
+					new ObjectDisposedException(Session.ToString(), "Session closed.");
 			}
 
 			channel = this.nonAcceptedChannels.Values
@@ -190,23 +206,14 @@ internal class ConnectionService : SshService
 			}
 			else
 			{
-				lock (this.lockObject)
+				// Set up the completion source to wait for a channel of the requested type.
+				if (!this.pendingAcceptChannels.TryGetValue(channelType, out var list))
 				{
-					// Check for disposal again, inside the lock.
-					if (this.disposed)
-					{
-						throw new ObjectDisposedException(Session.ToString(), "Session closed.");
-					}
-
-					// Set up the completion source to wait for a channel of the requested type.
-					if (!this.pendingAcceptChannels.TryGetValue(channelType, out var list))
-					{
-						list = new List<TaskCompletionSource<SshChannel>>();
-						this.pendingAcceptChannels.Add(channelType, list);
-					}
-
-					list.Add(completionSource);
+					list = new List<TaskCompletionSource<SshChannel>>();
+					this.pendingAcceptChannels.Add(channelType, list);
 				}
+
+				list.Add(completionSource);
 			}
 		}
 

@@ -132,7 +132,25 @@ public class SshChannel : IDisposable
 	/// <summary>
 	/// Event raised when the channel is closed (from either side).
 	/// </summary>
-	public event EventHandler<SshChannelClosedEventArgs>? Closed;
+	public event EventHandler<SshChannelClosedEventArgs> Closed
+	{
+		add
+		{
+			if (value == null) throw new ArgumentNullException(nameof(value));
+
+			ClosedEventHandler += value;
+			if (this.localClosed)
+			{
+				value.Invoke(this, SshChannelClosedEventArgs.Empty);
+			}
+		}
+		remove
+		{
+			ClosedEventHandler -= value;
+		}
+	}
+
+	private EventHandler<SshChannelClosedEventArgs>? ClosedEventHandler { get; set; }
 
 	/// <summary>
 	/// Gets or sets the maximum window size for received data. The other side will not send more
@@ -588,10 +606,12 @@ public class SshChannel : IDisposable
 				{
 					this.remoteClosed = true;
 
+					bool acquiredSemaphore = false;
 					try
 					{
 						// Wait for any messages to complete before sending the close message.
 						await this.sendSemaphore.WaitAsync(cancellation).ConfigureAwait(false);
+						acquiredSemaphore = true;
 
 						await Session.SendMessageAsync(
 							new ChannelCloseMessage
@@ -604,9 +624,16 @@ public class SshChannel : IDisposable
 					{
 						// The session was already closed.
 					}
+					catch (OperationCanceledException)
+					{
+						tcs.TrySetCanceled();
+					}
 					finally
 					{
-						this.sendSemaphore.TryRelease();
+						if (acquiredSemaphore)
+						{
+							this.sendSemaphore.TryRelease();
+						}
 					}
 				}
 
@@ -618,14 +645,14 @@ public class SshChannel : IDisposable
 				}
 
 				DisposeInternal();
-				tcs.SetResult(true);
+				tcs.TrySetResult(true);
 			},
 			(ex) =>
 			{
 				Trace.TraceEvent(
 					TraceEventType.Error,
 					SshTraceEventIds.ChannelCloseFailed,
-					$"Channel request failed with exception ${ex.ToString()}.");
+					$"Channel close failed with exception ${ex.ToString()}.");
 				DisposeInternal();
 				if (ex is ObjectDisposedException)
 				{
@@ -635,7 +662,7 @@ public class SshChannel : IDisposable
 				{
 					tcs.TrySetException(ex);
 				}
-			}, cancellation).ConfigureAwait(false);
+			}, CancellationToken.None).ConfigureAwait(false);
 		await tcs.Task.ConfigureAwait(false);
 	}
 
@@ -730,7 +757,7 @@ public class SshChannel : IDisposable
 			TraceEventType.Verbose,
 			SshTraceEventIds.ChannelClosed,
 			closedMessage + metricsMessage);
-		Closed?.Invoke(this, args);
+		ClosedEventHandler?.Invoke(this, args);
 		return closedMessage;
 	}
 
@@ -741,7 +768,7 @@ public class SshChannel : IDisposable
 			this.localClosed = true;
 			Trace.TraceEvent(
 				TraceEventType.Verbose, SshTraceEventIds.ChannelClosed, $"{this} closed: {ex.Message}");
-			Closed?.Invoke(this, new SshChannelClosedEventArgs(ex));
+			ClosedEventHandler?.Invoke(this, new SshChannelClosedEventArgs(ex));
 		}
 
 		DisposeInternal();
@@ -785,7 +812,7 @@ public class SshChannel : IDisposable
 				this.localClosed = true;
 				var message = Session.IsClosed ? $"{Session} closed." : $"{this} disposed.";
 				Trace.TraceEvent(TraceEventType.Verbose, SshTraceEventIds.ChannelClosed, message);
-				Closed?.Invoke(this, new SshChannelClosedEventArgs("SIGABRT", message));
+				ClosedEventHandler?.Invoke(this, new SshChannelClosedEventArgs("SIGABRT", message));
 			}
 
 			DisposeInternal();

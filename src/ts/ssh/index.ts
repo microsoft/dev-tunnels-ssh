@@ -86,5 +86,6 @@ export { SessionMetrics } from './metrics/sessionMetrics';
 export { ChannelMetrics } from './metrics/channelMetrics';
 export { SessionContour } from './metrics/sessionContour';
 export { MultiChannelStream } from './multiChannelStream';
+export { SecureStream } from './secureStream';
 
 export { Trace, TraceLevel, SshTraceEventIds } from './trace';
