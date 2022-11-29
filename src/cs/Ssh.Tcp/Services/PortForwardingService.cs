@@ -538,21 +538,22 @@ public class PortForwardingService : SshService
 		}
 
 		request.ResponseTask = Task.FromResult(response ?? new SessionRequestFailureMessage());
-		request.ResponseContinuation = () =>
+
+		if (response is PortForwardSuccessMessage portForwardResponse)
 		{
-			// Add to the collection (and raise event) after sending the response,
-			// to ensure event-handlers can immediately open a channel.
-			if (response is PortForwardSuccessMessage portForwardResponse)
+			request.ResponseContinuation = (_) =>
 			{
+				// Add to the collection (and raise event) after sending the response,
+				// to ensure event-handlers can immediately open a channel.
 				var forwardedPort = new ForwardedPort(
 					localPort: (int)portForwardResponse.Port,
 					remotePort: portForwardRequest.Port == 0 ? null : (int)portForwardRequest.Port,
 					isRemote: true);
 				RemoteForwardedPorts.AddPort(forwardedPort);
-			}
 
-			return Task.CompletedTask;
-		};
+				return Task.CompletedTask;
+			};
+		}
 	}
 
 	private async Task<int?> StartForwardingAsync(

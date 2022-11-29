@@ -1461,7 +1461,7 @@ public class SshSession : IDisposable
 		SessionRequestMessage message, CancellationToken cancellation)
 	{
 		TaskCompletionSource<SshMessage> result = new TaskCompletionSource<SshMessage>();
-		Func<Task>? continuation = null;
+		Func<SshMessage, Task>? continuation = null;
 		if (message.RequestType == ExtensionRequestTypes.InitialChannelRequest &&
 			this.Config.ProtocolExtensions.Contains(SshProtocolExtensionNames.OpenChannelRequest))
 		{
@@ -1577,32 +1577,28 @@ public class SshSession : IDisposable
 			continuation = args.ResponseContinuation;
 		}
 
-		if (message.WantReply)
-		{
-			await this.taskChain.RunInSequence(
-				async () =>
+		await this.taskChain.RunInSequence(
+			async () =>
+			{
+				var response = await result.Task.ConfigureAwait(false);
+				if (message.WantReply)
 				{
-					var res = await result.Task.ConfigureAwait(false);
-					await SendMessageAsync(res, cancellation).ConfigureAwait(false);
+					await SendMessageAsync(response, cancellation).ConfigureAwait(false);
+				}
 
-					if (continuation != null)
-					{
-						await continuation().ConfigureAwait(false);
-					}
-				},
-				(ex) =>
+				if (continuation != null)
 				{
-					Trace.TraceEvent(
-						TraceEventType.Error,
-						SshTraceEventIds.SessionRequestFailed,
-						$"OnSessionRequest send response failed with exception ${ex?.ToString()}.");
-				},
-				cancellation).ConfigureAwait(false);
-		}
-		else if (continuation != null)
-		{
-			await continuation().ConfigureAwait(false);
-		}
+					await continuation(response).ConfigureAwait(false);
+				}
+			},
+			(ex) =>
+			{
+				Trace.TraceEvent(
+					TraceEventType.Error,
+					SshTraceEventIds.SessionRequestFailed,
+					$"OnSessionRequest send response failed with exception ${ex?.ToString()}.");
+			},
+			cancellation).ConfigureAwait(false);
 	}
 
 	internal void OnSessionRequest(SshRequestEventArgs<SessionRequestMessage> args)

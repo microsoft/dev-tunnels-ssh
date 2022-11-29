@@ -72,7 +72,7 @@ public class SshRequestEventArgs<T> where T : SshMessage
 	/// This enables a request handler to ensure additional messages are sequenced after the
 	/// response message.
 	/// </remarks>
-	public Func<Task>? ResponseContinuation { get; set; }
+	public Func<SshMessage, Task>? ResponseContinuation { get; set; }
 
 	/// <summary>
 	/// Gets a token that is cancelled if the session ends before the async response task
