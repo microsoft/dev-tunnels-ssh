@@ -44,6 +44,10 @@ const loopbackV6 = '::1';
 const anyV4 = '0.0.0.0';
 const anyV6 = '::';
 
+// Node.js >v16 resolves "localhost" to a v6 address instead of v4.
+const nodeMajorVersion = parseInt(process.versions.node.split('.')[0]);
+const loopback = nodeMajorVersion > 16 ? loopbackV6 : loopbackV4;
+
 class TestTcpListenerFactory implements TcpListenerFactory {
 	public constructor(public readonly localPortOverride: number) {}
 
@@ -221,7 +225,7 @@ export class PortForwardingTests {
 		remoteServerIPAddress: anyV4,
 		remoteClientIPAddress: loopbackV4,
 		localForwardHost: 'localhost',
-		localServerIPAddress: loopbackV4,
+		localServerIPAddress: loopback,
 	})
 	@params({
 		remoteServerIPAddress: loopbackV4,
@@ -233,7 +237,7 @@ export class PortForwardingTests {
 		remoteServerIPAddress: loopbackV4,
 		remoteClientIPAddress: loopbackV4,
 		localForwardHost: 'localhost',
-		localServerIPAddress: loopbackV4,
+		localServerIPAddress: loopback,
 	})
 	@params({
 		remoteServerIPAddress: anyV4,
@@ -293,8 +297,10 @@ export class PortForwardingTests {
 			assert(forwarder);
 
 			const acceptPromise = acceptSocketConnection(localServer);
-
-			const remoteClient = await connectSocket(remoteClientIPAddress, remotePort);
+			const remoteClient = await withTimeout(
+				connectSocket(remoteClientIPAddress, remotePort),
+				timeoutMs,
+			);
 			const localClient = await withTimeout(acceptPromise, timeoutMs);
 
 			const writeBuffer = Buffer.from('hello', 'utf8');
@@ -385,8 +391,10 @@ export class PortForwardingTests {
 			assert(forwarder);
 
 			const acceptPromise = acceptSocketConnection(localServer);
-
-			const remoteClient = await connectSocket(loopbackV4, forwarder!.remotePort);
+			const remoteClient = await withTimeout(
+				connectSocket(loopbackV4, forwarder!.remotePort),
+				timeoutMs,
+			);
 			const localClient = await withTimeout(acceptPromise, timeoutMs);
 
 			await until(() => !!(clientForwardingChannel && serverForwardingChannel), timeoutMs);
@@ -468,8 +476,10 @@ export class PortForwardingTests {
 			assert(forwarder);
 
 			const acceptPromise = acceptSocketConnection(localServer);
-
-			const remoteClient = await connectSocket(loopbackV4, forwarder!.remotePort);
+			const remoteClient = await withTimeout(
+				connectSocket(loopbackV4, forwarder!.remotePort),
+				timeoutMs,
+			);
 			const localClient = await withTimeout(acceptPromise, timeoutMs);
 			assert(forwardingChannel);
 
@@ -587,7 +597,7 @@ export class PortForwardingTests {
 		localServerIPAddress: anyV4,
 		localClientIPAddress: loopbackV4,
 		remoteForwardHost: 'localhost',
-		remoteServerIPAddress: loopbackV4,
+		remoteServerIPAddress: loopback,
 	})
 	@params({
 		localServerIPAddress: loopbackV4,
@@ -599,7 +609,7 @@ export class PortForwardingTests {
 		localServerIPAddress: loopbackV4,
 		localClientIPAddress: loopbackV4,
 		remoteForwardHost: 'localhost',
-		remoteServerIPAddress: loopbackV4,
+		remoteServerIPAddress: loopback,
 	})
 	@params({
 		localServerIPAddress: anyV4,

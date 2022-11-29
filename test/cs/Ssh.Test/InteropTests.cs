@@ -133,7 +133,7 @@ public class InteropTests
 		var server = new SshServer(config, TestTS);
 		server.Credentials = new[] { serverKey };
 		server.ExceptionRasied += (sender, ex) => { Assert.Null(ex); };
-		var serverTask = server.AcceptSessionsAsync(TestPort);
+		var serverTask = server.AcceptSessionsAsync(TestPort, IPAddress.Loopback);
 
 		Process sshProcess = null;
 		string clientKeyFile = Path.GetTempFileName();
@@ -218,7 +218,7 @@ public class InteropTests
 			var serverPublicKey = serverKey.GetPublicKeyBytes();
 			File.WriteAllText(
 				knownHostsFile,
-				$"[localhost]:{TestPort} {keyAlg} {serverPublicKey.ToBase64()}\n");
+				$"[{IPAddress.Loopback}]:{TestPort} {keyAlg} {serverPublicKey.ToBase64()}\n");
 
 			var processOutput = new StringBuilder();
 			string args =
@@ -229,7 +229,7 @@ public class InteropTests
 				(reconnect ? $" -o \"Reconnect=true\"" : string.Empty) +
 				$" -p {TestPort}" +
 				$" -l {TestUsername}" +
-				$" localhost {TestCommand}";
+				$" {IPAddress.Loopback} {TestCommand}";
 			TestTS.TraceInformation($"{exePath} {args}");
 			processOutput.AppendLine($"{exePath} {args}");
 
@@ -556,7 +556,7 @@ public class InteropTests
 			var server = new SshServer(config, TestTS);
 			server.Credentials = new[] { serverKey };
 			server.ExceptionRasied += (sender, ex) => { Assert.Null(ex); };
-			var serverTask = server.AcceptSessionsAsync(JumpPort);
+			var serverTask = server.AcceptSessionsAsync(JumpPort, IPAddress.Loopback);
 
 			server.SessionAuthenticating += (__, e) =>
 			{
@@ -579,11 +579,11 @@ public class InteropTests
 			var serverPublicKey = serverKey.GetPublicKeyBytes();
 			File.WriteAllText(
 				knownHostsFile,
-				$"[localhost]:{TestPort} {keyAlg} {serverPublicKey.ToBase64()}\n[localhost]:{JumpPort} {keyAlg} {serverPublicKey.ToBase64()}\n");
+				$"[{IPAddress.Loopback}]:{TestPort} {keyAlg} {serverPublicKey.ToBase64()}\n[{IPAddress.Loopback}]:{JumpPort} {keyAlg} {serverPublicKey.ToBase64()}\n");
 			File.WriteAllText(
 				sshConfigFile,
-				$"Host VSSsh\n  HostName localhost\n  Port {JumpPort}\n  IdentityFile {clientKeyFile}\n  UserKnownHostsFile {knownHostsFile}\n  User {TestUsername}\n\n" +
-				$"Host TargetSsh\n  HostName localhost\n  Port {TestPort}\n  IdentityFile {clientKeyFile}\n  UserKnownHostsFile {knownHostsFile}\n  ProxyJump VSSsh\n");
+				$"Host VSSsh\n  HostName {IPAddress.Loopback}\n  Port {JumpPort}\n  IdentityFile {clientKeyFile}\n  UserKnownHostsFile {knownHostsFile}\n  User {TestUsername}\n\n" +
+				$"Host TargetSsh\n  HostName {IPAddress.Loopback}\n  Port {TestPort}\n  IdentityFile {clientKeyFile}\n  UserKnownHostsFile {knownHostsFile}\n  ProxyJump VSSsh\n");
 
 			sshProcessOutput = new StringBuilder();
 			string sshArgs =
