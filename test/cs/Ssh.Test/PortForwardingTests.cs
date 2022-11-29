@@ -954,7 +954,7 @@ public class PortForwardingTests : IDisposable
 	}
 
 	[Fact]
-	public async Task ConnectToForwardedPortAsync()
+	public async Task ConnectToForwardedPort()
 	{
 		this.sessionPair.ServerSession.Request += (_, e) => e.IsAuthorized = true;
 
@@ -970,13 +970,18 @@ public class PortForwardingTests : IDisposable
 
 			var waitTask = this.sessionPair.ServerSession.WaitForForwardedPortAsync(TestPort1)
 				.WithTimeout(Timeout);
-			var forwarder = await this.sessionPair.ClientSession.ForwardFromRemotePortAsync(
+			var forwardTask = this.sessionPair.ClientSession.ForwardFromRemotePortAsync(
 				IPAddress.Loopback, TestPort1).WithTimeout(Timeout);
 			await waitTask;
 
 			var remoteStream = await this.sessionPair.ServerSession
 					.ConnectToForwardedPortAsync(TestPort1).WithTimeout(Timeout);
 			var localClient = await acceptTask.WithTimeout(Timeout);
+
+			// Don't wait for the forward response until after connecting.
+			// The side that receives the forward request can open a port-forwarding channel
+			// immediately (before the request sender has received the response).
+			await forwardTask;
 		}
 		finally
 		{
@@ -985,7 +990,7 @@ public class PortForwardingTests : IDisposable
 	}
 
 	[Fact]
-	public async Task BlockConnectToNonForwardedPortAsync()
+	public async Task BlockConnectToNonForwardedPort()
 	{
 		await this.sessionPair.ConnectAsync();
 		var serverPfs = this.sessionPair.ServerSession.ActivateService<PortForwardingService>();

@@ -1,5 +1,6 @@
 // Copyright (c) Microsoft. All rights reserved.
 
+using System;
 using System.Diagnostics;
 using System.Security.Claims;
 using System.Threading;
@@ -62,6 +63,16 @@ public class SshRequestEventArgs<T> where T : SshMessage
 	/// success or failure message.
 	/// </remarks>
 	public Task<SshMessage>? ResponseTask { get; set; }
+
+	/// <summary>
+	/// Gets or sets an action to be invoked AFTER any response message has been sent.
+	/// (The continuation will be invoked even if a response was not requested.)
+	/// </summary>
+	/// <remarks>
+	/// This enables a request handler to ensure additional messages are sequenced after the
+	/// response message.
+	/// </remarks>
+	public Func<Task>? ResponseContinuation { get; set; }
 
 	/// <summary>
 	/// Gets a token that is cancelled if the session ends before the async response task

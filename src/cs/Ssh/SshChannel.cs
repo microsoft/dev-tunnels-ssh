@@ -440,6 +440,7 @@ public class SshChannel : IDisposable
 				}
 			}
 
+			Func<Task>? continuation = args.ResponseContinuation;
 			if (sshRequestArgs.Request.WantReply)
 			{
 				if (sshRequestArgs.IsAuthorized)
@@ -458,6 +459,11 @@ public class SshChannel : IDisposable
 				}
 
 				await Session.SendMessageAsync(response!, cancellation).ConfigureAwait(false);
+			}
+
+			if (continuation != null)
+			{
+				await continuation().ConfigureAwait(false);
 			}
 		};
 

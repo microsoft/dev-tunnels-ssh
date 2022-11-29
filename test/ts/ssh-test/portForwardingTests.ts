@@ -979,7 +979,7 @@ export class PortForwardingTests {
 			const acceptPromise = acceptSocketConnection(localServer);
 
 			const waitPromise = serverPfs.waitForForwardedPort(testPort);
-			const forwarder = await withTimeout(
+			const forwardPromise = await withTimeout(
 				clientPfs.forwardFromRemotePort(loopbackV4, testPort),
 				timeoutMs,
 			);
@@ -990,6 +990,11 @@ export class PortForwardingTests {
 				timeoutMs,
 			);
 			const localClient = await withTimeout(acceptPromise, timeoutMs);
+
+			// Don't wait for the forward response until after connecting.
+			// The side that receives the forward request can open a port-forwarding channel
+			// immediately (before the request sender has received the response).
+			await forwardPromise;
 		} finally {
 			localServer.close();
 		}
