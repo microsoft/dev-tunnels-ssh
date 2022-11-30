@@ -8,9 +8,11 @@ using System.Threading.Tasks;
 
 namespace Microsoft.DevTunnels.Ssh.Benchmark;
 
+#if NETSTANDARD2_0 || NET4
+using ValueTask = System.Threading.Tasks.Task;
 public abstract class Benchmark
-#if !NETSTANDARD2_0
-		: IAsyncDisposable
+#else
+public abstract class Benchmark : IAsyncDisposable
 #endif
 {
 	public static async Task Main(string[] args)
@@ -52,8 +54,11 @@ public abstract class Benchmark
 
 		ServerPort = GetAvailableTcpPort();
 
-		foreach (var (benchmarkName, benchmarkFunc) in benchmarks)
+		foreach (var benchmarkPair in benchmarks)
 		{
+			var benchmarkName = benchmarkPair.Key;
+			var benchmarkFunc = benchmarkPair.Value;
+
 			if (nameList != null && !nameList.Contains(benchmarkName))
 			{
 				continue;
@@ -128,8 +133,11 @@ public abstract class Benchmark
 	{
 		Console.WriteLine();
 
-		foreach (var (measurement, measurements) in Measurements)
+		foreach (var measurementPair in Measurements)
 		{
+			var measurement = measurementPair.Key;
+			var measurements = measurementPair.Value;
+
 			if (!HigherIsBetter.TryGetValue(measurement, out var higherIsBetter))
 			{
 				higherIsBetter = true;

@@ -208,7 +208,7 @@ public class SecureStream : Stream
 			SshDisconnectReason.None, this.session.GetType().Name + " disposed").ConfigureAwait(false);
 		this.session.Dispose();
 
-#if !NETSTANDARD2_0
+#if !NETSTANDARD2_0 && !NET4
 		await this.transportStream.DisposeAsync().ConfigureAwait(false);
 #else
 		this.transportStream.Dispose();

@@ -181,7 +181,7 @@ public class KeyData
 
 	private static KeyValuePair<string, string> ParsePemHeader(string header)
 	{
-#if NETSTANDARD2_0
+#if NETSTANDARD2_0 || NET4
 		header = header.Replace("\r", string.Empty).Replace("\\\n", string.Empty).TrimEnd('\n');
 #else
 		header = header.Replace("\r", string.Empty, StringComparison.Ordinal)

@@ -214,7 +214,7 @@ public class PortForwardingTests : IDisposable
 	[InlineData("0.0.0.0", "127.0.0.1", "localhost", "127.0.0.1")]
 	[InlineData("127.0.0.1", "127.0.0.1", "127.0.0.1", "127.0.0.1")]
 	[InlineData("127.0.0.1", "127.0.0.1", "localhost", "127.0.0.1")]
-#if !NETCOREAPP2_1
+#if !NETCOREAPP2_1 && !NET4
 	[InlineData("0.0.0.0", "::1", "::1", "::1")]
 	[InlineData("127.0.0.1", "::1", "localhost", "::1")]
 	[InlineData("::", "::1", "localhost", "::1")]
@@ -250,8 +250,8 @@ public class PortForwardingTests : IDisposable
 			var localStream = localClient.GetStream();
 
 			var writeBuffer = new byte[] { 1, 2, 3 };
-			await remoteStream.WriteAsync(writeBuffer);
-			await localStream.WriteAsync(writeBuffer);
+			await remoteStream.WriteAsync(writeBuffer, 0, writeBuffer.Length);
+			await localStream.WriteAsync(writeBuffer, 0, writeBuffer.Length);
 
 			var readBuffer = new byte[10];
 			int count = await localStream.ReadAsync(readBuffer, 0, readBuffer.Length)
@@ -583,7 +583,7 @@ public class PortForwardingTests : IDisposable
 	[InlineData("0.0.0.0", "127.0.0.1", "localhost", "127.0.0.1")]
 	[InlineData("127.0.0.1", "127.0.0.1", "127.0.0.1", "127.0.0.1")]
 	[InlineData("127.0.0.1", "127.0.0.1", "localhost", "127.0.0.1")]
-#if !NETCOREAPP2_1
+#if !NETCOREAPP2_1 && !NET4
 	[InlineData("127.0.0.1", "::1", "localhost", "::1")]
 	[InlineData("::1", "::1", "::1", "::1")]
 	[InlineData("::1", "::1", "localhost", "::1")]
@@ -626,8 +626,8 @@ public class PortForwardingTests : IDisposable
 			Assert.NotNull(forwardingChannel);
 
 			var writeBuffer = new byte[] { 1, 2, 3 };
-			await remoteStream.WriteAsync(writeBuffer);
-			await localStream.WriteAsync(writeBuffer);
+			await remoteStream.WriteAsync(writeBuffer, 0, writeBuffer.Length);
+			await localStream.WriteAsync(writeBuffer, 0, writeBuffer.Length);
 
 			var readBuffer = new byte[10];
 			int count = await localStream.ReadAsync(readBuffer, 0, readBuffer.Length)
@@ -869,8 +869,8 @@ public class PortForwardingTests : IDisposable
 			var remoteStream = remoteClient.GetStream();
 
 			var writeBuffer = new byte[] { 1, 2, 3 };
-			await remoteStream.WriteAsync(writeBuffer);
-			await localStream.WriteAsync(writeBuffer);
+			await remoteStream.WriteAsync(writeBuffer, 0, writeBuffer.Length);
+			await localStream.WriteAsync(writeBuffer, 0, writeBuffer.Length);
 
 			var readBuffer = new byte[10];
 			int count = await localStream.ReadAsync(readBuffer, 0, readBuffer.Length)
@@ -938,8 +938,8 @@ public class PortForwardingTests : IDisposable
 		var localStream = await openCompletion.Task.WithTimeout(Timeout);
 
 		var writeBuffer = new byte[] { 1, 2, 3 };
-		await remoteStream.WriteAsync(writeBuffer);
-		await localStream.WriteAsync(writeBuffer);
+		await remoteStream.WriteAsync(writeBuffer, 0, writeBuffer.Length);
+		await localStream.WriteAsync(writeBuffer, 0, writeBuffer.Length);
 
 		var readBuffer = new byte[10];
 		int count = await localStream.ReadAsync(readBuffer, 0, readBuffer.Length)

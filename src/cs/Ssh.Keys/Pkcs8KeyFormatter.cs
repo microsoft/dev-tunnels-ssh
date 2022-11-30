@@ -2,6 +2,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Security.Cryptography;
 using System.Text;
 using Microsoft.DevTunnels.Ssh.Algorithms;
@@ -505,7 +506,15 @@ public class Pkcs8KeyFormatter : IKeyFormatter
 			(privateKeyData.Count % encryption.BlockLength);
 		var paddedData = new Buffer(privateKeyData.Count + paddingLength);
 		privateKeyData.CopyTo(paddedData);
+
+#if NET4
+		for (int i = 0; i < paddingLength; i++)
+		{
+			paddedData.Array[privateKeyData.Count + i] = (byte)paddingLength;
+		}
+#else
 		Array.Fill(paddedData.Array, (byte)paddingLength, privateKeyData.Count, paddingLength);
+#endif
 		privateKeyData = paddedData;
 
 		using var cipher = encryption.CreateCipher(isEncryption: true, key, iv);

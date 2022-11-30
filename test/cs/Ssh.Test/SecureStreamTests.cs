@@ -65,8 +65,8 @@ public class SecureStreamTests
 			Assert.False(authenticateSuccess);
 		}
 
-		Assert.Equal(authenticateSuccess, serverConnectTask.IsCompletedSuccessfully);
-		Assert.Equal(authenticateSuccess, clientConnectTask.IsCompletedSuccessfully);
+		Assert.Equal(authenticateSuccess, !serverConnectTask.IsFaulted);
+		Assert.Equal(authenticateSuccess, !clientConnectTask.IsFaulted);
 		if (!authenticateSuccess)
 		{
 			var serverEx = await Assert.ThrowsAsync<SshConnectionException>(() => serverConnectTask);
@@ -111,8 +111,8 @@ public class SecureStreamTests
 			Assert.False(authenticateSuccess);
 		}
 
-		Assert.Equal(authenticateSuccess, serverConnectTask.IsCompletedSuccessfully);
-		Assert.Equal(authenticateSuccess, clientConnectTask.IsCompletedSuccessfully);
+		Assert.Equal(authenticateSuccess, !serverConnectTask.IsFaulted);
+		Assert.Equal(authenticateSuccess, !clientConnectTask.IsFaulted);
 		if (!authenticateSuccess)
 		{
 			var serverEx = await Assert.ThrowsAsync<SshConnectionException>(() => serverConnectTask);

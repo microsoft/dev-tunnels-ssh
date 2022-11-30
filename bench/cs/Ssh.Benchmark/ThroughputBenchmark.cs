@@ -11,6 +11,10 @@ using Microsoft.DevTunnels.Ssh.Tcp;
 
 namespace Microsoft.DevTunnels.Ssh.Benchmark;
 
+#if NETSTANDARD2_0 || NET4
+using ValueTask = System.Threading.Tasks.Task;
+#endif
+
 class ThroughputBenchmark : Benchmark
 {
 	private const string MessageCountMeasurement = "Throughput (msgs/s)";
@@ -84,7 +88,8 @@ class ThroughputBenchmark : Benchmark
 
 			var channel = await clientSession.OpenChannelAsync();
 
-			var cancellationSource = new CancellationTokenSource(2 * this.duration);
+			var cancellationSource = new CancellationTokenSource(
+				TimeSpan.FromSeconds(this.duration.TotalSeconds * 2));
 
 			int messageCount = 0;
 			stopwatch.Restart();

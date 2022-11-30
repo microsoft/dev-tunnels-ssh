@@ -11,30 +11,21 @@ A Secure Shell (SSH2) client and server protocol implementation for .NET.
 
 ## Requirements
 This library targets the following .NET versions:
- - .NET Standard 2.0
- - .NET Standard 2.1
+ - .NET Framework 4.8
+ - .NET Standard 2.1 (.NET Core 3.1, .NET 5)
  - .NET 6
 
-The .NET Standard 2.0 support means it can be used with .NET Framework 4.7+ on
-Windows or .NET Core 2.0+ on any platform.
+The .NET Framework target runs only on Windows (of course); the other targets support
+Windows, Mac, and Linux.
 
-Some minor functionality is only available with .NET Standard 2.1 or later:
- - **ECDH** - Elliptic-curve Diffie-Hellman key-exchange (faster than normal
-   DH) is only available with .NET Standard 2.1 or later.
+Some minor functionality is not available in the .NET Framework target:
  - **AES-GCM** - This cipher algorithm is available (and preferred) when using
-   .NET Standard 2.1 or later. If using .NET Standard 2.0, or if the other
+   .NET Standard 2.1 or later. If using .NET Framework, or if the other
    side does not support it, then other cipher and MAC algorithms (AES-CTR,
    SHA2-ETM) are used instead.
  - **Use of `Span<T>`** - There is no functional difference, but this reduces
    the amount of memory allocations and copies, allowing for a slight
    performance improvement with .NET Standard 2.1 or later.
- - **Password-protected PKCS#8 keys** - This functionality is only available
-   with .NET Standard 2.1 or later. It's not possible to import/export
-   password-protected PKCS#8 key files with the .NET Standard 2.0 target
-   because the required key-derivation function is not available. Use a
-   different key format (such as OpenSSH) instead if support for key file
-   encryption is required. (Unencrypted PKCS#8 keys are still supported
-   with .NET Standard 2.0.)
 
 ### OS Requirements
 Crypto algorithms work across all .NET Core platforms: Windows, Mac, and Linux.

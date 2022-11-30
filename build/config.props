@@ -46,13 +46,19 @@
 	<PropertyGroup>
 		<DotNetStandard20 Condition="'$(TargetFramework)'=='netstandard2.0' OR '$(TargetFramework)'=='netcoreapp2.1'">true</DotNetStandard20>
 		<DotNetStandard21 Condition="'$(TargetFramework)'=='netstandard2.1' OR '$(TargetFramework)'=='netcoreapp3.1'">true</DotNetStandard21>
+		<DotNet4 Condition="$(TargetFramework.StartsWith('net4'))">true</DotNet4>
 		<DotNet5 Condition="'$(TargetFramework)'=='net5.0'">true</DotNet5>
 		<DotNet6 Condition="'$(TargetFramework)'=='net6.0'">true</DotNet6>
 
 		<DefineConstants Condition="'$(DotNetStandard20)'=='true'">$(DefineConstants);NETSTANDARD2_0</DefineConstants>
 		<DefineConstants Condition="'$(DotNetStandard21)'=='true'">$(DefineConstants);NETSTANDARD2_1</DefineConstants>
+		<DefineConstants Condition="'$(DotNet4)'=='true'">$(DefineConstants);NET4</DefineConstants>
 		<DefineConstants Condition="'$(DotNet5)'=='true'">$(DefineConstants);NET5_0</DefineConstants>
 		<DefineConstants Condition="'$(DotNet6)'=='true'">$(DefineConstants);NET6_0</DefineConstants>
+	</PropertyGroup>
+	<PropertyGroup Condition="'$(DotNet4)'=='true'">
+		<DefineConstants>$(DefineConstants);SSH_ENABLE_ECDH</DefineConstants>
+		<DefineConstants>$(DefineConstants);SSH_ENABLE_PBKDF2</DefineConstants>
 	</PropertyGroup>
 	<PropertyGroup Condition="'$(DotNetStandard21)'=='true' OR '$(DotNet5)'=='true' OR '$(DotNet6)' == 'true'">
 		<DefineConstants>$(DefineConstants);SSH_ENABLE_SPAN</DefineConstants>

@@ -366,7 +366,7 @@ public static class KeyPair
 	{
 		// Different formats may use different casing and hyphens. Normalize before comparing.
 		algorithm = algorithm.ToUpperInvariant();
-#if NETSTANDARD2_0
+#if NETSTANDARD2_0 || NET4
 		algorithm = algorithm.Replace("-", string.Empty);
 #else
 		algorithm = algorithm.Replace("-", string.Empty, StringComparison.Ordinal);

@@ -3,9 +3,10 @@
 	<Import Project="../../Directory.Build.props" />
 
 	<PropertyGroup>
-		<TargetFrameworks>netstandard2.0;netstandard2.1;net6.0</TargetFrameworks>
+		<TargetFrameworks>net48;netstandard2.1;net6.0</TargetFrameworks>
 		<IsPackable>true</IsPackable>
 		<NoWarn>$(NoWarn);CS1591</NoWarn><!-- Missing XML comment for publicly visible type or member -->
+		<NoWarn>$(NoWarn);CA2237</NoWarn><!-- Add [Serializable] to exceptions (.NET Framework) -->
 	</PropertyGroup>
 
 	<PropertyGroup Condition=" '$(EnableSigning)' == 'true' ">

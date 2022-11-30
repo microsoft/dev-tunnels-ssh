@@ -14,6 +14,10 @@ using Microsoft.DevTunnels.Ssh.Tcp;
 
 namespace Microsoft.DevTunnels.Ssh.Benchmark;
 
+#if NETSTANDARD2_0 || NET4
+using ValueTask = System.Threading.Tasks.Task;
+#endif
+
 class SessionSetupBenchmark : Benchmark
 {
 	private const string ConnectTimeMeasurement = "Connect time (ms)";

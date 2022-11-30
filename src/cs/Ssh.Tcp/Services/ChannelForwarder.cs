@@ -241,7 +241,7 @@ internal class ChannelForwarder : IDisposable
 		Exception? ex = null;
 		try
 		{
-#if NETSTANDARD2_0
+#if NETSTANDARD2_0 || NET4
 			count = await this.stream.ReadAsync(
 				buffer.Array, buffer.Offset, buffer.Count, cancellation).ConfigureAwait(false);
 #else

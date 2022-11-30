@@ -162,7 +162,7 @@ public class MultiChannelStreamTests
 		var serverChannel = await serverChannelTask.WithTimeout(Timeout);
 		Assert.NotNull(serverChannel);
 
-#if !NETSTANDARD2_0
+#if !NETSTANDARD2_0 && !NET4
 		await clientChannel.DisposeAsync();
 		await serverStream.DisposeAsync();
 
