@@ -60,7 +60,7 @@ internal class TaskChain : IDisposable
 
 			if (runInSequenceTask == null)
 			{
-				runInSequenceTask = Task.Run(
+				runInSequenceTask = Task.Factory.StartNew(
 					async () =>
 					{
 						try
@@ -73,7 +73,9 @@ internal class TaskChain : IDisposable
 							onError(ex);
 						}
 					},
-					cancellation);
+					cancellation,
+					TaskCreationOptions.None,
+					TaskScheduler.Default);
 			}
 			else
 			{

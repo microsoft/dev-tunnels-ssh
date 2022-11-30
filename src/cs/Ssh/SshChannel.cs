@@ -164,7 +164,7 @@ public class SshChannel : IDisposable
 	/// <see cref="SshSession.OpenChannelAsync(ChannelOpenMessage, ChannelRequestMessage?, CancellationToken)"/>,
 	/// or for a channel opened by the other side by assigning to this property while handling the
 	/// <see cref="SshSession.ChannelOpening"/> event. Changing the maximum window size at any
-	/// other time is not valid because the other side would not be aware of the change. 
+	/// other time is not valid because the other side would not be aware of the change.
 	/// </remarks>
 	public uint MaxWindowSize
 	{
@@ -440,24 +440,30 @@ public class SshChannel : IDisposable
 				}
 			}
 
+			if (sshRequestArgs.IsAuthorized)
+			{
+				response ??= new ChannelSuccessMessage();
+				((ChannelSuccessMessage)response).RecipientChannel = RemoteChannelId;
+			}
+			else
+			{
+				if (!(response is ChannelFailureMessage))
+				{
+					response = new ChannelFailureMessage();
+				}
+
+				((ChannelFailureMessage)response).RecipientChannel = RemoteChannelId;
+			}
+
 			if (sshRequestArgs.Request.WantReply)
 			{
-				if (sshRequestArgs.IsAuthorized)
-				{
-					response ??= new ChannelSuccessMessage();
-					((ChannelSuccessMessage)response).RecipientChannel = RemoteChannelId;
-				}
-				else
-				{
-					if (!(response is ChannelFailureMessage))
-					{
-						response = new ChannelFailureMessage();
-					}
+				await Session.SendMessageAsync(response, cancellation).ConfigureAwait(false);
+			}
 
-					((ChannelFailureMessage)response).RecipientChannel = RemoteChannelId;
-				}
-
-				await Session.SendMessageAsync(response!, cancellation).ConfigureAwait(false);
+			Func<SshMessage, Task>? continuation = args.ResponseContinuation;
+			if (continuation != null)
+			{
+				await continuation(response).ConfigureAwait(false);
 			}
 		};
 

@@ -27,7 +27,9 @@ public abstract class SshMessage
 
 	public abstract byte MessageType { get; }
 
+#pragma warning disable CA2227 // Change to read-only by removing the property setter
 	protected Buffer RawBytes { get; set; }
+#pragma warning restore CA2227
 
 	public void Read(ref SshDataReader reader)
 	{
