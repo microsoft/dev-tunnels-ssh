@@ -63,6 +63,10 @@ public abstract class SshAlgorithm
 
 	private static Assembly? InitializeCngAssembly()
 	{
+#if NET4
+		// Crypto implementation types are in System.Core on .NET Framework 4.x.
+		return typeof(ECDiffieHellmanCng).Assembly;
+#else
 		var ns = typeof(SymmetricAlgorithm).Namespace;
 		try
 		{
@@ -73,6 +77,7 @@ public abstract class SshAlgorithm
 			// The System.Security.Cryptography.Cng asembly was not found.
 			return null;
 		}
+#endif
 	}
 
 #if NET6_0_OR_GREATER

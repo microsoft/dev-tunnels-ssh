@@ -17,6 +17,7 @@ public class ChannelTests : IDisposable
 {
 	private const int WindowSize = 1024 * 1024;
 	private static readonly TimeSpan Timeout = TimeSpan.FromSeconds(20);
+	private static readonly TimeSpan LongTimeout = TimeSpan.FromSeconds(100);
 	private readonly CancellationToken timeoutToken = Debugger.IsAttached ? CancellationToken.None : new CancellationTokenSource(Timeout).Token;
 
 	private SshSessionConfiguration serverConfig;
@@ -538,7 +539,7 @@ public class ChannelTests : IDisposable
 		var bufferWithOffset = Buffer.From(data, offset, count);
 		await channels.Client.SendAsync(bufferWithOffset, CancellationToken.None).WithTimeout(Timeout);
 
-		var receivedData = await receivedCompletion.Task.WithTimeout(4 * Timeout);
+		var receivedData = await receivedCompletion.Task.WithTimeout(LongTimeout);
 		Assert.True(bufferWithOffset.Equals(receivedData));
 
 		await channels.Client.CloseAsync().WithTimeout(Timeout);
@@ -835,13 +836,16 @@ public class ChannelTests : IDisposable
 		var data = new Buffer(dataSize);
 		for (int i = 0; i < 256 && !receivedCompletion.Task.IsCompleted; i++)
 		{
-			Array.Fill(data.Array, (byte)i, data.Offset, data.Count);
+			for (int j = 0; j < data.Count; j++)
+			{
+				data.Array[data.Offset + j] = (byte)i;
+			}
 
 			// Don't await!
 			_ = clientChannel.SendAsync(data, CancellationToken.None);
 		}
 
-		Assert.True(await receivedCompletion.Task.WithTimeout(4 * Timeout));
+		Assert.True(await receivedCompletion.Task.WithTimeout(LongTimeout));
 	}
 
 	[Fact]

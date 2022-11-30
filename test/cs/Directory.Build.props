@@ -3,7 +3,8 @@
 	<Import Project="../../Directory.Build.props" />
 
 	<PropertyGroup>
-		<TargetFrameworks>netcoreapp2.1;netcoreapp3.1;net6.0</TargetFrameworks>
+		<TargetFrameworks>netcoreapp3.1;net6.0</TargetFrameworks>
+		<TargetFrameworks Condition=" '$(OS)' == 'Windows_NT' ">net48;$(TargetFrameworks)</TargetFrameworks>
 
 		<IsPackable>false</IsPackable>
 		<TestResultsDirectory Condition=" '$(TestResultsDirectory)' == '' ">$(BaseOutputPath)TestResults</TestResultsDirectory>
@@ -11,7 +12,6 @@
 		<CodeAnalysisFile></CodeAnalysisFile>
 		<NoWarn>$(NoWarn);VSTHRD200</NoWarn><!-- Test methods don't need to end with Async suffix. -->
 		<NoWarn>$(NoWarn);NU1701</NoWarn><!-- Package was restored using different target framework. -->
-		<NoWarn>$(NoWarn);NETSDK1138</NoWarn><!-- 'netcoreapp2.1' is out of support. It's only used for testing netstandard2.0. -->
 	</PropertyGroup>
 
 	<ItemGroup>

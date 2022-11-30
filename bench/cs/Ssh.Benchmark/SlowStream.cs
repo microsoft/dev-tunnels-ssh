@@ -85,18 +85,19 @@ class SlowStream : Stream
 
 		Task.Run(async () =>
 		{
-				// Spinning like this is horribly inefficient, but for benchmarking purposes it enables
-				// a much more precise latency simulation compared to something like Task.Delay(ms).
-				while (stopwatch.ElapsedMilliseconds < AddedLatency.TotalMilliseconds)
+			// Spinning like this is horribly inefficient, but for benchmarking purposes it enables
+			// a much more precise latency simulation compared to something like Task.Delay(ms).
+			while (stopwatch.ElapsedMilliseconds < AddedLatency.TotalMilliseconds)
 			{
 				await Task.Yield();
 			}
 
-				// Lock while dequeuing+writing to ensure blocks are written to the base stream in order.
-				lock (this.writeQueue)
+			// Lock while dequeuing+writing to ensure blocks are written to the base stream in order.
+			lock (this.writeQueue)
 			{
-				while (count-- > 0 && this.writeQueue.TryDequeue(out var buffer))
+				while (count-- > 0 && this.writeQueue.Count > 0)
 				{
+					var buffer = this.writeQueue.Dequeue();
 					BaseStream.Write(buffer, 0, buffer.Length);
 				}
 			}

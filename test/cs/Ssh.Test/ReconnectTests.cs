@@ -13,6 +13,7 @@ namespace Microsoft.DevTunnels.Ssh.Test;
 public class ReconnectTests : IDisposable
 {
 	private static readonly TimeSpan Timeout = TimeSpan.FromSeconds(10);
+	private static readonly TimeSpan LongTimeout = TimeSpan.FromSeconds(100);
 	private static readonly SessionRequestMessage TestRequestMessage =
 		new SessionRequestMessage { RequestType = "test", WantReply = true };
 
@@ -33,7 +34,7 @@ public class ReconnectTests : IDisposable
 	public ReconnectTests()
 	{
 		InitializeSessionPair();
-		this.cancellation = new CancellationTokenSource(Timeout * 20).Token;
+		this.cancellation = new CancellationTokenSource(LongTimeout).Token;
 	}
 
 	public void Dispose()
@@ -460,8 +461,6 @@ public class ReconnectTests : IDisposable
 		SetKeyRotationThreshold(this.sessionPair.ServerSession, testKeyRotationThreshold);
 		SetKeyRotationThreshold(this.sessionPair.ClientSession, testKeyRotationThreshold);
 
-		var longTimeoutCancellation = new CancellationTokenSource(Timeout * 10).Token;
-
 		await this.sessionPair.ConnectAsync().WithTimeout(Timeout);
 		await WaitUntilReconnectEnabled().WithTimeout(Timeout);
 		var (serverChannel, clientChannel) = await InitializeChannelPairAsync(
@@ -481,8 +480,8 @@ public class ReconnectTests : IDisposable
 		const int messageCount = testKeyRotationThreshold / largeMessageSize + 5;
 		for (int i = 0; i < messageCount; i++)
 		{
-			await clientChannel.SendAsync(largeData, longTimeoutCancellation)
-				.WithTimeout(2 * Timeout);
+			await clientChannel.SendAsync(largeData, cancellation)
+				.WithTimeout(TimeSpan.FromSeconds(Timeout.TotalSeconds * 2));
 		}
 	}
 

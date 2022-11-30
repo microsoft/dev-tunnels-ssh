@@ -237,6 +237,7 @@ public class InteropTests
 			{
 				RedirectStandardOutput = true,
 				RedirectStandardError = true,
+				UseShellExecute = false,
 			};
 
 			DataReceivedEventHandler dataReceivedHandler = (sender, e) =>
@@ -384,6 +385,7 @@ public class InteropTests
 			{
 				RedirectStandardOutput = true,
 				RedirectStandardError = true,
+				UseShellExecute = false,
 			};
 
 			DataReceivedEventHandler dataReceivedHandler = (sender, e) =>
@@ -412,7 +414,7 @@ public class InteropTests
 				catch (Exception ex) when (ex is SocketException ||
 					(ex is SshConnectionException ce &&
 					ce.DisconnectReason == SshDisconnectReason.ConnectionLost) ||
-					ex.Message.Contains("connection", StringComparison.OrdinalIgnoreCase))
+					ex.Message.IndexOf("connection", StringComparison.OrdinalIgnoreCase) >= 0)
 				{
 					if (i >= 9) throw;
 
@@ -534,6 +536,7 @@ public class InteropTests
 			{
 				RedirectStandardOutput = true,
 				RedirectStandardError = true,
+				UseShellExecute = false,
 			};
 
 			DataReceivedEventHandler dataReceivedHandler = (sender, e) =>
@@ -597,6 +600,7 @@ public class InteropTests
 			{
 				RedirectStandardOutput = true,
 				RedirectStandardError = true,
+				UseShellExecute = false,
 			};
 
 			bool foundTestCommand = false;
@@ -816,13 +820,15 @@ public class InteropTests
 		if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
 		{
 			var pathEnv = Environment.GetEnvironmentVariable("PATH") ?? string.Empty;
-			foreach (string dir in pathEnv.Split(
-				Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries))
+			foreach (string dir in pathEnv.Split(Path.PathSeparator))
 			{
-				var dirAndName = Path.Combine(dir, name);
-				if (File.Exists(dirAndName))
+				if (!string.IsNullOrEmpty(dir))
 				{
-					return dirAndName;
+					var dirAndName = Path.Combine(dir, name);
+					if (File.Exists(dirAndName))
+					{
+						return dirAndName;
+					}
 				}
 			}
 
@@ -865,7 +871,12 @@ public class InteropTests
 
 	private static string GetRepoRoot()
 	{
+#if NET4
+		var rootDir = Path.GetDirectoryName(
+			new Uri(typeof(InteropTests).Assembly.CodeBase).AbsolutePath);
+#else
 		var rootDir = Path.GetDirectoryName(typeof(InteropTests).Assembly.Location);
+#endif
 		while (!File.Exists(Path.Combine(rootDir, "SSH.sln")))
 		{
 			rootDir = Path.GetDirectoryName(rootDir);

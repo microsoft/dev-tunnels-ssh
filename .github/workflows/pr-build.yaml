@@ -23,9 +23,8 @@ jobs:
         uses: actions/setup-dotnet@v2
         with:
           dotnet-version: |
-            2.1.x
             3.1.x
-            5.0.x
+            6.0.x
 
       - name: Use global.json dotnet version
         uses: actions/setup-dotnet@v2
@@ -56,9 +55,14 @@ jobs:
 
       - name: Test TypeScript
         run: npm run test-ts
-      
-      - name: Test dotnet 2.1
-        run: npm run test-cs -- --release --serial --framework netcoreapp2.1
+
+      - name: Test .NET Framework
+        if: matrix.os == 'windows-latest'
+        run: npm run test-cs -- --release --serial --framework net48
+        continue-on-error: true
+
+      - name: Test dotnet 3.1
+        run: npm run test-cs -- --release --serial --framework netcoreapp3.1
         continue-on-error: true
 
       - name: Test dotnet 6.0
