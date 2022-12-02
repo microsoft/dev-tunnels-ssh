@@ -2,10 +2,17 @@
 //  Copyright (c) Microsoft Corporation. All rights reserved.
 //
 
-import { SshAlgorithms, KeyPair, Rsa, RsaParameters, BigInt } from '@microsoft/dev-tunnels-ssh';
+import {
+	SshAlgorithms,
+	KeyPair,
+	Rsa,
+	RsaParameters,
+	BigInt,
+	ECDsa,
+	ECParameters,
+} from '@microsoft/dev-tunnels-ssh';
 import { KeyFormatter } from './keyFormatter';
 import { KeyData } from './keyData';
-import { ECDsa, ECParameters } from '../ssh/algorithms/sshAlgorithms';
 
 interface CommentedJwk extends JsonWebKey {
 	comment?: string;

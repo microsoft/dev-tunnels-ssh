@@ -67,6 +67,12 @@ cannot access native TCP sockets, the standard use of SSH over TCP is not possib
 some other stream transport like a websocket may be used. For details about the
 TypeScript library, see [src/ts/ssh/README.md](./src/ts/ssh/README.md).
 
+### Limitations
+The following features are not implemented in typescript implementation yet, and we have
+plans to implement the same:
+- Async processing of messages and ability to send one message before receiving response
+  for a previous one.
+
 ## Packages
 
 |                                          | C# NuGet package | TS npm package |
