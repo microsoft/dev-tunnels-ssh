@@ -13,6 +13,12 @@ and browser environments.
  - Supports reconnecting a disconnected session without disrupting channel streams.
  - Compatible with common SSH software. (Tested against OpenSSH.)
 
+### Limitations
+The following features are not implemented in typescript implementation yet, and we have
+plans to implement the same:
+- Async processing of messages and ability to send one message before receiving response
+  for a previous one.
+
 ## Requirements
 The TypeScript implementation supports either Node.js (>= 8.x) or a
 browser environment. When running on Node.js, it uses the Node.js built-in
