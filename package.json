@@ -29,7 +29,7 @@
 	"dependencies": {
 		"buffer": "^5.2.1",
 		"diffie-hellman": "^5.0.3",
-		"vscode-jsonrpc": "^4.0.0"
+		"vscode-jsonrpc": "^8.0.2"
 	},
 	"devDependencies": {
 		"@testdeck/mocha": "^0.1.0",
