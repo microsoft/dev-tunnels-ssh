@@ -30,7 +30,7 @@ import {
 	authenticateServer,
 } from './sessionPair';
 import { CancellationTokenSource } from 'vscode-jsonrpc';
-import { withTimeout } from './promiseUtils';
+import { until, withTimeout } from './promiseUtils';
 
 @suite
 @slow(3000)
@@ -284,7 +284,7 @@ export class ChannelTests {
 		await serverChannelTask;
 
 		// Wait for the request to be received by the server.
-		await new Promise((c) => setImmediate(c));
+		await until(async () => !!serverRequest, 5000);
 
 		assert(serverRequest);
 		assert.equal(testRequestType, serverRequest!.requestType);
