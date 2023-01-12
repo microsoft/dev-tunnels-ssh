@@ -4,6 +4,13 @@ on:
   pull_request:
     branches:
       - main
+  workflow_dispatch: # Enable manually starting a build
+    inputs:
+      debug_enabled:
+        type: boolean
+        description: 'Start an SSH debug session as the last step of the build'
+        required: false
+        default: false
 
 jobs:
   builds:
@@ -67,3 +74,11 @@ jobs:
 
       - name: Test dotnet 6.0
         run: npm run test-cs -- --release --serial --framework net6.0
+        continue-on-error: true
+
+      - name: Start SSH debug session
+        uses: mxschmitt/action-tmate@v3
+        if: matrix.os == 'macOS-latest'
+        #if: ${{ github.event_name == 'workflow_dispatch' && inputs.debug_enabled }}
+        with:
+            limit-access-to-actor: true
