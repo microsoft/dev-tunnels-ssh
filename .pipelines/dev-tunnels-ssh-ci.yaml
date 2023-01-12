@@ -70,9 +70,9 @@ jobs:
           nugetConfigPath: NuGet.config
 
       - task: NodeTool@0
-        displayName: Use Node 12.x
+        displayName: Use Node 14.x
         inputs:
-          versionSpec: 12.x
+          versionSpec: 14.x
 
       - task: Npm@1
         displayName: Restore npm packages
@@ -258,9 +258,9 @@ jobs:
           nugetConfigPath: NuGet.config
 
       - task: NodeTool@0
-        displayName: Use Node 12.x
+        displayName: Use Node 14.x
         inputs:
-          versionSpec: 12.x
+          versionSpec: 14.x
 
       - task: Npm@1
         displayName: Restore npm packages
