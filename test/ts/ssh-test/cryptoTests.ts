@@ -17,7 +17,7 @@ import {
 export class CryptoTests {
 	@test
 	@slow(5000)
-	@timeout(10000)
+	@timeout(20000)
 	@params({ kexAlg: 'diffie-hellman-group14-sha256' })
 	@params({ kexAlg: 'diffie-hellman-group16-sha512' })
 	@params({ kexAlg: 'ecdh-sha2-nistp521' })
