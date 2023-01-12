@@ -42,8 +42,11 @@ class SshRpcMessageReader implements rpc.MessageReader {
 	public readonly onClose: rpc.Event<void>;
 	public readonly onPartialMessage: rpc.Event<any>;
 
-	public listen(callback: rpc.DataCallback): void {
+	public listen(callback: rpc.DataCallback): rpc.Disposable {
 		this.callback = callback;
+		return rpc.Disposable.create(() => {
+			this.callback = null;
+		});
 	}
 
 	public dispose(): void {
@@ -136,7 +139,7 @@ class SshRpcMessageWriter implements rpc.MessageWriter {
 
 	public onClose: rpc.Event<void>;
 
-	public write(message: rpc.Message): void {
+	public write(message: rpc.Message): Promise<void> {
 		const messageJson = JSON.stringify(message);
 		const messageData = Buffer.from(messageJson);
 		const headerData = Buffer.from(
@@ -145,10 +148,12 @@ class SshRpcMessageWriter implements rpc.MessageWriter {
 		const data = Buffer.alloc(headerData.length + messageData.length);
 		headerData.copy(data, 0);
 		messageData.copy(data, headerData.length);
-		this.channel.send(data).catch((e: Error) => {
+		return this.channel.send(data).catch((e: Error) => {
 			this.errorEmitter.fire([e, undefined, undefined]);
 		});
 	}
+
+	public end(): void {}
 
 	public dispose(): void {}
 }
