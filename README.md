@@ -59,7 +59,7 @@ Windows or .NET Core 2.0+ on any platform. It's tested on Windows, Mac, & Ubuntu
 details about the .NET library, see [src/cs/Ssh/README.md](./src/cs/Ssh/README.md).
 
 ## TypeScript (Node.js or Browser)
-The TypeScript implementation supports either Node.js (>= 8.x) or a browser
+The TypeScript implementation supports either Node.js (>= 14.x) or a browser
 environment. The Node.js version is tested on Windows, Mac & Unbuntu; the browser
 version is tested on Chrome & Edge Chromium, though it should work in any modern
 browser that supports the web crypto API. Note that since script on a web page

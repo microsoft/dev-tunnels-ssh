@@ -20,7 +20,7 @@ plans to implement the same:
   for a previous one.
 
 ## Requirements
-The TypeScript implementation supports either Node.js (>= 8.x) or a
+The TypeScript implementation supports either Node.js (>= 14.x) or a
 browser environment. When running on Node.js, it uses the Node.js built-in
 [crypto](https://nodejs.org/api/crypto.html) module. When running in a browser
 it uses the [Web Crypto API](https://developer.mozilla.org/en-US/docs/Web/API/Web_Crypto_API),
