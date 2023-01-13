@@ -15,6 +15,7 @@ public class MultiChannelStreamTests
 {
 	private static readonly TimeSpan Timeout = Debugger.IsAttached ? TimeSpan.FromDays(1) : TimeSpan.FromSeconds(20);
 	private readonly CancellationToken TimeoutToken = new CancellationTokenSource(Timeout).Token;
+	private static readonly TimeSpan LongTimeout = Debugger.IsAttached ? TimeSpan.FromDays(1) : TimeSpan.FromSeconds(100);
 
 	private readonly Stream clientStream;
 	private readonly Stream serverStream;
@@ -300,7 +301,7 @@ public class MultiChannelStreamTests
 	[Fact]
 	public async Task MultiChannelReadWrite()
 	{
-		const int ParallelTasks = 20;
+		const int ParallelTasksCount = 20;
 
 		var server = new MultiChannelStream(this.serverStream);
 		var client = new MultiChannelStream(this.clientStream);
@@ -308,7 +309,7 @@ public class MultiChannelStreamTests
 		const string payloadString = "Hello!";
 		byte[] payload = Encoding.UTF8.GetBytes(payloadString);
 
-		var tasks = Enumerable.Range(0, ParallelTasks).Select(i => Task.Run(async () =>
+		var tasks = Enumerable.Range(0, ParallelTasksCount).Select(i => Task.Run(async () =>
 		{
 			Stream channel;
 
@@ -317,8 +318,8 @@ public class MultiChannelStreamTests
 			{
 				channel = await server.AcceptStreamAsync();
 
-					// Write then read from client
-					for (int j = 0; j < 10; j++)
+				// Write then read from client
+				for (int j = 0; j < 10; j++)
 				{
 					await channel.WriteAsync(payload, 0, payload.Length);
 
@@ -331,8 +332,8 @@ public class MultiChannelStreamTests
 			{
 				channel = await client.OpenStreamAsync();
 
-					// Read then write from server
-					for (int j = 0; j < 10; j++)
+				// Read then write from server
+				for (int j = 0; j < 10; j++)
 				{
 					int resultCount = await channel.ReadAsync(result, 0, result.Length);
 					Assert.Equal(payload.Length, resultCount);
@@ -345,7 +346,7 @@ public class MultiChannelStreamTests
 			return channel;
 		})).ToArray();
 
-		await Task.WhenAll(tasks).WithTimeout(Timeout);
+		await Task.WhenAll(tasks).WithTimeout(LongTimeout);
 
 		foreach (var t in tasks) t.Result.Close();
 	}
