@@ -215,8 +215,8 @@ yargs.command('test-cs', 'Run C# tests', async (yargs) => {
 		fs.writeFileSync(testConfigFile, JSON.stringify(testConfig, null, '\t'));
 	}
 
-	// A date-time suffix will automatically be appended to the TRX filename.
-	const trxBaseFileName = path.join(testResultsDir, 'SSH-CS.trx');
+	const targetAppFramework = getTargetAppFramework(yargs.argv.framework);
+	const trxBaseFileName = path.join(testResultsDir, `SSH-CS-${targetAppFramework}.trx`);
 
 	const verbosity = yargs.argv.verbosity || 'normal';
 	let command =
@@ -227,7 +227,7 @@ yargs.command('test-cs', 'Run C# tests', async (yargs) => {
 		` -l:"trx;LogFileName=${trxBaseFileName}"`;
 
 	if (yargs.argv.framework) {
-		command += ` --framework ${getTargetAppFramework(yargs.argv.framework)}`;
+		command += ` --framework ${targetAppFramework}`;
 	}
 	if (yargs.argv.filter) {
 		command += ` --filter ${yargs.argv.filter}`;

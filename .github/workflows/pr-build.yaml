@@ -77,6 +77,13 @@ jobs:
         run: npm run test-cs -- --release --serial --framework net6.0
         continue-on-error: true
 
+      - name: Publish test results
+        uses: dorny/test-reporter@v1
+        with:
+          name: test (${{ runner.os }})
+          path: out/TestResults/*.trx
+          reporter: dotnet-trx
+
       - name: Start SSH debug session
         uses: mxschmitt/action-tmate@v3
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.debug_enabled }}
