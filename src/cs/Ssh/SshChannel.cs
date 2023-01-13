@@ -647,7 +647,7 @@ public class SshChannel : IDisposable
 				{
 					this.localClosed = true;
 					var closedMessage = RaiseClosedEvent();
-					RequestCompletionSourcesSetException(new SshChannelException(closedMessage));
+					CancelPendingRequests();
 				}
 
 				DisposeInternal();
@@ -658,7 +658,7 @@ public class SshChannel : IDisposable
 				Trace.TraceEvent(
 					TraceEventType.Error,
 					SshTraceEventIds.ChannelCloseFailed,
-					$"Channel close failed with exception ${ex.ToString()}.");
+					$"Channel close failed with exception {ex}.");
 				DisposeInternal();
 				if (ex is ObjectDisposedException)
 				{
@@ -730,7 +730,7 @@ public class SshChannel : IDisposable
 		{
 			this.localClosed = true;
 			var closedMessage = RaiseClosedEvent(closedByRemote: true);
-			RequestCompletionSourcesSetException(new SshChannelException(closedMessage));
+			CancelPendingRequests();
 		}
 
 		DisposeInternal();
@@ -834,7 +834,7 @@ public class SshChannel : IDisposable
 
 		this.disposed = true;
 
-		RequestCompletionSourcesSetException(new ObjectDisposedException(GetType().Name));
+		CancelPendingRequests();
 
 		this.connectionService.RemoveChannel(this);
 		this.sendSemaphore.Dispose();
@@ -843,11 +843,10 @@ public class SshChannel : IDisposable
 		this.taskChain.Dispose();
 	}
 
-	private void RequestCompletionSourcesSetException(Exception ex)
-	{
+	private void CancelPendingRequests() {
 		foreach (var completion in this.requestCompletionSources)
 		{
-			completion.TrySetException(ex);
+			completion.TrySetResult(false);
 		}
 	}
 

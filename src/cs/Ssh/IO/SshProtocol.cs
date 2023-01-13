@@ -725,7 +725,7 @@ internal class SshProtocol : IDisposable
 		}
 		finally
 		{
-			this.sessionSemaphore.Release();
+			this.sessionSemaphore.TryRelease();
 		}
 
 		await ConsiderReExchangeAsync(initial: false, cancellation).ConfigureAwait(false);

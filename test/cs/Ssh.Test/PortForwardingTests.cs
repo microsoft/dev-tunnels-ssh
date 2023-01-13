@@ -836,8 +836,9 @@ public class PortForwardingTests : IDisposable
 			var readBuffer = new byte[1];
 			var ioex = await Assert.ThrowsAsync<IOException>(async () =>
 			{
-				await (remoteEnd ? localStream : remoteStream).ReadAsync(
+				var result = await (remoteEnd ? localStream : remoteStream).ReadAsync(
 					readBuffer, 0, readBuffer.Length).WithTimeout(Timeout);
+				throw new InvalidOperationException($"Read returned {result} bytes.");
 			});
 			Assert.IsType<SocketException>(ioex.InnerException);
 

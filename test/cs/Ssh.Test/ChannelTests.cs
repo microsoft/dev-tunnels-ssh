@@ -397,25 +397,25 @@ public class ChannelTests : IDisposable
 
 				if (e.RequestType == "close")
 				{
-						// Close the channel while handling the request.
-						_ = ce.Channel.CloseAsync();
+					// Close the channel while handling the request.
+					e.ResponseTask = Task.Run<SshMessage>(async () =>
+					{
+						await ce.Channel.CloseAsync();
+						return new ChannelSuccessMessage();
+					});
 				}
 			};
 		};
 
 		var clientChannel = await this.clientSession.OpenChannelAsync(null, this.timeoutToken).WithTimeout(Timeout);
 
-		var closedCompletion = new TaskCompletionSource<bool>();
-		clientChannel.Closed += (_, __) => closedCompletion.SetResult(true);
-
 		// The request should not throw an exception if the channel was closed by the request handler.
 		var closeRequest = new ChannelRequestMessage { RequestType = "close", WantReply = true };
 		var closeResponse = await clientChannel.RequestAsync(closeRequest);
+		Assert.False(closeResponse);
 
-		Assert.True(closeResponse);
-
-		// The channel should be closed shortly after receiving the response from the request.
-		Assert.True(await closedCompletion.Task.WithTimeout(Timeout));
+		// The channel should be closed after receiving the response from the request.
+		Assert.True(clientChannel.IsClosed);
 
 		// Open another channel and send a request on that channel.
 		clientChannel = await this.clientSession.OpenChannelAsync(null, this.timeoutToken);
