@@ -102,6 +102,12 @@ public class InteropTests
 		config.PublicKeyAlgorithms.Add(SshAlgorithms.PublicKey.ECDsaSha2Nistp521);
 
 		var kexAlgorithm = config.KeyExchangeAlgorithms.Single((a) => a?.Name == kexAlgorithmName);
+		if (!kexAlgorithm.IsAvailable)
+		{
+			throw new PlatformNotSupportedException(
+				$"Algorithm '{kexAlgorithmName}' is not available.");
+		}
+
 		config.KeyExchangeAlgorithms.Clear();
 		config.KeyExchangeAlgorithms.Add(kexAlgorithm);
 
@@ -123,7 +129,8 @@ public class InteropTests
 
 #if SSH_ENABLE_AESGCM
 		// Enable AES-GCM for a subset of test cases. Not all, to keep coverage of HMAC algs.
-		if (publicKeyAlgorithmName.StartsWith("ecdsa-"))
+		if (publicKeyAlgorithmName.StartsWith("ecdsa-") &&
+			SshAlgorithms.Encryption.Aes256Gcm.IsAvailable)
 		{
 			config.EncryptionAlgorithms.Clear();
 			config.EncryptionAlgorithms.Add(SshAlgorithms.Encryption.Aes256Gcm);
@@ -683,6 +690,12 @@ public class InteropTests
 		config.PublicKeyAlgorithms.Add(SshAlgorithms.PublicKey.ECDsaSha2Nistp521);
 
 		var kexAlgorithm = config.KeyExchangeAlgorithms.Single((a) => a?.Name == kexAlgorithmName);
+		if (!kexAlgorithm.IsAvailable)
+		{
+			throw new PlatformNotSupportedException(
+				$"Algorithm '{kexAlgorithmName}' is not available.");
+		}
+
 		config.KeyExchangeAlgorithms.Clear();
 		config.KeyExchangeAlgorithms.Add(kexAlgorithm);
 
@@ -702,7 +715,8 @@ public class InteropTests
 
 #if SSH_ENABLE_AESGCM
 		// Enable AES-GCM for a subset of test cases. Not all, to keep coverage of HMAC algs.
-		if (publicKeyAlgorithmName.StartsWith("ecdsa-"))
+		if (publicKeyAlgorithmName.StartsWith("ecdsa-") &&
+			SshAlgorithms.Encryption.Aes256Gcm.IsAvailable)
 		{
 			config.EncryptionAlgorithms.Clear();
 			config.EncryptionAlgorithms.Add(SshAlgorithms.Encryption.Aes256Gcm);

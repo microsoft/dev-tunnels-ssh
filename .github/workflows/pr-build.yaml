@@ -4,7 +4,7 @@ on:
   pull_request:
     branches:
       - main
-  workflow_dispatch: # Enable manually starting a build
+  workflow_dispatch: # Enable manually starting a build, with optional input parameters
     inputs:
       debug_enabled:
         type: boolean
@@ -79,7 +79,6 @@ jobs:
 
       - name: Start SSH debug session
         uses: mxschmitt/action-tmate@v3
-        if: matrix.os == 'macOS-latest'
-        #if: ${{ github.event_name == 'workflow_dispatch' && inputs.debug_enabled }}
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.debug_enabled }}
         with:
             limit-access-to-actor: true

@@ -37,8 +37,16 @@ class SessionPair : IDisposable
 		ServerStream = new MockNetworkStream(serverStream);
 		ClientStream = new MockNetworkStream(clientStream);
 
-		ServerKey = SshAlgorithms.PublicKey.ECDsaSha2Nistp384.GenerateKeyPair();
-		ClientKey = SshAlgorithms.PublicKey.ECDsaSha2Nistp384.GenerateKeyPair();
+		if (SshAlgorithms.PublicKey.ECDsaSha2Nistp384.IsAvailable)
+		{
+			ServerKey = SshAlgorithms.PublicKey.ECDsaSha2Nistp384.GenerateKeyPair();
+			ClientKey = SshAlgorithms.PublicKey.ECDsaSha2Nistp384.GenerateKeyPair();
+		}
+		else
+		{
+			ServerKey = SshAlgorithms.PublicKey.RsaWithSha256.GenerateKeyPair();
+			ClientKey = SshAlgorithms.PublicKey.RsaWithSha256.GenerateKeyPair();
+		}
 
 		ServerSession = new SshServerSession(serverConfig, disconnectedSessions, Trace);
 		ServerSession.Credentials = new[] { ServerKey };

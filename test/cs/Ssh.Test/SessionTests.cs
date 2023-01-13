@@ -31,8 +31,11 @@ public class SessionTests : IDisposable
 		var config = new SshSessionConfiguration();
 
 #if SSH_ENABLE_AESGCM
-		config.EncryptionAlgorithms.Clear();
-		config.EncryptionAlgorithms.Add(SshAlgorithms.Encryption.Aes256Gcm);
+		if (SshAlgorithms.Encryption.Aes256Gcm.IsAvailable)
+		{
+			config.EncryptionAlgorithms.Clear();
+			config.EncryptionAlgorithms.Add(SshAlgorithms.Encryption.Aes256Gcm);
+		}
 #endif
 
 		this.sessionPair = new SessionPair(config);
