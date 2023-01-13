@@ -80,7 +80,7 @@ jobs:
       - name: Publish test results
         uses: dorny/test-reporter@v1
         with:
-          name: test (${{ runner.os }})
+          name: Test SSH on ${{ matrix.os }}
           path: out/TestResults/*.trx
           reporter: dotnet-trx
 

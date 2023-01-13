@@ -328,7 +328,7 @@ public class InteropTests
 	/// and validates that the client can connect, encrypt, and authenticate the session.
 	/// </summary>
 	/// <param name="reconnect">True to test interop of the session reconnect protocol.</param>
-	[Theory]
+	[SkippableTheory(typeof(PlatformNotSupportedException))]
 	[InlineData("diffie-hellman-group14-sha256", ECDsa.ECDsaSha2Nistp521, "hmac-sha2-512", false)]
 	[InlineData("diffie-hellman-group14-sha256", Rsa.RsaWithSha512, "hmac-sha2-512", true)]
 	[InlineData("diffie-hellman-group16-sha512", Rsa.RsaWithSha512, "hmac-sha2-512-etm@openssh.com", false)]
