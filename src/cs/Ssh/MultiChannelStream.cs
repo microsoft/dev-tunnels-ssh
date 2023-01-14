@@ -232,7 +232,7 @@ public class MultiChannelStream : IDisposable
 		string? channelType,
 		CancellationToken cancellation = default)
 	{
-		await this.session.ConnectAsync(this.transportStream, cancellation).ConfigureAwait(false);
+		await ConnectAsync(cancellation).ConfigureAwait(false);
 		var channel = await this.session.AcceptChannelAsync(channelType, cancellation)
 			.ConfigureAwait(false);
 		return channel;
@@ -333,9 +333,7 @@ public class MultiChannelStream : IDisposable
 	/// </summary>
 	public async Task CloseAsync()
 	{
-		await this.session.CloseAsync(
-			SshDisconnectReason.None,
-			$"{nameof(MultiChannelStream)} disposed.").ConfigureAwait(false);
+		await this.session.CloseAsync(SshDisconnectReason.None, this.session.GetType().Name + " disposed").ConfigureAwait(false);
 		this.session.Dispose();
 
 #if !NETSTANDARD2_0 && !NET4
