@@ -370,13 +370,7 @@ public class PortForwardingTests : IDisposable
 			await (remoteError ? serverForwardingChannel : clientForwardingChannel).CloseAsync(
 				"SIGABRT", "Test error.");
 
-			var readBuffer = new byte[1];
-			var ioex = await Assert.ThrowsAsync<IOException>(async () =>
-			{
-				await (remoteError ? localStream : remoteStream).ReadAsync(
-					readBuffer, 0, readBuffer.Length).WithTimeout(Timeout);
-			});
-			Assert.IsType<SocketException>(ioex.InnerException);
+			await AssertSocketStreamClosedAsync(remoteError ? localStream : remoteStream);
 		}
 		finally
 		{
@@ -470,13 +464,7 @@ public class PortForwardingTests : IDisposable
 			(remoteEnd ? this.sessionPair.ServerSession : (SshSession)this.sessionPair.ClientSession)
 				.Dispose();
 
-			var readBuffer = new byte[1];
-			var ioex = await Assert.ThrowsAsync<IOException>(async () =>
-			{
-				await (remoteEnd ? localStream : remoteStream).ReadAsync(
-					readBuffer, 0, readBuffer.Length).WithTimeout(Timeout);
-			});
-			Assert.IsType<SocketException>(ioex.InnerException);
+			await AssertSocketStreamClosedAsync(remoteEnd ? localStream : remoteStream);
 
 			// The channel will be closed asnynchronously.
 			await TaskExtensions.WaitUntil(() => clientForwardingChannel.IsClosed)
@@ -744,13 +732,7 @@ public class PortForwardingTests : IDisposable
 			await (remoteError ? serverForwardingChannel : clientForwardingChannel).CloseAsync(
 				"SIGABRT", "Test error.");
 
-			var readBuffer = new byte[1];
-			var ioex = await Assert.ThrowsAsync<IOException>(async () =>
-			{
-				await (remoteError ? localStream : remoteStream).ReadAsync(
-					readBuffer, 0, readBuffer.Length).WithTimeout(Timeout);
-			});
-			Assert.IsType<SocketException>(ioex.InnerException);
+			await AssertSocketStreamClosedAsync(remoteError ? localStream : remoteStream);
 		}
 		finally
 		{
@@ -833,14 +815,7 @@ public class PortForwardingTests : IDisposable
 			(remoteEnd ? this.sessionPair.ServerSession : (SshSession)this.sessionPair.ClientSession)
 				.Dispose();
 
-			var readBuffer = new byte[1];
-			var ioex = await Assert.ThrowsAsync<IOException>(async () =>
-			{
-				var result = await (remoteEnd ? localStream : remoteStream).ReadAsync(
-					readBuffer, 0, readBuffer.Length).WithTimeout(Timeout);
-				throw new InvalidOperationException($"Read returned {result} bytes.");
-			});
-			Assert.IsType<SocketException>(ioex.InnerException);
+			await AssertSocketStreamClosedAsync(remoteEnd ? localStream : remoteStream);
 
 			// The channel will be closed asnynchronously.
 			await TaskExtensions.WaitUntil(() => forwardingChannel.IsClosed).WithTimeout(Timeout);
@@ -848,6 +823,21 @@ public class PortForwardingTests : IDisposable
 		finally
 		{
 			remoteServer.Stop();
+		}
+	}
+
+	private static async Task AssertSocketStreamClosedAsync(Stream stream)
+	{
+		// The read may return 0 bytes or throw an IOException, depending on timing.
+		var readBuffer = new byte[1];
+		var ioex = await Assert.ThrowsAnyAsync<IOException>(async () =>
+		{
+			var result = await stream.ReadAsync(readBuffer, 0, readBuffer.Length).WithTimeout(Timeout);
+			Assert.Equal(0, result);
+			throw new EndOfStreamException();
+		});
+		if (!(ioex is EndOfStreamException)) {
+			Assert.IsType<SocketException>(ioex.InnerException);
 		}
 	}
 
