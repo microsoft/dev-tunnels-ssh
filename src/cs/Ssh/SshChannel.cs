@@ -843,7 +843,8 @@ public class SshChannel : IDisposable
 		this.taskChain.Dispose();
 	}
 
-	private void CancelPendingRequests() {
+	private void CancelPendingRequests()
+	{
 		foreach (var completion in this.requestCompletionSources)
 		{
 			completion.TrySetResult(false);
