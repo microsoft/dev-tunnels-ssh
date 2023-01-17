@@ -64,17 +64,17 @@ jobs:
         run: npm run test-ts
         continue-on-error: true
 
-      - name: Test .NET Framework
-        if: matrix.os == 'windows-latest'
-        run: npm run test-cs -- --release --serial --framework net48
-        continue-on-error: true
-
-      - name: Test dotnet 3.1
+      - name: Test .NET Core 3.1
         run: npm run test-cs -- --release --serial --framework netcoreapp3.1
         continue-on-error: true
 
-      - name: Test dotnet 6.0
+      - name: Test .NET 6
         run: npm run test-cs -- --release --serial --framework net6.0
+        continue-on-error: true
+
+      - name: Test .NET Framework 4.8
+        if: matrix.os == 'windows-latest'
+        run: npm run test-cs -- --release --serial --framework net48
         continue-on-error: true
 
       - name: Publish test results

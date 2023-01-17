@@ -110,13 +110,6 @@ jobs:
           customCommand: run test-ts -- --release --serial --coverage
 
       - task: Npm@1
-        displayName: Test (.NET Framework)
-        inputs:
-          command: custom
-          verbose: false
-          customCommand: run test-cs -- --release --serial --coverage --framework net48
-
-      - task: Npm@1
         displayName: Test (.NET Core 3.1)
         inputs:
           command: custom
@@ -129,6 +122,13 @@ jobs:
           command: custom
           verbose: false
           customCommand: run test-cs -- --release --serial --coverage --framework net6.0
+
+      - task: Npm@1
+        displayName: Test (.NET Framework 4.8)
+        inputs:
+          command: custom
+          verbose: false
+          customCommand: run test-cs -- --release --serial --coverage --framework net48
 
       - task: PublishSymbols@2
         displayName: Publish symbols
