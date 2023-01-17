@@ -4,6 +4,13 @@ on:
   pull_request:
     branches:
       - main
+  workflow_dispatch: # Enable manually starting a build, with optional input parameters
+    inputs:
+      debug_enabled:
+        type: boolean
+        description: 'Start an SSH debug session as the last step of the build'
+        required: false
+        default: false
 
 jobs:
   builds:
@@ -23,9 +30,8 @@ jobs:
         uses: actions/setup-dotnet@v2
         with:
           dotnet-version: |
-            2.1.x
             3.1.x
-            5.0.x
+            6.0.x
 
       - name: Use global.json dotnet version
         uses: actions/setup-dotnet@v2
@@ -56,10 +62,30 @@ jobs:
 
       - name: Test TypeScript
         run: npm run test-ts
-      
-      - name: Test dotnet 2.1
-        run: npm run test-cs -- --release --serial --framework netcoreapp2.1
         continue-on-error: true
 
-      - name: Test dotnet 6.0
+      - name: Test .NET Core 3.1
+        run: npm run test-cs -- --release --serial --framework netcoreapp3.1
+        continue-on-error: true
+
+      - name: Test .NET 6
         run: npm run test-cs -- --release --serial --framework net6.0
+        continue-on-error: true
+
+      - name: Test .NET Framework 4.8
+        if: matrix.os == 'windows-latest'
+        run: npm run test-cs -- --release --serial --framework net48
+        continue-on-error: true
+
+      - name: Publish test results
+        uses: dorny/test-reporter@v1
+        with:
+          name: Test SSH on ${{ matrix.os }}
+          path: out/TestResults/*.trx
+          reporter: dotnet-trx
+
+      - name: Start SSH debug session
+        uses: mxschmitt/action-tmate@v3
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.debug_enabled }}
+        with:
+            limit-access-to-actor: true

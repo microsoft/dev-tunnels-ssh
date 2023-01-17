@@ -251,7 +251,7 @@ internal class KeyExchangeService : SshService
 				// This means if there was a "guess" at kex initialization then it was correct.
 				bool negotiatedKexAlgorthmIsPreferred =
 					this.exchangeContext.KeyExchange ==
-					Session.Config.KeyExchangeAlgorithms.First()?.Name;
+					Session.Config.AvailableKeyExchangeAlgorithms.FirstOrDefault();
 
 				// If a guess was not sent, or the guess was wrong, send the init message now.
 				if (!alreadySentGuess || !negotiatedKexAlgorthmIsPreferred)
@@ -288,10 +288,12 @@ internal class KeyExchangeService : SshService
 						this.exchangeContext.KeyExchange ==
 						message.KeyExchangeAlgorithms?.FirstOrDefault();
 					var guessResult = (negotiatedKexAlgorthmIsPreferred ? "correct" : "incorrect");
+					var traceMessage = $"Client's {nameof(ExchangeContext.KeyExchange)} guess " +
+						$"({this.exchangeContext.KeyExchange}) was {guessResult}.";
 					Session.Trace.TraceEvent(
 						TraceEventType.Verbose,
 						SshTraceEventIds.AlgorithmNegotiation,
-						$"Client's {nameof(ExchangeContext.KeyExchange)} guess was {guessResult}.");
+						traceMessage);
 					this.exchangeContext.DiscardGuessedInit = !negotiatedKexAlgorthmIsPreferred;
 				}
 
@@ -493,7 +495,9 @@ internal class KeyExchangeService : SshService
 		bool verified = exchangeVerifier.Verify(exchangeHash, signature);
 		if (!verified)
 		{
-			throw new SshConnectionException("Host key verification failed.", SshDisconnectReason.HostKeyNotVerifiable);
+			throw new SshConnectionException(
+				$"Host key verification failed for public-key algorithm: {publicKeyAlg.Name}",
+				SshDisconnectReason.HostKeyNotVerifiable);
 		}
 
 		if (Session.SessionId == null)

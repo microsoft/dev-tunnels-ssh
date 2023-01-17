@@ -53,10 +53,10 @@ on top of it:
 Future development may add support for some of these capabilities, likely in the
 form of additional optional packages.
 
-## C# (.NET Standard)
-.NET Standard 2.0 & 2.1 support means it can be used with .NET Framework 4.7+ on
-Windows or .NET Core 2.0+ on any platform. It's tested on Windows, Mac, & Ubuntu. For
-details about the .NET library, see [src/cs/Ssh/README.md](./src/cs/Ssh/README.md).
+## C# (.NET Framework, .NET Core, .NET 6)
+The C# library targets .NET Framework 4.8, .NET Standard 2.1 (.NET Core 3.1, .NET 5),
+and .NET 6. It's tested on Windows, Mac, & Ubuntu. For details about the .NET library,
+see [src/cs/Ssh/README.md](./src/cs/Ssh/README.md).
 
 ## TypeScript (Node.js or Browser)
 The TypeScript implementation supports either Node.js (>= 14.x) or a browser

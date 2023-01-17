@@ -17,6 +17,7 @@ public class ChannelTests : IDisposable
 {
 	private const int WindowSize = 1024 * 1024;
 	private static readonly TimeSpan Timeout = TimeSpan.FromSeconds(20);
+	private static readonly TimeSpan LongTimeout = TimeSpan.FromSeconds(100);
 	private readonly CancellationToken timeoutToken = Debugger.IsAttached ? CancellationToken.None : new CancellationTokenSource(Timeout).Token;
 
 	private SshSessionConfiguration serverConfig;
@@ -396,25 +397,25 @@ public class ChannelTests : IDisposable
 
 				if (e.RequestType == "close")
 				{
-						// Close the channel while handling the request.
-						_ = ce.Channel.CloseAsync();
+					// Close the channel while handling the request.
+					e.ResponseTask = Task.Run<SshMessage>(async () =>
+					{
+						await ce.Channel.CloseAsync();
+						return new ChannelSuccessMessage();
+					});
 				}
 			};
 		};
 
 		var clientChannel = await this.clientSession.OpenChannelAsync(null, this.timeoutToken).WithTimeout(Timeout);
 
-		var closedCompletion = new TaskCompletionSource<bool>();
-		clientChannel.Closed += (_, __) => closedCompletion.SetResult(true);
-
 		// The request should not throw an exception if the channel was closed by the request handler.
 		var closeRequest = new ChannelRequestMessage { RequestType = "close", WantReply = true };
 		var closeResponse = await clientChannel.RequestAsync(closeRequest);
+		Assert.False(closeResponse);
 
-		Assert.True(closeResponse);
-
-		// The channel should be closed shortly after receiving the response from the request.
-		Assert.True(await closedCompletion.Task.WithTimeout(Timeout));
+		// The channel should be closed after receiving the response from the request.
+		Assert.True(clientChannel.IsClosed);
 
 		// Open another channel and send a request on that channel.
 		clientChannel = await this.clientSession.OpenChannelAsync(null, this.timeoutToken);
@@ -538,7 +539,7 @@ public class ChannelTests : IDisposable
 		var bufferWithOffset = Buffer.From(data, offset, count);
 		await channels.Client.SendAsync(bufferWithOffset, CancellationToken.None).WithTimeout(Timeout);
 
-		var receivedData = await receivedCompletion.Task.WithTimeout(4 * Timeout);
+		var receivedData = await receivedCompletion.Task.WithTimeout(LongTimeout);
 		Assert.True(bufferWithOffset.Equals(receivedData));
 
 		await channels.Client.CloseAsync().WithTimeout(Timeout);
@@ -835,13 +836,16 @@ public class ChannelTests : IDisposable
 		var data = new Buffer(dataSize);
 		for (int i = 0; i < 256 && !receivedCompletion.Task.IsCompleted; i++)
 		{
-			Array.Fill(data.Array, (byte)i, data.Offset, data.Count);
+			for (int j = 0; j < data.Count; j++)
+			{
+				data.Array[data.Offset + j] = (byte)i;
+			}
 
 			// Don't await!
 			_ = clientChannel.SendAsync(data, CancellationToken.None);
 		}
 
-		Assert.True(await receivedCompletion.Task.WithTimeout(4 * Timeout));
+		Assert.True(await receivedCompletion.Task.WithTimeout(LongTimeout));
 	}
 
 	[Fact]

@@ -102,6 +102,12 @@ public class InteropTests
 		config.PublicKeyAlgorithms.Add(SshAlgorithms.PublicKey.ECDsaSha2Nistp521);
 
 		var kexAlgorithm = config.KeyExchangeAlgorithms.Single((a) => a?.Name == kexAlgorithmName);
+		if (!kexAlgorithm.IsAvailable)
+		{
+			throw new PlatformNotSupportedException(
+				$"Algorithm '{kexAlgorithmName}' is not available.");
+		}
+
 		config.KeyExchangeAlgorithms.Clear();
 		config.KeyExchangeAlgorithms.Add(kexAlgorithm);
 
@@ -123,7 +129,8 @@ public class InteropTests
 
 #if SSH_ENABLE_AESGCM
 		// Enable AES-GCM for a subset of test cases. Not all, to keep coverage of HMAC algs.
-		if (publicKeyAlgorithmName.StartsWith("ecdsa-"))
+		if (publicKeyAlgorithmName.StartsWith("ecdsa-") &&
+			SshAlgorithms.Encryption.Aes256Gcm.IsAvailable)
 		{
 			config.EncryptionAlgorithms.Clear();
 			config.EncryptionAlgorithms.Add(SshAlgorithms.Encryption.Aes256Gcm);
@@ -237,6 +244,7 @@ public class InteropTests
 			{
 				RedirectStandardOutput = true,
 				RedirectStandardError = true,
+				UseShellExecute = false,
 			};
 
 			DataReceivedEventHandler dataReceivedHandler = (sender, e) =>
@@ -320,7 +328,7 @@ public class InteropTests
 	/// and validates that the client can connect, encrypt, and authenticate the session.
 	/// </summary>
 	/// <param name="reconnect">True to test interop of the session reconnect protocol.</param>
-	[Theory]
+	[SkippableTheory(typeof(PlatformNotSupportedException))]
 	[InlineData("diffie-hellman-group14-sha256", ECDsa.ECDsaSha2Nistp521, "hmac-sha2-512", false)]
 	[InlineData("diffie-hellman-group14-sha256", Rsa.RsaWithSha512, "hmac-sha2-512", true)]
 	[InlineData("diffie-hellman-group16-sha512", Rsa.RsaWithSha512, "hmac-sha2-512-etm@openssh.com", false)]
@@ -384,6 +392,7 @@ public class InteropTests
 			{
 				RedirectStandardOutput = true,
 				RedirectStandardError = true,
+				UseShellExecute = false,
 			};
 
 			DataReceivedEventHandler dataReceivedHandler = (sender, e) =>
@@ -412,7 +421,7 @@ public class InteropTests
 				catch (Exception ex) when (ex is SocketException ||
 					(ex is SshConnectionException ce &&
 					ce.DisconnectReason == SshDisconnectReason.ConnectionLost) ||
-					ex.Message.Contains("connection", StringComparison.OrdinalIgnoreCase))
+					ex.Message.IndexOf("connection", StringComparison.OrdinalIgnoreCase) >= 0)
 				{
 					if (i >= 9) throw;
 
@@ -534,6 +543,7 @@ public class InteropTests
 			{
 				RedirectStandardOutput = true,
 				RedirectStandardError = true,
+				UseShellExecute = false,
 			};
 
 			DataReceivedEventHandler dataReceivedHandler = (sender, e) =>
@@ -597,6 +607,7 @@ public class InteropTests
 			{
 				RedirectStandardOutput = true,
 				RedirectStandardError = true,
+				UseShellExecute = false,
 			};
 
 			bool foundTestCommand = false;
@@ -679,6 +690,12 @@ public class InteropTests
 		config.PublicKeyAlgorithms.Add(SshAlgorithms.PublicKey.ECDsaSha2Nistp521);
 
 		var kexAlgorithm = config.KeyExchangeAlgorithms.Single((a) => a?.Name == kexAlgorithmName);
+		if (!kexAlgorithm.IsAvailable)
+		{
+			throw new PlatformNotSupportedException(
+				$"Algorithm '{kexAlgorithmName}' is not available.");
+		}
+
 		config.KeyExchangeAlgorithms.Clear();
 		config.KeyExchangeAlgorithms.Add(kexAlgorithm);
 
@@ -698,7 +715,8 @@ public class InteropTests
 
 #if SSH_ENABLE_AESGCM
 		// Enable AES-GCM for a subset of test cases. Not all, to keep coverage of HMAC algs.
-		if (publicKeyAlgorithmName.StartsWith("ecdsa-"))
+		if (publicKeyAlgorithmName.StartsWith("ecdsa-") &&
+			SshAlgorithms.Encryption.Aes256Gcm.IsAvailable)
 		{
 			config.EncryptionAlgorithms.Clear();
 			config.EncryptionAlgorithms.Add(SshAlgorithms.Encryption.Aes256Gcm);
@@ -816,13 +834,15 @@ public class InteropTests
 		if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
 		{
 			var pathEnv = Environment.GetEnvironmentVariable("PATH") ?? string.Empty;
-			foreach (string dir in pathEnv.Split(
-				Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries))
+			foreach (string dir in pathEnv.Split(Path.PathSeparator))
 			{
-				var dirAndName = Path.Combine(dir, name);
-				if (File.Exists(dirAndName))
+				if (!string.IsNullOrEmpty(dir))
 				{
-					return dirAndName;
+					var dirAndName = Path.Combine(dir, name);
+					if (File.Exists(dirAndName))
+					{
+						return dirAndName;
+					}
 				}
 			}
 
@@ -865,7 +885,12 @@ public class InteropTests
 
 	private static string GetRepoRoot()
 	{
+#if NET4
+		var rootDir = Path.GetDirectoryName(
+			new Uri(typeof(InteropTests).Assembly.CodeBase).AbsolutePath);
+#else
 		var rootDir = Path.GetDirectoryName(typeof(InteropTests).Assembly.Location);
+#endif
 		while (!File.Exists(Path.Combine(rootDir, "SSH.sln")))
 		{
 			rootDir = Path.GetDirectoryName(rootDir);

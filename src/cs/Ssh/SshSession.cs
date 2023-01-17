@@ -1109,7 +1109,7 @@ public class SshSession : IDisposable
 		}
 		finally
 		{
-			sessionRequestSemaphore.Release();
+			sessionRequestSemaphore.TryRelease();
 		}
 
 		return await requestHandler.CompletionSource.Task.ConfigureAwait(false);

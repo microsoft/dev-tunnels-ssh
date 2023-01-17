@@ -123,9 +123,9 @@ public class MetricsTests : IDisposable
 
 		void ValidateLatency(SessionMetrics metrics)
 		{
-			Assert.NotEqual(0, metrics.LatencyMinMs);
-			Assert.NotEqual(0, metrics.LatencyAverageMs);
 			Assert.NotEqual(0, metrics.LatencyMaxMs);
+			Assert.NotEqual(0, metrics.LatencyAverageMs);
+			Assert.NotEqual(0, metrics.LatencyMinMs);
 			Assert.NotEqual(0, metrics.LatencyCurrentMs);
 			Assert.True(metrics.LatencyMinMs <= metrics.LatencyAverageMs);
 			Assert.True(metrics.LatencyAverageMs <= metrics.LatencyMaxMs);

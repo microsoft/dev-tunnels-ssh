@@ -241,7 +241,7 @@ internal class ChannelForwarder : IDisposable
 		Exception? ex = null;
 		try
 		{
-#if NETSTANDARD2_0
+#if NETSTANDARD2_0 || NET4
 			count = await this.stream.ReadAsync(
 				buffer.Array, buffer.Offset, buffer.Count, cancellation).ConfigureAwait(false);
 #else
@@ -263,23 +263,39 @@ internal class ChannelForwarder : IDisposable
 			return false;
 		}
 
+		// Do not use the (dispose) cancellation token when writing to the channel, because
+		// an interrupted write can cause the whole SSH session to disconnect.
 		if (count > 0)
 		{
-			await Channel.SendAsync(buffer.Slice(0, count), cancellation).ConfigureAwait(false);
+			await Channel.SendAsync(buffer.Slice(0, count), CancellationToken.None)
+				.ConfigureAwait(false);
 			return true;
 		}
 		else if (ex == null)
 		{
 			string message = "Channel forwarder reached end of stream.";
 			this.trace.TraceEvent(TraceEventType.Verbose, SshTraceEventIds.ChannelClosed, message);
-			await Channel.SendAsync(Buffer.Empty, cancellation).ConfigureAwait(false);
-			await Channel.CloseAsync(cancellation).ConfigureAwait(false);
+			try
+			{
+				await Channel.SendAsync(Buffer.Empty, CancellationToken.None).ConfigureAwait(false);
+				await Channel.CloseAsync(CancellationToken.None).ConfigureAwait(false);
+			}
+			catch (OperationCanceledException)
+			{
+			}
 		}
 		else
 		{
 			string message = $"Channel forwarder stream read error: {ex.Message}";
 			this.trace.TraceEvent(TraceEventType.Verbose, SshTraceEventIds.ChannelClosed, message);
-			await Channel.CloseAsync("SIGABRT", ex.Message, cancellation).ConfigureAwait(false);
+			try
+			{
+				await Channel.CloseAsync("SIGABRT", ex.Message, CancellationToken.None)
+					.ConfigureAwait(false);
+			}
+			catch (OperationCanceledException)
+			{
+			}
 		}
 
 		return false;

@@ -214,7 +214,7 @@ public class PortForwardingTests : IDisposable
 	[InlineData("0.0.0.0", "127.0.0.1", "localhost", "127.0.0.1")]
 	[InlineData("127.0.0.1", "127.0.0.1", "127.0.0.1", "127.0.0.1")]
 	[InlineData("127.0.0.1", "127.0.0.1", "localhost", "127.0.0.1")]
-#if !NETCOREAPP2_1
+#if !NETCOREAPP2_1 && !NET4
 	[InlineData("0.0.0.0", "::1", "::1", "::1")]
 	[InlineData("127.0.0.1", "::1", "localhost", "::1")]
 	[InlineData("::", "::1", "localhost", "::1")]
@@ -250,8 +250,8 @@ public class PortForwardingTests : IDisposable
 			var localStream = localClient.GetStream();
 
 			var writeBuffer = new byte[] { 1, 2, 3 };
-			await remoteStream.WriteAsync(writeBuffer);
-			await localStream.WriteAsync(writeBuffer);
+			await remoteStream.WriteAsync(writeBuffer, 0, writeBuffer.Length);
+			await localStream.WriteAsync(writeBuffer, 0, writeBuffer.Length);
 
 			var readBuffer = new byte[10];
 			int count = await localStream.ReadAsync(readBuffer, 0, readBuffer.Length)
@@ -370,13 +370,7 @@ public class PortForwardingTests : IDisposable
 			await (remoteError ? serverForwardingChannel : clientForwardingChannel).CloseAsync(
 				"SIGABRT", "Test error.");
 
-			var readBuffer = new byte[1];
-			var ioex = await Assert.ThrowsAsync<IOException>(async () =>
-			{
-				await (remoteError ? localStream : remoteStream).ReadAsync(
-					readBuffer, 0, readBuffer.Length).WithTimeout(Timeout);
-			});
-			Assert.IsType<SocketException>(ioex.InnerException);
+			await AssertSocketStreamClosedAsync(remoteError ? localStream : remoteStream);
 		}
 		finally
 		{
@@ -470,13 +464,7 @@ public class PortForwardingTests : IDisposable
 			(remoteEnd ? this.sessionPair.ServerSession : (SshSession)this.sessionPair.ClientSession)
 				.Dispose();
 
-			var readBuffer = new byte[1];
-			var ioex = await Assert.ThrowsAsync<IOException>(async () =>
-			{
-				await (remoteEnd ? localStream : remoteStream).ReadAsync(
-					readBuffer, 0, readBuffer.Length).WithTimeout(Timeout);
-			});
-			Assert.IsType<SocketException>(ioex.InnerException);
+			await AssertSocketStreamClosedAsync(remoteEnd ? localStream : remoteStream);
 
 			// The channel will be closed asnynchronously.
 			await TaskExtensions.WaitUntil(() => clientForwardingChannel.IsClosed)
@@ -583,7 +571,7 @@ public class PortForwardingTests : IDisposable
 	[InlineData("0.0.0.0", "127.0.0.1", "localhost", "127.0.0.1")]
 	[InlineData("127.0.0.1", "127.0.0.1", "127.0.0.1", "127.0.0.1")]
 	[InlineData("127.0.0.1", "127.0.0.1", "localhost", "127.0.0.1")]
-#if !NETCOREAPP2_1
+#if !NETCOREAPP2_1 && !NET4
 	[InlineData("127.0.0.1", "::1", "localhost", "::1")]
 	[InlineData("::1", "::1", "::1", "::1")]
 	[InlineData("::1", "::1", "localhost", "::1")]
@@ -626,8 +614,8 @@ public class PortForwardingTests : IDisposable
 			Assert.NotNull(forwardingChannel);
 
 			var writeBuffer = new byte[] { 1, 2, 3 };
-			await remoteStream.WriteAsync(writeBuffer);
-			await localStream.WriteAsync(writeBuffer);
+			await remoteStream.WriteAsync(writeBuffer, 0, writeBuffer.Length);
+			await localStream.WriteAsync(writeBuffer, 0, writeBuffer.Length);
 
 			var readBuffer = new byte[10];
 			int count = await localStream.ReadAsync(readBuffer, 0, readBuffer.Length)
@@ -744,13 +732,7 @@ public class PortForwardingTests : IDisposable
 			await (remoteError ? serverForwardingChannel : clientForwardingChannel).CloseAsync(
 				"SIGABRT", "Test error.");
 
-			var readBuffer = new byte[1];
-			var ioex = await Assert.ThrowsAsync<IOException>(async () =>
-			{
-				await (remoteError ? localStream : remoteStream).ReadAsync(
-					readBuffer, 0, readBuffer.Length).WithTimeout(Timeout);
-			});
-			Assert.IsType<SocketException>(ioex.InnerException);
+			await AssertSocketStreamClosedAsync(remoteError ? localStream : remoteStream);
 		}
 		finally
 		{
@@ -833,13 +815,7 @@ public class PortForwardingTests : IDisposable
 			(remoteEnd ? this.sessionPair.ServerSession : (SshSession)this.sessionPair.ClientSession)
 				.Dispose();
 
-			var readBuffer = new byte[1];
-			var ioex = await Assert.ThrowsAsync<IOException>(async () =>
-			{
-				await (remoteEnd ? localStream : remoteStream).ReadAsync(
-					readBuffer, 0, readBuffer.Length).WithTimeout(Timeout);
-			});
-			Assert.IsType<SocketException>(ioex.InnerException);
+			await AssertSocketStreamClosedAsync(remoteEnd ? localStream : remoteStream);
 
 			// The channel will be closed asnynchronously.
 			await TaskExtensions.WaitUntil(() => forwardingChannel.IsClosed).WithTimeout(Timeout);
@@ -847,6 +823,21 @@ public class PortForwardingTests : IDisposable
 		finally
 		{
 			remoteServer.Stop();
+		}
+	}
+
+	private static async Task AssertSocketStreamClosedAsync(Stream stream)
+	{
+		// The read may return 0 bytes or throw an IOException, depending on timing.
+		var readBuffer = new byte[1];
+		var ioex = await Assert.ThrowsAnyAsync<IOException>(async () =>
+		{
+			var result = await stream.ReadAsync(readBuffer, 0, readBuffer.Length).WithTimeout(Timeout);
+			Assert.Equal(0, result);
+			throw new EndOfStreamException();
+		});
+		if (!(ioex is EndOfStreamException)) {
+			Assert.IsType<SocketException>(ioex.InnerException);
 		}
 	}
 
@@ -869,8 +860,8 @@ public class PortForwardingTests : IDisposable
 			var remoteStream = remoteClient.GetStream();
 
 			var writeBuffer = new byte[] { 1, 2, 3 };
-			await remoteStream.WriteAsync(writeBuffer);
-			await localStream.WriteAsync(writeBuffer);
+			await remoteStream.WriteAsync(writeBuffer, 0, writeBuffer.Length);
+			await localStream.WriteAsync(writeBuffer, 0, writeBuffer.Length);
 
 			var readBuffer = new byte[10];
 			int count = await localStream.ReadAsync(readBuffer, 0, readBuffer.Length)
@@ -938,8 +929,8 @@ public class PortForwardingTests : IDisposable
 		var localStream = await openCompletion.Task.WithTimeout(Timeout);
 
 		var writeBuffer = new byte[] { 1, 2, 3 };
-		await remoteStream.WriteAsync(writeBuffer);
-		await localStream.WriteAsync(writeBuffer);
+		await remoteStream.WriteAsync(writeBuffer, 0, writeBuffer.Length);
+		await localStream.WriteAsync(writeBuffer, 0, writeBuffer.Length);
 
 		var readBuffer = new byte[10];
 		int count = await localStream.ReadAsync(readBuffer, 0, readBuffer.Length)

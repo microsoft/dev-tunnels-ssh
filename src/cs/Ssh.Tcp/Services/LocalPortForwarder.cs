@@ -271,14 +271,15 @@ public class LocalPortForwarder : SshService
 		{
 			try
 			{
+				this.disposeCancellationSource.Cancel();
+			}
+			catch (ObjectDisposedException) { }
+
+			try
+			{
 				// Note stopping the listener does NOT disconnect any already-accepted sockets.
 				this.listener?.Stop();
 				this.listener2?.Stop();
-			}
-			catch (ObjectDisposedException) { }
-			try
-			{
-				this.disposeCancellationSource.Cancel();
 			}
 			catch (ObjectDisposedException) { }
 

@@ -129,8 +129,15 @@ public class MultiChannelStream : IDisposable
 	/// error.</exception>
 	/// <exception cref="TimeoutException">The ConnectTimeout property is set and the initial
 	/// version exchange could not be completed within the timeout.</exception>
-	public Task ConnectAsync(CancellationToken cancellation = default) =>
-		this.session.ConnectAsync(this.transportStream, cancellation);
+	public Task ConnectAsync(CancellationToken cancellation = default)
+	{
+		// Activate the connection service (support for opening channels) before connecting.
+		// This ensures that a channel request immediately after connection can be handled.
+		// In a normal session this would be activated after key-exchange and authentication.
+		this.session.ActivateService<ConnectionService>();
+
+		return this.session.ConnectAsync(this.transportStream, cancellation);
+	}
 
 	/// <summary>
 	/// Connects, waits until the session closes or <paramref name="cancellation"/> is cancelled, and then disposes the session and the transport stream.
@@ -152,7 +159,9 @@ public class MultiChannelStream : IDisposable
 		try
 		{
 			await ConnectAsync(cancellation).ConfigureAwait(false);
-			using var tokenRegistration = cancellation.CanBeCanceled ? cancellation.Register(() => tcs.TrySetCanceled(cancellation)) : default;
+
+			using var tokenRegistration = cancellation.CanBeCanceled ?
+				cancellation.Register(() => tcs.TrySetCanceled(cancellation)) : default;
 
 			var disconnectReason = await tcs.Task.ConfigureAwait(false);
 			if (disconnectReason != SshDisconnectReason.ByApplication && disconnectReason != SshDisconnectReason.None)
@@ -167,7 +176,8 @@ public class MultiChannelStream : IDisposable
 		}
 		catch (Exception exception)
 		{
-			var reason = exception is SshConnectionException connectionException ? connectionException.DisconnectReason : SshDisconnectReason.ConnectionLost;
+			var reason = exception is SshConnectionException connectionException ?
+				connectionException.DisconnectReason : SshDisconnectReason.ConnectionLost;
 			await this.session.CloseAsync(reason, exception).ConfigureAwait(false);
 			throw;
 		}
@@ -222,7 +232,7 @@ public class MultiChannelStream : IDisposable
 		string? channelType,
 		CancellationToken cancellation = default)
 	{
-		await this.session.ConnectAsync(this.transportStream, cancellation).ConfigureAwait(false);
+		await ConnectAsync(cancellation).ConfigureAwait(false);
 		var channel = await this.session.AcceptChannelAsync(channelType, cancellation)
 			.ConfigureAwait(false);
 		return channel;
@@ -326,7 +336,7 @@ public class MultiChannelStream : IDisposable
 		await this.session.CloseAsync(SshDisconnectReason.None, this.session.GetType().Name + " disposed").ConfigureAwait(false);
 		this.session.Dispose();
 
-#if !NETSTANDARD2_0
+#if !NETSTANDARD2_0 && !NET4
 		await this.transportStream.DisposeAsync().ConfigureAwait(false);
 #else
 		this.transportStream.Dispose();
