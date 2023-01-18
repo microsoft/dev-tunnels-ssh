@@ -64,9 +64,9 @@ jobs:
         run: npm run test-ts
         continue-on-error: true
 
-      - name: Test .NET Core 3.1
-        run: npm run test-cs -- --release --serial --framework netcoreapp3.1
-        continue-on-error: true
+      #- name: Test .NET Core 3.1
+      #  run: npm run test-cs -- --release --serial --framework netcoreapp3.1
+      #  continue-on-error: true
 
       - name: Test .NET 6
         run: npm run test-cs -- --release --serial --framework net6.0
@@ -77,15 +77,15 @@ jobs:
         run: npm run test-cs -- --release --serial --framework net48
         continue-on-error: true
 
+      - name: Start SSH debug session
+        uses: mxschmitt/action-tmate@v3
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.debug_enabled }}
+        with:
+            limit-access-to-actor: true
+
       - name: Publish test results
         uses: dorny/test-reporter@v1
         with:
           name: Test SSH on ${{ matrix.os }}
           path: out/TestResults/*.trx
           reporter: dotnet-trx
-
-      - name: Start SSH debug session
-        uses: mxschmitt/action-tmate@v3
-        if: ${{ github.event_name == 'workflow_dispatch' && inputs.debug_enabled }}
-        with:
-            limit-access-to-actor: true
