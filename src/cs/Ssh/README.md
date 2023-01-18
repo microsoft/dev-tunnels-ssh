@@ -117,8 +117,13 @@ server.SessionAuthenticating += (_, e) =>
 };
 
 // Handle channel command requests.
-server.ChannelRequest += (_, e) =>
+server.ChannelRequest += (c, e) =>
 {
+    if (c is not SshChannel channel)
+    {
+      return;
+    }
+
     if (e.RequestType == ChannelRequestTypes.Command)
     {
         var commandRequest = e.Request.ConvertTo<CommandRequestMessage>();
