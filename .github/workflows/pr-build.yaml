@@ -1,4 +1,4 @@
-name: PR Build
+name: SSH Build & Test
 
 on:
   pull_request:
@@ -25,6 +25,12 @@ jobs:
       - uses: actions/checkout@v3
         with:
           fetch-depth: 0
+
+      # On the Mac build machines, libssl 1.1 is installed
+      # but not linked in the path expected by .NET. Fix it now.
+      - name: Link libssl on Mac OS
+        run: ln -sn /usr/local/opt/openssl/lib/libssl.1.1.dylib /usr/local/lib/libssl.1.1.dylib
+        if: matrix.os == 'macOS-latest'
 
       - name: Install dotnet versions
         uses: actions/setup-dotnet@v2
@@ -77,15 +83,15 @@ jobs:
         run: npm run test-cs -- --release --serial --framework net48
         continue-on-error: true
 
+      - name: Start SSH debug session
+        uses: mxschmitt/action-tmate@v3
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.debug_enabled }}
+        with:
+            limit-access-to-actor: true
+
       - name: Publish test results
         uses: dorny/test-reporter@v1
         with:
           name: Test SSH on ${{ matrix.os }}
           path: out/TestResults/*.trx
           reporter: dotnet-trx
-
-      - name: Start SSH debug session
-        uses: mxschmitt/action-tmate@v3
-        if: ${{ github.event_name == 'workflow_dispatch' && inputs.debug_enabled }}
-        with:
-            limit-access-to-actor: true
