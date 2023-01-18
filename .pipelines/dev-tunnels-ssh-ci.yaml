@@ -129,9 +129,15 @@ jobs:
           command: custom
           verbose: false
           customCommand: run test-cs -- --release --serial --coverage --framework net48
+      
+      - task: PowerShell@2
+        displayName: Convert portable PDBs to Windows PDBs
+        inputs:
+          filePath: .pipelines/Convert-PDB.ps1
+          arguments: -DllPath "out/sym/Microsoft.DevTunnels.Ssh.dll" -PdbPath "out/sym/portable/Microsoft.DevTunnels.Ssh.pdb" -OuputPath "out/sym/windows/Microsoft.DevTunnels.Ssh.pdb"
 
       - task: PublishSymbols@2
-        displayName: Publish symbols
+        displayName: Publish symbols to symweb
         condition: and(succeeded(), eq('${{ parameters.PublishNugetPackage }}', 'true'), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
         continueOnError: True
         inputs:
@@ -139,6 +145,13 @@ jobs:
           SearchPattern: '**\*'
           SymbolServerType: TeamServices
           SymbolsProduct: Visual Studio
+
+      - task: PublishBuildArtifacts@1
+        displayName: Publish symbols to drop artifacts
+        inputs:
+          PathtoPublish: out/sym
+          ArtifactName: symbols
+          TargetPath: '\\my\share\$(Build.DefinitionName)\$(Build.BuildNumber)'
 
       - task: PublishBuildArtifacts@1
         displayName: Publish package artifacts
