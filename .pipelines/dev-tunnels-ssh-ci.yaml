@@ -134,7 +134,7 @@ jobs:
         displayName: Convert portable PDBs to Windows PDBs
         inputs:
           filePath: .pipelines/Convert-PDB.ps1
-          arguments: -DllPath "out/sym/Microsoft.DevTunnels.Ssh.dll" -PdbPath "out/sym/portable/Microsoft.DevTunnels.Ssh.pdb" -OuputPath "out/sym/windows/Microsoft.DevTunnels.Ssh.pdb"
+          arguments: -DllPath "out/sym/Microsoft.DevTunnels.Ssh.dll" -PdbPath "out/sym/portable/Microsoft.DevTunnels.Ssh.pdb" -OutputPath "out/sym/windows/Microsoft.DevTunnels.Ssh.pdb"
 
       - task: PublishSymbols@2
         displayName: Publish symbols to symweb
