@@ -146,6 +146,7 @@ jobs:
           SymbolsFolder: $(Build.ArtifactStagingDirectory)\sym
           SearchPattern: '**\*.pdb'
           SymbolServerType: TeamServices
+          SymbolExpirationInDays: '1'
           ArtifactServices.Symbol.AccountName: devdiv
           ArtifactServices.Symbol.PAT: $(System.AccessToken)
           ArtifactServices.Symbol.UseAAD: false
