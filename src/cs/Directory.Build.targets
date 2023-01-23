@@ -6,25 +6,13 @@
 		Condition=" '$(SymbolsOutputPath)' != '' AND $(Pdb2PdbExe) != '' AND '$(Configuration)' == 'Release' "
 	>
 		<PropertyGroup>
-			<_OriginalDllPath>$(TargetPath)</_OriginalDllPath>
 			<_OriginalPdbPath>$(TargetDir)$(TargetName).pdb</_OriginalPdbPath>
 			<_PdbOutputDir>$(SymbolsOutputPath)$(TargetFramework)</_PdbOutputDir>
-			<_PdbOutputPath>$(_PdbOutputDir)/$(TargetName).pdb</_PdbOutputPath>
-			<_Pdb2Pdb>$(PkgMicrosoft_DiaSymReader_Pdb2Pdb)\tools\Pdb2Pdb.exe</_Pdb2Pdb>
-			
+			<_PdbOutputPath>$(_PdbOutputDir)\$(TargetName).pdb</_PdbOutputPath>			
 		</PropertyGroup>
-
-
-		<Message Text="TargetDir: $(TargetDir)" Importance="high"/>
-		<Message Text="TargetPath: $(TargetPath)" Importance="high"/>
-		<Message Text="_OriginalPdbPath: $(_OriginalPdbPath)" Importance="high"/>
-		<Message Text="_PdbOutputPath: $(_PdbOutputPath)" Importance="high"/>
-		<Message Text="Pdb2PdbExe: $(Pdb2pdbExe)" Importance="high"/>
 
 		<MakeDir Directories="$(_PdbOutputDir)" />
 		<Exec Command='"$(Pdb2PdbExe)" "$(TargetPath)" /out "$(_PdbOutputPath)"' IgnoreExitCode="false" />
 		<Copy SourceFiles="$(TargetPath)" DestinationFolder="$(_PdbOutputDir)" UseHardlinksIfPossible="true" />
-		<!-- <Copy SourceFiles="$(_OriginalPdbPath)" DestinationFiles="$(_SymPortablePath)" UseHardlinksIfPossible="true" /> -->
-
 	</Target>
 </Project>
