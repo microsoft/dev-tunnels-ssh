@@ -140,16 +140,15 @@ jobs:
           verbose: false
           customCommand: run test-cs -- --release --serial --coverage --framework net48
 
+      # Internal docs: https://eng.ms/docs/cloud-ai-platform/devdiv/one-engineering-system-1es/1es-docs/azure-artifacts/symbol-service
       - task: PublishSymbols@2
-        displayName: Archive symbols to Microsoft Server
+        displayName: Publish symbols to Microsoft Server (https://symweb)
         inputs:
           SymbolsFolder: '$(System.DefaultWorkingDirectory)\out\sym'
           SearchPattern: '**\*.pdb'
           SymbolServerType: TeamServices
-          SymbolExpirationInDays: '1'
-          ArtifactServices.Symbol.AccountName: microsoft
-          ArtifactServices.Symbol.PAT: $(System.AccessToken)
-          ArtifactServices.Symbol.UseAAD: false
+          # Expiration parameter: https://eng.ms/docs/cloud-ai-platform/devdiv/one-engineering-system-1es/1es-docs/azure-artifacts/symbol-service#how-to-change-the-expiration-date-of-a-symbol-request
+          SymbolExpirationInDays: '30'
 
       - task: PublishBuildArtifacts@1
         displayName: Publish symbols to drop artifacts
@@ -186,7 +185,7 @@ jobs:
         continueOnError: True
         inputs:
           command: push
-          searchPatternPush: out/pkg/*.nupkg
+          searchPatternPush: out/pkg/*.nupkg;out/pkg/*.snupkg
           nuGetFeedType: external
           publishFeedCredentials: 'dev-tunnels-nuget'
           publishPackageMetadata: true
