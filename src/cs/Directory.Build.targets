@@ -3,21 +3,16 @@
 	<Target 
 		Name="CollectSymbols" 
 		AfterTargets="SignFiles"
-		Condition=" '$(SymbolsOutputPath)' != '' AND '$(Configuration)' == 'Release' "
+		Condition=" '$(SymbolsOutputPath)' != '' AND $(Pdb2PdbExe) != '' AND '$(Configuration)' == 'Release' "
 	>
 		<PropertyGroup>
-			<_TargetPdbPath>$(TargetDir)$(TargetName).pdb</_TargetPdbPath>
-			<_SymAssemblyPath>$(SymbolsOutputPath)$(TargetName)$(TargetExt)</_SymAssemblyPath>
-			<_SymPortableDir>$(SymbolsOutputPath)portable/</_SymPortableDir>
-			<_SymPortablePath>$(_SymPortableDir)$(TargetName).pdb</_SymPortablePath>
-			<_SymWindowsDir>$(SymbolsOutputPath)windows/</_SymWindowsDir>
-			<_SymWindowsPath>$(_SymWindowsDir)$(TargetName).pdb</_SymWindowsPath>
+			<_OriginalPdbPath>$(TargetDir)$(TargetName).pdb</_OriginalPdbPath>
+			<_PdbOutputDir>$(SymbolsOutputPath)$(TargetFramework)</_PdbOutputDir>
+			<_PdbOutputPath>$(_PdbOutputDir)\$(TargetName).pdb</_PdbOutputPath>			
 		</PropertyGroup>
 
-		<MakeDir Directories="$(_SymPortableDir);$(_SymWindowsDir)" />
-
-		<Copy SourceFiles="$(TargetPath)" DestinationFiles="$(_SymAssemblyPath)" UseHardlinksIfPossible="true" />
-		<Copy SourceFiles="$(_TargetPdbPath)" DestinationFiles="$(_SymPortablePath)" UseHardlinksIfPossible="true" />
-
+		<MakeDir Directories="$(_PdbOutputDir)" />
+		<Exec Command='"$(Pdb2PdbExe)" "$(TargetPath)" /out "$(_PdbOutputPath)"' IgnoreExitCode="false" />
+		<Copy SourceFiles="$(TargetPath)" DestinationFolder="$(_PdbOutputDir)" UseHardlinksIfPossible="true" />
 	</Target>
 </Project>

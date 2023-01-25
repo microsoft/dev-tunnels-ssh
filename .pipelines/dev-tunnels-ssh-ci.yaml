@@ -16,6 +16,8 @@ variables:
     value: true
   - name: 'TeamName'
     value: 'DevTunnels'
+  - name: 'Pdb2PdbVersion'
+    value: '1.1.0-beta2-23052-02'
 
 parameters:
   - name: 'PublishNpmPackage'
@@ -72,6 +74,14 @@ jobs:
         displayName: Restore npm packages
         inputs:
           verbose: false
+      
+      # To archive our debug symbols wiht symweb, we need to convert the portable .pdb files that we build to windows .pdb files first
+      # https://devdiv.visualstudio.com/DevDiv/_wiki/wikis/DevDiv.wiki/672/Archive-Symbols-with-Symweb?anchor=portable-pdbs
+      - task: NuGetCommand@2
+        displayName: Install Pdb2Pdb for Symbol Archiving
+        inputs:
+          command: custom
+          arguments: 'install Microsoft.DiaSymReader.Pdb2Pdb -version $(Pdb2PdbVersion) -PackageSaveMode nuspec -OutputDirectory $(Agent.TempDirectory) -Source https://pkgs.dev.azure.com/dnceng/public/_packaging/dotnet-tools/nuget/v3/index.json'
 
       - task: MicroBuildSigningPlugin@4
         displayName: Install Signing Plugin
@@ -86,7 +96,7 @@ jobs:
         inputs:
           solution: SSH.sln
           configuration: Release
-          msbuildArguments: -p:RestorePackages=false -t:Build;Pack -p:EnableSigning=true
+          msbuildArguments: '-p:RestorePackages=false -t:Build;Pack -p:EnableSigning=true -p:Pdb2PdbExe="$(Agent.TempDirectory)\Microsoft.DiaSymReader.Pdb2Pdb.$(Pdb2PdbVersion)\tools\Pdb2Pdb.exe"'
 
       - task: Npm@1
         displayName: Build TS
@@ -130,15 +140,22 @@ jobs:
           verbose: false
           customCommand: run test-cs -- --release --serial --coverage --framework net48
 
+      # Internal docs: https://eng.ms/docs/cloud-ai-platform/devdiv/one-engineering-system-1es/1es-docs/azure-artifacts/symbol-service
       - task: PublishSymbols@2
-        displayName: Publish symbols
-        condition: and(succeeded(), eq('${{ parameters.PublishNugetPackage }}', 'true'), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
-        continueOnError: True
+        displayName: Publish symbols to Microsoft Server (https://symweb)
         inputs:
-          SymbolsFolder: $(Build.SourcesDirectory)/out/sym
-          SearchPattern: '**\*'
+          SymbolsFolder: '$(System.DefaultWorkingDirectory)\out\sym'
+          SearchPattern: '**\*.pdb'
           SymbolServerType: TeamServices
-          SymbolsProduct: Visual Studio
+          # Expiration parameter: https://eng.ms/docs/cloud-ai-platform/devdiv/one-engineering-system-1es/1es-docs/azure-artifacts/symbol-service#how-to-change-the-expiration-date-of-a-symbol-request
+          SymbolExpirationInDays: '30'
+
+      - task: PublishBuildArtifacts@1
+        displayName: Publish symbols to drop artifacts
+        inputs:
+          PathtoPublish: out/sym
+          ArtifactName: symbols
+          TargetPath: '\\my\share\$(Build.DefinitionName)\$(Build.BuildNumber)'
 
       - task: PublishBuildArtifacts@1
         displayName: Publish package artifacts
@@ -168,7 +185,7 @@ jobs:
         continueOnError: True
         inputs:
           command: push
-          searchPatternPush: out/pkg/*.nupkg
+          searchPatternPush: out/pkg/*.nupkg;out/pkg/*.snupkg
           nuGetFeedType: external
           publishFeedCredentials: 'dev-tunnels-nuget'
           publishPackageMetadata: true
