@@ -187,7 +187,7 @@ export class ChannelWindowAdjustMessage extends ChannelMessage {
 	}
 
 	public toString() {
-		return `${super.toString} (bytesToAdd=${this.bytesToAdd})`;
+		return `${super.toString()} (bytesToAdd=${this.bytesToAdd})`;
 	}
 }
 
