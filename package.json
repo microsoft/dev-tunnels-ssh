@@ -5,6 +5,7 @@
 		"SSH"
 	],
 	"author": "Microsoft",
+	"license": "MIT",
 	"main": "out/lib/ssh/index.js",
 	"scripts": {
 		"build": "node ./build.js build",
