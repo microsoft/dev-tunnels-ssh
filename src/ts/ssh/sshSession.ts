@@ -35,6 +35,7 @@ import {
 	ServiceAcceptMessage,
 	UnimplementedMessage,
 	DebugMessage,
+	IgnoreMessage,
 } from './messages/transportMessages';
 import { SessionMetrics } from './metrics/sessionMetrics';
 import { PromiseCompletionSource } from './util/promiseCompletionSource';
@@ -568,6 +569,9 @@ export class SshSession implements Disposable {
 			return this.handleUnimplementedMessage(message, cancellation);
 		} else if (message instanceof DebugMessage) {
 			return this.handleDebugMessage(message);
+		} else if (message instanceof IgnoreMessage) {
+			// Do nothing for ignore message
+			return;
 		} else if (message instanceof SshMessage) {
 			throw new Error(`Unhandled message type: ${message.constructor.name}`);
 		} else {

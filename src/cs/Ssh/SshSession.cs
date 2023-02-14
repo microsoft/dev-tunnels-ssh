@@ -886,6 +886,7 @@ public class SshSession : IDisposable
 			AuthenticationMessage m => HandleMessageAsync(m, cancellation),
 			ConnectionMessage m => HandleMessageAsync(m, cancellation),
 			DebugMessage m => HandleMessageAsync(m, cancellation),
+			IgnoreMessage m => HandleMessageAsync(m, cancellation),
 			UnimplementedMessage m => HandleMessageAsync(m, cancellation),
 			_ => throw (message == null
 				? new ArgumentNullException(nameof(message))
@@ -898,7 +899,7 @@ public class SshSession : IDisposable
 		DisconnectMessage message, CancellationToken cancellation)
 	{
 		cancellation.ThrowIfCancellationRequested();
-
+ 
 		var description = !string.IsNullOrEmpty(message.Description) ? message.Description :
 			"Received disconnect message.";
 		await CloseAsync(message.ReasonCode, description).ConfigureAwait(false);
@@ -999,6 +1000,15 @@ public class SshSession : IDisposable
 			message.AlwaysDisplay ? TraceEventType.Information : TraceEventType.Verbose,
 			SshTraceEventIds.DebugMessage,
 			message.Message);
+		return Task.CompletedTask;
+	}
+
+#pragma warning disable CA1801, CA1822 // Review unused parameters, can be static
+	private Task HandleMessageAsync(
+		IgnoreMessage message,
+		CancellationToken cancellation)
+#pragma warning restore CA1801, CA1822 // Review unused parameters, can be static
+	{
 		return Task.CompletedTask;
 	}
 
