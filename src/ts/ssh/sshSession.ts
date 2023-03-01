@@ -695,7 +695,7 @@ export class SshSession implements Disposable {
 			await this.kexService.handleMessage(message, cancellation);
 		} else if (!(message instanceof KeyExchangeInitMessage && message.allowsNone)) {
 			// The other side required some security, but it's not configured here.
-			await this.close(SshDisconnectReason.keyExchangeFailed);
+			await this.close(SshDisconnectReason.keyExchangeFailed, 'Encryption is disabled.');
 		}
 	}
 
