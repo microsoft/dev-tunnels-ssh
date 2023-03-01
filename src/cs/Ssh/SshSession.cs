@@ -899,7 +899,7 @@ public class SshSession : IDisposable
 		DisconnectMessage message, CancellationToken cancellation)
 	{
 		cancellation.ThrowIfCancellationRequested();
- 
+
 		var description = !string.IsNullOrEmpty(message.Description) ? message.Description :
 			"Received disconnect message.";
 		await CloseAsync(message.ReasonCode, description).ConfigureAwait(false);
@@ -915,7 +915,8 @@ public class SshSession : IDisposable
 		else if (!(message is KeyExchangeInitMessage initMessage && initMessage.AllowsNone))
 		{
 			// The other side required some security, but it's not configured here.
-			await CloseAsync(SshDisconnectReason.KeyExchangeFailed).ConfigureAwait(false);
+			await CloseAsync(SshDisconnectReason.KeyExchangeFailed, "Encryption is disabled.")
+				.ConfigureAwait(false);
 		}
 	}
 

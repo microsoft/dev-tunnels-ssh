@@ -201,6 +201,10 @@ internal class KeyExchangeService : SshService
 				SshTraceEventIds.AlgorithmNegotiation,
 				$"Client and server negotiated no security. Cancelling key-exchange.");
 
+			// The connection service is normally activated after authentication. But when there is
+			// no key-exchange there will be no authentication, so connections must be enabled now.
+			Session.ActivateService<ConnectionService>();
+
 			this.exchangeContext.NewAlgorithms = new SshSessionAlgorithms();
 			await Session.HandleMessageAsync(new NewKeysMessage(), cancellation)
 				.ConfigureAwait(false);

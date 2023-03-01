@@ -30,6 +30,7 @@ import { SshConnectionError } from '../errors';
 import { SshDisconnectReason } from '../messages/transportMessages';
 import { SshSessionAlgorithms } from '../sshSessionAlgorithms';
 import { CancellationToken } from 'vscode-jsonrpc';
+import { ConnectionService } from './connectionService';
 import { serviceActivation } from './serviceActivation';
 import { SshTraceEventIds, TraceLevel } from '../trace';
 
@@ -206,6 +207,10 @@ export class KeyExchangeService extends SshService {
 				SshTraceEventIds.algorithmNegotiation,
 				'Client and server negotiated no security. Cancelling key-exchange.',
 			);
+
+			// The connection service is normally activated after authentication. But when there is
+			// no key-exchange there will be no authentication, so connections must be enabled now.
+			this.session.activateService(ConnectionService);
 
 			this.exchangeContext.newAlgorithms = new SshSessionAlgorithms();
 			await this.session.handleNewKeysMessage(new NewKeysMessage(), cancellation);
