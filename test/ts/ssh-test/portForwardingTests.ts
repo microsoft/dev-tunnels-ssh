@@ -54,9 +54,7 @@ class TestTcpListenerFactory implements TcpListenerFactory {
 	public async createTcpListener(
 		localIPAddress: string,
 		localPort: number,
-		canChangePort: boolean,
 	): Promise<net.Server> {
-		assert(localPort === this.localPortOverride || canChangePort);
 		const listener = net.createServer();
 		await new Promise((resolve, reject) => {
 			listener.listen({
@@ -169,7 +167,10 @@ export class PortForwardingTests {
 
 		assert(forwarder);
 		assert.equal(forwarder!.remoteIPAddress, loopbackV4);
+
+		// The client does not know (or need to know) that the remote side chose a different port.
 		assert.equal(testPort2, forwarder!.remotePort);
+
 		assert.equal(forwarder!.localHost, loopbackV4);
 		assert.equal(forwarder!.localPort, testPort);
 
@@ -1106,7 +1107,7 @@ export class PortForwardingTests {
 		assert.equal(serverPfs.remoteForwardedPorts.size, 1);
 		assert(
 			clientPfs.localForwardedPorts.find(
-				(p) => p.localPort === testPort1 && p.remotePort === testPort2,
+				(p) => p.localPort === testPort1 && p.remotePort === testPort1,
 			),
 		);
 		assert(
@@ -1117,7 +1118,7 @@ export class PortForwardingTests {
 
 		assert(clientLocalPortAddedEvent);
 		assert.equal(clientLocalPortAddedEvent!.port.localPort, testPort1);
-		assert.equal(clientLocalPortAddedEvent!.port.remotePort, testPort2);
+		assert.equal(clientLocalPortAddedEvent!.port.remotePort, testPort1);
 		assert(!clientRemotePortAddedEvent);
 		assert(!serverLocalPortAddedEvent);
 		assert(serverRemotePortAddedEvent);
@@ -1156,7 +1157,7 @@ export class PortForwardingTests {
 
 			assert(clientLocalChannelAddedEvent);
 			assert.equal(clientLocalChannelAddedEvent!.port.localPort, testPort1);
-			assert.equal(clientLocalChannelAddedEvent!.port.remotePort, testPort2);
+			assert.equal(clientLocalChannelAddedEvent!.port.remotePort, testPort1);
 			assert(clientLocalChannelAddedEvent!.channel);
 			assert(!clientRemoteChannelAddedEvent);
 
@@ -1193,7 +1194,7 @@ export class PortForwardingTests {
 
 		assert(clientLocalChannelRemovedEvent);
 		assert.equal(clientLocalChannelRemovedEvent!.port.localPort, testPort1);
-		assert.equal(clientLocalChannelRemovedEvent!.port.remotePort, testPort2);
+		assert.equal(clientLocalChannelRemovedEvent!.port.remotePort, testPort1);
 		assert(clientLocalChannelRemovedEvent!.channel);
 		assert(!clientRemoteChannelRemovedEvent);
 		assert(!serverLocalChannelRemovedEvent);

@@ -75,14 +75,9 @@ public class LocalPortForwarder : SshService
 		var listenAddress = LocalIPAddress;
 		try
 		{
-			// Older versions of this library don't support the can-change-port extension,
-			// so the version string is checked instead.
-			bool canChangePort = LocalPort == 0 ||
-				this.Session.ProtocolExtensions?.ContainsKey(SshProtocolExtensionNames.CanChangePort) == true ||
-				this.pfs.Session.RemoteVersion?.IsVsSsh == true;
 			var trace = this.pfs.Session.Trace;
 			this.listener = await this.pfs.TcpListenerFactory.CreateTcpListenerAsync(
-				listenAddress, LocalPort, canChangePort, trace, cancellation)
+				listenAddress, LocalPort, trace, cancellation)
 				.ConfigureAwait(false);
 
 			LocalPort = ((IPEndPoint)this.listener.LocalEndpoint).Port;
@@ -100,7 +95,7 @@ public class LocalPortForwarder : SshService
 				try
 				{
 					this.listener2 = await this.pfs.TcpListenerFactory.CreateTcpListenerAsync(
-						listenAddress, LocalPort, canChangePort: false, trace, cancellation)
+						listenAddress, LocalPort, trace, cancellation)
 						.ConfigureAwait(false);
 				}
 				catch (SocketException sockex)

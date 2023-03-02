@@ -75,17 +75,9 @@ export class LocalPortForwarder extends SshService {
 	public async startForwarding(cancellation?: CancellationToken): Promise<void> {
 		let listenAddress = this.localIPAddress;
 		try {
-			// Older versions of this library don't support the can-change-port extension,
-			// so the version string is checked instead.
-			const canChangePort =
-				this.port === 0 ||
-				this.session.protocolExtensions?.has(SshProtocolExtensionNames.canChangePort) ||
-				this.pfs.session.remoteVersion?.isVsSsh === true;
-
 			this.tcpListener = await this.pfs.tcpListenerFactory.createTcpListener(
 				listenAddress,
 				this.port,
-				canChangePort,
 			);
 			const serverAddress = this.tcpListener.address() as net.AddressInfo;
 			if (!(serverAddress.port > 0)) {
@@ -105,7 +97,6 @@ export class LocalPortForwarder extends SshService {
 					this.tcpListener2 = await this.pfs.tcpListenerFactory.createTcpListener(
 						listenAddress,
 						this.port,
-						false,
 					);
 				} catch (e) {
 					if (!(e instanceof Error) || (<any>e).code !== 'EADDRNOTAVAIL') {

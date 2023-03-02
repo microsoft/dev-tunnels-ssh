@@ -38,14 +38,4 @@ public static class SshProtocolExtensionNames
 	/// it leverages some of the session history info for reconnect to compute latency.
 	/// </remarks>
 	public const string SessionLatency = "session-latency@microsoft.com";
-
-	/// <summary>
-	/// Enables forwarding of ports other that the requested port.
-	/// </summary>
-	/// <remarks>
-	/// When the requested port number is not 0 (random) then changing the port number
-	/// is not compliant with the SSH protocol. Only allow it if the remote side is
-	/// this library, which is known to support it.
-	/// </remarks>
-	public const string CanChangePort = "can-change-port@microsoft.com";
 }

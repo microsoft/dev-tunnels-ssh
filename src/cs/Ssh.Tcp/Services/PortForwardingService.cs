@@ -30,12 +30,38 @@ public class PortForwardingService : SshService
 	internal const string ReversePortForwardChannelType = "direct-tcpip";
 
 	private bool disposed;
+
+	/// <summary>
+	/// Maps from local IP address and FORWARDED port number to the object that manages
+	/// listening for incoming connections on that port and forwarding them through the session.
+	/// </summary>
+	/// <remarks>
+	/// Note the actual local source port number used may be different from the forwarded port
+	/// number if the local TCP listener factory chose a different port. The forwarded port number
+	/// is used to identify the port in any messages exchanged between client and server.
+	/// </remarks>
 	private readonly IDictionary<IPEndPoint, LocalPortForwarder> localForwarders =
 		new Dictionary<IPEndPoint, LocalPortForwarder>();
-	private readonly IDictionary<IPEndPoint, RemotePortConnector> remoteConnectors =
-		new Dictionary<IPEndPoint, RemotePortConnector>();
-	private readonly ICollection<ChannelForwarder> channelForwarders =
-		new List<ChannelForwarder>();
+
+	/// <summary>
+	/// Maps from FORWARDED port numbers to the object that manages relaying forwarded connections
+	/// from the session to a local port.
+	/// </summary>
+	/// <remarks>
+	/// Note the actual local destination port number used may be different from the forwarded port
+	/// number. The forwarded port number is used to identify the port in any messages exchanged
+	/// between client and server.
+	/// </remarks>
+	private readonly IDictionary<int, RemotePortConnector> remoteConnectors =
+		new Dictionary<int, RemotePortConnector>();
+
+	/// <summary>
+	/// Collection of objects that manage forwarding traffic on individual channels.
+	/// </summary>
+	/// <remarks>
+	/// There may be 0 to multiple channel forawarders per forwarded port.
+	/// </remarks>
+	private readonly ICollection<ChannelForwarder> channelForwarders = new List<ChannelForwarder>();
 
 	public PortForwardingService(SshSession session)
 		: base(session)
@@ -195,7 +221,9 @@ public class PortForwardingService : SshService
 		var remoteEndPoint = new IPEndPoint(remoteIPAddress, remotePort);
 		lock (this.remoteConnectors)
 		{
-			this.remoteConnectors.Add(remoteEndPoint, forwarder);
+			// The remote port is the port sent in the message to the other side,
+			// so the connector is indexed on that port number, rather than the local port.
+			this.remoteConnectors.Add(remotePort, forwarder);
 		}
 
 		var forwardedPort = new ForwardedPort(localPort, remotePort, isRemote: false);
@@ -205,7 +233,7 @@ public class PortForwardingService : SshService
 			LocalForwardedPorts.RemovePort(forwardedPort);
 			lock (this.remoteConnectors)
 			{
-				this.remoteConnectors.Remove(remoteEndPoint);
+				this.remoteConnectors.Remove(remotePort);
 			}
 		};
 
@@ -266,17 +294,19 @@ public class PortForwardingService : SshService
 			remotePort);
 		await forwarder.StartForwardingAsync(cancellation).ConfigureAwait(false);
 
-		var localEndPoint = new IPEndPoint(localIPAddress, localPort);
+		// The remote port is the port sent in the message to the other side,
+		// so the forwarder is indexed on that port number, rather than the local port.
+		var forwardingEndPoint = new IPEndPoint(localIPAddress, remotePort);
 		lock (this.localForwarders)
 		{
-			this.localForwarders.Add(localEndPoint, forwarder);
+			this.localForwarders.Add(forwardingEndPoint, forwarder);
 		}
 
 		forwarder.Disposed += (_, _) =>
 		{
 			lock (this.localForwarders)
 			{
-				this.localForwarders.Remove(localEndPoint);
+				this.localForwarders.Remove(forwardingEndPoint);
 			}
 		};
 		return forwarder;
@@ -319,7 +349,9 @@ public class PortForwardingService : SshService
 		var remoteEndPoint = new IPEndPoint(remoteIPAddress, remotePort);
 		lock (this.remoteConnectors)
 		{
-			this.remoteConnectors.Add(remoteEndPoint, streamer);
+			// The remote port is the port sent in the message to the other side,
+			// so the connector is indexed on that port number. (There is no local port anyway.)
+			this.remoteConnectors.Add(remotePort, streamer);
 		}
 
 		var forwardedPort = new ForwardedPort(localPort: null, remotePort, isRemote: false);
@@ -329,7 +361,7 @@ public class PortForwardingService : SshService
 			LocalForwardedPorts.RemovePort(forwardedPort);
 			lock (this.remoteConnectors)
 			{
-				this.localForwarders.Remove(remoteEndPoint);
+				this.remoteConnectors.Remove(remotePort);
 			}
 		};
 
@@ -485,6 +517,7 @@ public class PortForwardingService : SshService
 		var portForwardRequest = request.Request.ConvertTo<PortForwardRequestMessage>();
 
 		SshMessage? response = null;
+		int? localPort = null;
 		var localIPAddress = IPAddressConversions.FromString(portForwardRequest.AddressToBind);
 		if (localIPAddress == null)
 		{
@@ -496,8 +529,6 @@ public class PortForwardingService : SshService
 		}
 		else
 		{
-			var localEndPoint = new IPEndPoint(localIPAddress, (int)portForwardRequest.Port);
-
 			var args = new SshRequestEventArgs<SessionRequestMessage>(
 				request.RequestType!, portForwardRequest, Session.Principal);
 			await base.OnSessionRequestAsync(args, cancellation).ConfigureAwait(false);
@@ -506,29 +537,35 @@ public class PortForwardingService : SshService
 			{
 				if (request.RequestType == PortForwardRequestType)
 				{
-					int? localPort;
 					try
 					{
-						localPort = await StartForwardingAsync(localEndPoint, cancellation)
+						localPort = await StartForwardingAsync(
+							localIPAddress,
+							(int)portForwardRequest.Port,
+							cancellation)
 							.ConfigureAwait(false);
 					}
 					catch (SocketException)
 					{
 						// The exception is already traced.
-						localPort = null;
 					}
 
 					if (localPort != null)
 					{
+						// The chosen local port may be different from the requested port. Use the
+						// requested port in the response, unless the request was for a random port.
 						response = new PortForwardSuccessMessage
 						{
-							Port = (uint)localPort.Value,
+							Port = portForwardRequest.Port == 0 ? (uint)localPort.Value :
+								portForwardRequest.Port,
 						};
 					}
 				}
 				else if (request.RequestType == CancelPortForwardRequestType)
 				{
-					if (await CancelForwardingAsync(localEndPoint, cancellation)
+					var forwardingEndPoint = new IPEndPoint(
+						localIPAddress, (int)portForwardRequest.Port);
+					if (await CancelForwardingAsync(forwardingEndPoint, cancellation)
 						.ConfigureAwait(false))
 					{
 						response = new SessionRequestSuccessMessage();
@@ -546,7 +583,7 @@ public class PortForwardingService : SshService
 				// Add to the collection (and raise event) after sending the response,
 				// to ensure event-handlers can immediately open a channel.
 				var forwardedPort = new ForwardedPort(
-					localPort: (int)portForwardResponse.Port,
+					localPort: localPort ?? (int)portForwardResponse.Port,
 					remotePort: portForwardRequest.Port == 0 ? null : (int)portForwardRequest.Port,
 					isRemote: true);
 				RemoteForwardedPorts.AddPort(forwardedPort);
@@ -557,33 +594,40 @@ public class PortForwardingService : SshService
 	}
 
 	private async Task<int?> StartForwardingAsync(
-		IPEndPoint localEndPoint,
+		IPAddress localIPAddress,
+		int remotePort,
 		CancellationToken cancellation)
 	{
 		cancellation.ThrowIfCancellationRequested();
 
 		if (AcceptLocalConnectionsForForwardedPorts)
 		{
-			// The initially requested local endpoint uses the remote port, but it may change
+			// The local port is initially set to the remote port, but it may change
 			// when starting forwarding, if there was a conflict.
-			var remotePort = localEndPoint.Port == 0 ? null : (int?)localEndPoint.Port;
+			int localPort = remotePort;
 
 			var forwarder = new LocalPortForwarder(
 				this,
 				Session,
 				PortForwardChannelType,
-				localEndPoint.Address,
-				localEndPoint.Port);
+				localIPAddress,
+				localPort,
+				remoteHost: null,
+				remotePort == 0 ? null : remotePort);
 
 			await forwarder.StartForwardingAsync(cancellation).ConfigureAwait(false);
+			localPort = forwarder.LocalPort;
 
-			var forwardingEndPoint = new IPEndPoint(localEndPoint.Address, forwarder.LocalPort);
+			// The remote port is the port received in the message from the other side,
+			// so the forwarder is indexed on that port number, rather than the local port,
+			// unless the request was to choose a random port.
+			var forwardingEndPoint = new IPEndPoint(
+				localIPAddress, remotePort == 0 ? localPort : remotePort);
 			lock (this.localForwarders)
 			{
 				this.localForwarders.Add(forwardingEndPoint, forwarder);
 			}
 
-			var localPort = forwarder.LocalPort;
 			forwarder.Disposed += (_, _) =>
 			{
 				var forwardedPort = new ForwardedPort(localPort, remotePort, isRemote: true);
@@ -596,9 +640,9 @@ public class PortForwardingService : SshService
 
 			return forwarder.LocalPort;
 		}
-		else if (localEndPoint.Port > 0)
+		else if (remotePort != 0)
 		{
-			return localEndPoint.Port;
+			return remotePort;
 		}
 		else
 		{
@@ -607,7 +651,7 @@ public class PortForwardingService : SshService
 	}
 
 	private Task<bool> CancelForwardingAsync(
-		IPEndPoint localEndPoint,
+		IPEndPoint forwardingEndPoint,
 		CancellationToken cancellation)
 	{
 		cancellation.ThrowIfCancellationRequested();
@@ -615,12 +659,12 @@ public class PortForwardingService : SshService
 		LocalPortForwarder? forwarder;
 		lock (this.localForwarders)
 		{
-			if (!localForwarders.TryGetValue(localEndPoint, out forwarder))
+			if (!this.localForwarders.TryGetValue(forwardingEndPoint, out forwarder))
 			{
 				return Task.FromResult(false);
 			}
 
-			localForwarders.Remove(localEndPoint);
+			localForwarders.Remove(forwardingEndPoint);
 		}
 
 		forwarder.Dispose();
@@ -661,7 +705,8 @@ public class PortForwardingService : SshService
 				{
 					lock (this.remoteConnectors)
 					{
-						this.remoteConnectors.TryGetValue(remoteEndPoint, out remoteConnector);
+						this.remoteConnectors.TryGetValue(
+							(int)portForwardMessage.Port, out remoteConnector);
 					}
 
 					if (remoteConnector == null)
@@ -712,10 +757,10 @@ public class PortForwardingService : SshService
 			// The forwarding was initiated by this session.
 			await remoteConnector.OnChannelOpeningAsync(request, cancellation)
 				.ConfigureAwait(false);
-
+			var remoteForwarder = remoteConnector as RemotePortForwarder;
 			var forwardedPort = new ForwardedPort(
-				localPort: (remoteConnector as RemotePortForwarder)?.LocalPort,
-				remotePort: (int)portForwardMessage.Port,
+				localPort: remoteForwarder?.LocalPort,
+				remotePort: remoteForwarder?.RemotePort ?? (int)portForwardMessage.Port,
 				isRemote: false);
 			LocalForwardedPorts.AddChannel(forwardedPort, request.Channel);
 		}
@@ -758,7 +803,7 @@ public class PortForwardingService : SshService
 			OriginatorIPAddress = originatorAddress,
 			OriginatorPort = (uint)(originatorEndPoint?.Port ?? 0),
 			Host = host,
-			Port = (uint)(forwardedPort?.LocalPort ?? port),
+			Port = (uint)port,
 		};
 
 		var trace = this.Session.Trace;

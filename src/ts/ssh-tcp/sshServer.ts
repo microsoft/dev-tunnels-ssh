@@ -83,7 +83,6 @@ export class SshServer implements Disposable {
 			this.tcpListener = await this.tcpListenerFactory.createTcpListener(
 				localAddress,
 				localPort,
-				false,
 			);
 		} catch (e) {
 			if (!(e instanceof Error)) throw e;
