@@ -11,6 +11,7 @@ export { PortForwardingService } from './services/portForwardingService';
 export { LocalPortForwarder } from './services/localPortForwarder';
 export { RemotePortForwarder } from './services/remotePortForwarder';
 export { RemotePortStreamer } from './services/remotePortStreamer';
+export { PortForwardMessageFactory } from './portForwardMessageFactory';
 
 export { PortForwardRequestMessage } from './messages/portForwardRequestMessage';
 export { PortForwardSuccessMessage } from './messages/portForwardSuccessMessage';

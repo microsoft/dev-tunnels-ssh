@@ -30,6 +30,10 @@ import { PortForwardChannelOpenMessage } from '../messages/portForwardChannelOpe
 import { PortForwardRequestMessage } from '../messages/portForwardRequestMessage';
 import { PortForwardSuccessMessage } from '../messages/portForwardSuccessMessage';
 import { TcpListenerFactory, DefaultTcpListenerFactory } from '../tcpListenerFactory';
+import {
+	PortForwardMessageFactory,
+	DefaultPortForwardMessageFactory,
+} from '../portForwardMessageFactory';
 import { ChannelForwarder } from './channelForwarder';
 import { LocalPortForwarder } from './localPortForwarder';
 import { RemotePortConnector } from './remotePortConnector';
@@ -165,6 +169,14 @@ export class PortForwardingService extends SshService {
 	public tcpListenerFactory: TcpListenerFactory = new DefaultTcpListenerFactory();
 
 	/**
+	 * Gets or sets a factory for creating port-forwarding messages.
+	 *
+	 * A message factory enables applications to extend port-forwarding by providing custom
+	 * message subclasses that may include additional properties.
+	 */
+	public messageFactory: PortForwardMessageFactory = new DefaultPortForwardMessageFactory();
+
+	/**
 	 * Sends a request to the remote side to listen on a port and forward incoming connections
 	 * as SSH channels of type 'forwarded-tcpip', which will then be relayed to the same port
 	 * number on the local side.
@@ -250,7 +262,9 @@ export class PortForwardingService extends SshService {
 			localHost,
 			localPort,
 		);
-		if (!(await forwarder.request(cancellation))) {
+
+		const request = await this.messageFactory.createRequestMessageAsync(remotePort);
+		if (!(await forwarder.request(request, cancellation))) {
 			forwarder.dispose();
 			return null;
 		}
@@ -384,7 +398,8 @@ export class PortForwardingService extends SshService {
 		}
 
 		const streamer = new RemotePortStreamer(this.session, remoteIPAddress, remotePort);
-		if (!(await streamer.request(cancellation))) {
+		const request = await this.messageFactory.createRequestMessageAsync(remotePort);
+		if (!(await streamer.request(request, cancellation))) {
 			streamer.dispose();
 			return null;
 		}
@@ -583,9 +598,12 @@ export class PortForwardingService extends SshService {
 				if (localPort !== null) {
 					// The chosen local port may be different from the requested port. Use the
 					// requested port in the response, unless the request was for a random port.
-					const portResponse = new PortForwardSuccessMessage();
-					portResponse.port =
+					const forwardedPort =
 						portForwardRequest.port === 0 ? localPort : portForwardRequest.port;
+					const portResponse = await this.messageFactory.createSuccessMessageAsync(
+						forwardedPort,
+					);
+					portResponse.port = forwardedPort;
 					response = portResponse;
 				}
 			} else if (request.requestType === PortForwardingService.cancelPortForwardRequestType) {
@@ -773,7 +791,7 @@ export class PortForwardingService extends SshService {
 			}
 		}
 
-		const openMessage = new PortForwardChannelOpenMessage();
+		const openMessage = await this.messageFactory.createChannelOpenMessageAsync(port);
 		openMessage.channelType = channelType;
 		openMessage.originatorIPAddress = originatorIPAddress ?? '';
 		openMessage.originatorPort = originatorPort ?? 0;
