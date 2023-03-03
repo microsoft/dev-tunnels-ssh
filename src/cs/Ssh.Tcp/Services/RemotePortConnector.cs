@@ -41,18 +41,17 @@ public abstract class RemotePortConnector : SshService
 	/// </remarks>
 	public int RemotePort { get; private set; }
 
-	internal async Task<bool> RequestAsync(CancellationToken cancellation)
+	internal async Task<bool> RequestAsync(
+		PortForwardRequestMessage request,
+		CancellationToken cancellation)
 	{
 		if (this.forwarding)
 		{
 			throw new InvalidOperationException("Already forwarding.");
 		}
 
-		var request = new PortForwardRequestMessage
-		{
-			AddressToBind = IPAddressConversions.ToString(RemoteIPAddress),
-			Port = (uint)RemotePort,
-		};
+		request.AddressToBind = IPAddressConversions.ToString(RemoteIPAddress);
+		request.Port = (uint)RemotePort;
 
 		var response = await Session.RequestAsync<PortForwardSuccessMessage>(
 			request, cancellation).ConfigureAwait(false);

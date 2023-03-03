@@ -150,6 +150,16 @@ public class PortForwardingService : SshService
 		= new DefaultTcpListenerFactory();
 
 	/// <summary>
+	/// Gets or sets a factory for creating port-forwarding messages.
+	/// </summary>
+	/// <remarks>
+	/// A message factory enables applications to extend port-forwarding by providing custom
+	/// message subclasses that may include additional properties.
+	/// </remarks>
+	public IPortForwardMessageFactory MessageFactory { get; set; }
+		= new DefaultPortForwardMessageFactory();
+
+	/// <summary>
 	/// Sends a request to the remote side to listen on a port and forward incoming connections
 	/// as SSH channels of type 'forwarded-tcpip', which will then be relayed to a specified
 	/// local port.
@@ -211,7 +221,9 @@ public class PortForwardingService : SshService
 			localHost,
 			localPort);
 
-		if (!(await forwarder.RequestAsync(cancellation).ConfigureAwait(false)))
+		var request = await MessageFactory.CreateRequestMessageAsync(remotePort)
+			.ConfigureAwait(false);
+		if (!(await forwarder.RequestAsync(request, cancellation).ConfigureAwait(false)))
 		{
 			forwarder.Dispose();
 			return null;
@@ -346,7 +358,9 @@ public class PortForwardingService : SshService
 
 		var streamer = new RemotePortStreamer(Session, remoteIPAddress, remotePort);
 
-		if (!(await streamer.RequestAsync(cancellation).ConfigureAwait(false)))
+		var request = await MessageFactory.CreateRequestMessageAsync(remotePort)
+			.ConfigureAwait(false);
+		if (!(await streamer.RequestAsync(request, cancellation).ConfigureAwait(false)))
 		{
 			streamer.Dispose();
 			return null;
@@ -823,14 +837,13 @@ public class PortForwardingService : SshService
 		}
 
 		var originatorAddress = originatorEndPoint?.Address?.ToString() ?? string.Empty;
-		var openMessage = new PortForwardChannelOpenMessage
-		{
-			ChannelType = channelType,
-			OriginatorIPAddress = originatorAddress,
-			OriginatorPort = (uint)(originatorEndPoint?.Port ?? 0),
-			Host = host,
-			Port = (uint)port,
-		};
+		var openMessage = await MessageFactory.CreateChannelOpenMessageAsync(port)
+			.ConfigureAwait(false);
+		openMessage.ChannelType = channelType;
+		openMessage.OriginatorIPAddress = originatorAddress;
+		openMessage.OriginatorPort = (uint)(originatorEndPoint?.Port ?? 0);
+		openMessage.Host = host;
+		openMessage.Port = (uint)port;
 
 		var trace = this.Session.Trace;
 
