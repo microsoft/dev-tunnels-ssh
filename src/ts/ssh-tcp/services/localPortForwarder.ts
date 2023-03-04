@@ -78,6 +78,7 @@ export class LocalPortForwarder extends SshService {
 			this.tcpListener = await this.pfs.tcpListenerFactory.createTcpListener(
 				listenAddress,
 				this.port,
+				true,
 			);
 			const serverAddress = this.tcpListener.address() as net.AddressInfo;
 			if (!(serverAddress.port > 0)) {
@@ -97,6 +98,7 @@ export class LocalPortForwarder extends SshService {
 					this.tcpListener2 = await this.pfs.tcpListenerFactory.createTcpListener(
 						listenAddress,
 						this.port,
+						false,
 					);
 				} catch (e) {
 					if (!(e instanceof Error) || (<any>e).code !== 'EADDRNOTAVAIL') {

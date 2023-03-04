@@ -62,14 +62,14 @@ export class PortForwardingService extends SshService {
 	public static readonly reversePortForwardChannelType = 'direct-tcpip';
 
 	/**
-	 * Maps from local IP address and FORWARDED port number to the object that manages
-	 * listening for incoming connections on that port and forwarding them through the session.
+	 * Maps from FORWARDED port number to the object that manages listening for incoming
+	 * connections for that port and forwarding them through the session.
 	 *
 	 * Note the actual local source port number used may be different from the forwarded port
 	 * number if the local TCP listener factory chose a different port. The forwarded port number
 	 * is used to identify the port in any messages exchanged between client and server.
 	 */
-	private readonly localForwarders = new Map<string, LocalPortForwarder>();
+	private readonly localForwarders = new Map<number, LocalPortForwarder>();
 
 	/**
 	 * Maps from FORWARDED port numbers to the object that manages relaying forwarded connections
@@ -353,10 +353,9 @@ export class PortForwardingService extends SshService {
 
 		// The remote port is the port sent in the message to the other side,
 		// so the forwarder is indexed on that port number, rather than the local port.
-		const forwardingEndPoint = `${localIPAddress}:${remotePort}`;
-		this.localForwarders.set(forwardingEndPoint, forwarder);
+		this.localForwarders.set(remotePort, forwarder);
 		forwarder.onDisposed(() => {
-			this.localForwarders.delete(forwardingEndPoint);
+			this.localForwarders.delete(remotePort!);
 		});
 		return forwarder;
 	}
@@ -543,6 +542,23 @@ export class PortForwardingService extends SshService {
 		const portForwardRequest = request.request.convertTo(new PortForwardRequestMessage());
 		const localIPAddress = IPAddressConversions.fromSshAddress(portForwardRequest.addressToBind);
 
+		if (
+			request.requestType === PortForwardingService.portForwardRequestType &&
+			portForwardRequest.port !== 0 &&
+			this.localForwarders.has(portForwardRequest.port)
+		) {
+			const message =
+				'PortForwardingService blocking attempt to re-forward ' +
+				`already-forwarded port {portForwardRequest.port}.`;
+			this.session.trace(
+				TraceLevel.Warning,
+				SshTraceEventIds.portForwardRequestInvalid,
+				message,
+			);
+			request.isAuthorized = false;
+			return;
+		}
+
 		const args = new SshRequestEventArgs<SessionRequestMessage>(
 			request.requestType,
 			portForwardRequest,
@@ -573,9 +589,7 @@ export class PortForwardingService extends SshService {
 					response = portResponse;
 				}
 			} else if (request.requestType === PortForwardingService.cancelPortForwardRequestType) {
-				if (
-					await this.cancelForwarding(localIPAddress, portForwardRequest.port, cancellation)
-				) {
+				if (await this.cancelForwarding(portForwardRequest.port, cancellation)) {
 					response = new SessionRequestSuccessMessage();
 				}
 			}
@@ -586,11 +600,7 @@ export class PortForwardingService extends SshService {
 		// Add to the collection (and raise event) after sending the response,
 		// to ensure event-handlers can immediately open a channel.
 		if (response instanceof PortForwardSuccessMessage) {
-			const forwardedPort = new ForwardedPort(
-				localPort ?? response.port,
-				portForwardRequest.port === 0 ? null : portForwardRequest.port,
-				true,
-			);
+			const forwardedPort = new ForwardedPort(localPort ?? response.port, response.port, true);
 			this.remoteForwardedPorts.addPort(forwardedPort);
 		}
 	}
@@ -600,6 +610,7 @@ export class PortForwardingService extends SshService {
 		remotePort: number,
 		cancellation?: CancellationToken,
 	): Promise<number | null> {
+		if (typeof remotePort !== 'number') throw new TypeError('Remote port must be an integer.');
 		if (this.acceptLocalConnectionsForForwardedPorts) {
 			// The local port is initially set to the remote port, but it may change
 			// when starting forwarding, if there was a conflict.
@@ -616,20 +627,20 @@ export class PortForwardingService extends SshService {
 			);
 			await forwarder.startForwarding(cancellation);
 			localPort = forwarder.localPort;
+			if (remotePort === 0) {
+				// The other side requested a random port. Reply with the chosen port number.
+				remotePort = localPort;
+			}
 
-			// The remote port is the port received in the message from the other side,
-			// so the forwarder is indexed on that port number, rather than the local port,
-			// unless the request was to choose a random port.
-			const forwardingEndPoint = `${localIPAddress}:${
-				remotePort === 0 ? localPort : remotePort
-			}`;
-			this.localForwarders.set(forwardingEndPoint, forwarder);
+			// The remote port is the port referenced in exchanged messages,
+			// so the forwarder is indexed on that port number, rather than the local port.
+			this.localForwarders.set(remotePort, forwarder);
 
 			localPort = forwarder.localPort;
 			forwarder.onDisposed(() => {
 				const forwardedPort = new ForwardedPort(localPort, remotePort, true);
 				this.remoteForwardedPorts.removePort(forwardedPort);
-				this.localForwarders.delete(forwardingEndPoint);
+				this.localForwarders.delete(remotePort);
 			});
 
 			return localPort;
@@ -641,18 +652,15 @@ export class PortForwardingService extends SshService {
 	}
 
 	private async cancelForwarding(
-		localIPAddress: string,
 		forwardedPort: number,
 		cancellation?: CancellationToken,
 	): Promise<boolean> {
-		const forwardingEndPoint = `${localIPAddress}:${forwardedPort}`;
-
-		const forwarder = this.localForwarders.get(forwardingEndPoint);
+		const forwarder = this.localForwarders.get(forwardedPort);
 		if (!forwarder) {
 			return false;
 		}
 
-		this.localForwarders.delete(forwardingEndPoint);
+		this.localForwarders.delete(forwardedPort);
 		forwarder.dispose();
 
 		return true;

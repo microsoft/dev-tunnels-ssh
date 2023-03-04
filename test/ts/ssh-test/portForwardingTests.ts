@@ -54,6 +54,7 @@ class TestTcpListenerFactory implements TcpListenerFactory {
 	public async createTcpListener(
 		localIPAddress: string,
 		localPort: number,
+		canChangePort: boolean,
 	): Promise<net.Server> {
 		const listener = net.createServer();
 		await new Promise((resolve, reject) => {
@@ -169,7 +170,7 @@ export class PortForwardingTests {
 		assert.equal(forwarder!.remoteIPAddress, loopbackV4);
 
 		// The client does not know (or need to know) that the remote side chose a different port.
-		assert.equal(testPort2, forwarder!.remotePort);
+		assert.equal(testPort, forwarder!.remotePort);
 
 		assert.equal(forwarder!.localHost, loopbackV4);
 		assert.equal(forwarder!.localPort, testPort);
@@ -1028,6 +1029,43 @@ export class PortForwardingTests {
 		} catch (e) {
 			if (!(e instanceof SshChannelError)) throw e;
 			assert.equal(e.reason, SshChannelOpenFailureReason.administrativelyProhibited);
+		}
+	}
+
+	@test
+	public async blockForwardAlreadyForwardedPort(): Promise<void> {
+		const testPort1 = await getAvailablePort();
+		const testPort2 = await getAvailablePort();
+
+		const [clientSession, serverSession] = await this.createSessions();
+		await connectSessionPair(clientSession, serverSession);
+
+		serverSession.onRequest((e) => {
+			e.isAuthorized = e.request instanceof PortForwardRequestMessage;
+		});
+
+		const clientPfs = clientSession.activateService(PortForwardingService);
+
+		try {
+			const forwarder1 = await clientPfs.forwardFromRemotePort(loopbackV4, testPort1);
+			assert(forwarder1);
+
+			// Bypass the forwardFromRemotePort API because it has a client-side check
+			// that prevents validation of the remote block.
+			const portRequest = new PortForwardRequestMessage();
+			portRequest.port = testPort1;
+			const result = await clientSession.request(portRequest);
+			assert(!result);
+
+			// Cancel forwarding.
+			forwarder1!.dispose();
+
+			const forwarder3 = await clientPfs.forwardFromRemotePort(loopbackV4, testPort1);
+			assert(forwarder3);
+			forwarder3!.dispose();
+		} finally {
+			serverSession.dispose();
+			clientSession.dispose();
 		}
 	}
 

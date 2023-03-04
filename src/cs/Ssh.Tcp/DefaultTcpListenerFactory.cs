@@ -18,6 +18,7 @@ internal class DefaultTcpListenerFactory : ITcpListenerFactory
 	public Task<TcpListener> CreateTcpListenerAsync(
 		IPAddress localIPAddress,
 		int localPort,
+		bool canChangePort,
 		TraceSource trace,
 		CancellationToken cancellation)
 	{

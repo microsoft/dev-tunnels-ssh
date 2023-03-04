@@ -149,21 +149,30 @@ public class PortForwardingTests : IDisposable
 
 	private class TestTcpListenerFactory : ITcpListenerFactory
 	{
-		private readonly int localPortOverride;
+		private int localPortOverride;
+		private readonly bool autoIncrement;
 
-		public TestTcpListenerFactory(int localPortOverride)
+		public TestTcpListenerFactory(int localPortOverride, bool autoIncrement = false)
 		{
 			this.localPortOverride = localPortOverride;
+			this.autoIncrement = autoIncrement;
 		}
 
 		public Task<TcpListener> CreateTcpListenerAsync(
 			IPAddress localIPAddress,
 			int localPort,
+			bool canChangePort,
 			TraceSource trace,
 			CancellationToken cancellation)
 		{
 			var listener = new TcpListener(localIPAddress, this.localPortOverride);
 			listener.Start();
+
+			if (this.autoIncrement)
+			{
+				this.localPortOverride++;
+			}
+
 			return Task.FromResult(listener);
 		}
 	}
@@ -994,6 +1003,36 @@ public class PortForwardingTests : IDisposable
 				"localhost", TestPort2).WithTimeout(Timeout);
 		});
 		Assert.Equal(SshChannelOpenFailureReason.AdministrativelyProhibited, ex.OpenFailureReason);
+	}
+
+	[Fact]
+	public async Task BlockForwardAlreadyForwardedPort()
+	{
+		this.sessionPair.ServerSession.Request += (_, e) => e.IsAuthorized = true;
+
+		var pfs = this.sessionPair.ServerSession.ActivateService<PortForwardingService>();
+		pfs.TcpListenerFactory = new TestTcpListenerFactory(TestPort2, autoIncrement: true);
+
+		await this.sessionPair.ConnectAsync();
+
+		// Don't await the first request. This allows the second request to start before
+		// the first response is received, since that would update the local list of forwarded
+		// ports and therefore block the second request.
+		var forwarder1Task = this.sessionPair.ClientSession.ForwardFromRemotePortAsync(
+			IPAddress.Loopback, TestPort1);
+
+		var forwarder2 = await this.sessionPair.ClientSession.ForwardFromRemotePortAsync(
+				IPAddress.Loopback, TestPort1).WithTimeout(Timeout);
+		Assert.Null(forwarder2);
+
+		var forwarder1 = await forwarder1Task.WithTimeout(Timeout);
+		Assert.NotNull(forwarder1);
+		forwarder1.Dispose();
+
+		// After disposing (cancelling the forwarding), now try again.
+		using var forwarder3 = await this.sessionPair.ClientSession.ForwardFromRemotePortAsync(
+			IPAddress.Loopback, TestPort1).WithTimeout(Timeout);
+		Assert.NotNull(forwarder3);
 	}
 
 	[Fact]
