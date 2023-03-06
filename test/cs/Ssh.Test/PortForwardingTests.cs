@@ -1015,18 +1015,17 @@ public class PortForwardingTests : IDisposable
 
 		await this.sessionPair.ConnectAsync();
 
-		// Don't await the first request. This allows the second request to start before
-		// the first response is received, since that would update the local list of forwarded
-		// ports and therefore block the second request.
-		var forwarder1Task = this.sessionPair.ClientSession.ForwardFromRemotePortAsync(
+		using var forwarder1 = await this.sessionPair.ClientSession.ForwardFromRemotePortAsync(
 			IPAddress.Loopback, TestPort1);
-
-		var forwarder2 = await this.sessionPair.ClientSession.ForwardFromRemotePortAsync(
-				IPAddress.Loopback, TestPort1).WithTimeout(Timeout);
-		Assert.Null(forwarder2);
-
-		var forwarder1 = await forwarder1Task.WithTimeout(Timeout);
 		Assert.NotNull(forwarder1);
+
+		// Bypass the ForwardFromRemotePort API because it has a client-side check
+		// that prevents validation of the remote block.
+		var portRequest = new PortForwardRequestMessage();
+		portRequest.Port = (uint)TestPort1;
+		var result = await this.sessionPair.ClientSession.RequestAsync(portRequest);
+		Assert.False(result);
+
 		forwarder1.Dispose();
 
 		// After disposing (cancelling the forwarding), now try again.
