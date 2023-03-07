@@ -56,7 +56,6 @@ class TestTcpListenerFactory implements TcpListenerFactory {
 		localPort: number,
 		canChangePort: boolean,
 	): Promise<net.Server> {
-		assert(localPort === this.localPortOverride || canChangePort);
 		const listener = net.createServer();
 		await new Promise((resolve, reject) => {
 			listener.listen({
@@ -169,7 +168,10 @@ export class PortForwardingTests {
 
 		assert(forwarder);
 		assert.equal(forwarder!.remoteIPAddress, loopbackV4);
-		assert.equal(testPort2, forwarder!.remotePort);
+
+		// The client does not know (or need to know) that the remote side chose a different port.
+		assert.equal(testPort, forwarder!.remotePort);
+
 		assert.equal(forwarder!.localHost, loopbackV4);
 		assert.equal(forwarder!.localPort, testPort);
 
@@ -1031,6 +1033,43 @@ export class PortForwardingTests {
 	}
 
 	@test
+	public async blockForwardAlreadyForwardedPort(): Promise<void> {
+		const testPort1 = await getAvailablePort();
+		const testPort2 = await getAvailablePort();
+
+		const [clientSession, serverSession] = await this.createSessions();
+		await connectSessionPair(clientSession, serverSession);
+
+		serverSession.onRequest((e) => {
+			e.isAuthorized = e.request instanceof PortForwardRequestMessage;
+		});
+
+		const clientPfs = clientSession.activateService(PortForwardingService);
+
+		try {
+			const forwarder1 = await clientPfs.forwardFromRemotePort(loopbackV4, testPort1);
+			assert(forwarder1);
+
+			// Bypass the forwardFromRemotePort API because it has a client-side check
+			// that prevents validation of the remote block.
+			const portRequest = new PortForwardRequestMessage();
+			portRequest.port = testPort1;
+			const result = await clientSession.request(portRequest);
+			assert(!result);
+
+			// Cancel forwarding.
+			forwarder1!.dispose();
+
+			const forwarder3 = await clientPfs.forwardFromRemotePort(loopbackV4, testPort1);
+			assert(forwarder3);
+			forwarder3!.dispose();
+		} finally {
+			serverSession.dispose();
+			clientSession.dispose();
+		}
+	}
+
+	@test
 	public async raiseForwardedPortEvents(): Promise<void> {
 		const testPort1 = await getAvailablePort();
 		const testPort2 = await getAvailablePort();
@@ -1106,7 +1145,7 @@ export class PortForwardingTests {
 		assert.equal(serverPfs.remoteForwardedPorts.size, 1);
 		assert(
 			clientPfs.localForwardedPorts.find(
-				(p) => p.localPort === testPort1 && p.remotePort === testPort2,
+				(p) => p.localPort === testPort1 && p.remotePort === testPort1,
 			),
 		);
 		assert(
@@ -1117,7 +1156,7 @@ export class PortForwardingTests {
 
 		assert(clientLocalPortAddedEvent);
 		assert.equal(clientLocalPortAddedEvent!.port.localPort, testPort1);
-		assert.equal(clientLocalPortAddedEvent!.port.remotePort, testPort2);
+		assert.equal(clientLocalPortAddedEvent!.port.remotePort, testPort1);
 		assert(!clientRemotePortAddedEvent);
 		assert(!serverLocalPortAddedEvent);
 		assert(serverRemotePortAddedEvent);
@@ -1156,7 +1195,7 @@ export class PortForwardingTests {
 
 			assert(clientLocalChannelAddedEvent);
 			assert.equal(clientLocalChannelAddedEvent!.port.localPort, testPort1);
-			assert.equal(clientLocalChannelAddedEvent!.port.remotePort, testPort2);
+			assert.equal(clientLocalChannelAddedEvent!.port.remotePort, testPort1);
 			assert(clientLocalChannelAddedEvent!.channel);
 			assert(!clientRemoteChannelAddedEvent);
 
@@ -1193,7 +1232,7 @@ export class PortForwardingTests {
 
 		assert(clientLocalChannelRemovedEvent);
 		assert.equal(clientLocalChannelRemovedEvent!.port.localPort, testPort1);
-		assert.equal(clientLocalChannelRemovedEvent!.port.remotePort, testPort2);
+		assert.equal(clientLocalChannelRemovedEvent!.port.remotePort, testPort1);
 		assert(clientLocalChannelRemovedEvent!.channel);
 		assert(!clientRemoteChannelRemovedEvent);
 		assert(!serverLocalChannelRemovedEvent);

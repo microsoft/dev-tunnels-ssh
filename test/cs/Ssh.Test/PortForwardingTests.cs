@@ -121,7 +121,10 @@ public class PortForwardingTests : IDisposable
 
 		Assert.NotNull(forwarder);
 		Assert.Equal(IPAddress.Loopback, forwarder.RemoteIPAddress);
-		Assert.Equal(TestPort2, forwarder.RemotePort);
+
+		// The client does not know (or need to know) that the remote side chose a different port.
+		Assert.Equal(TestPort1, forwarder.RemotePort);
+
 		Assert.Equal(IPAddress.Loopback.ToString(), forwarder.LocalHost);
 		Assert.Equal(TestPort1, forwarder.LocalPort);
 
@@ -146,11 +149,13 @@ public class PortForwardingTests : IDisposable
 
 	private class TestTcpListenerFactory : ITcpListenerFactory
 	{
-		private readonly int localPortOverride;
+		private int localPortOverride;
+		private readonly bool autoIncrement;
 
-		public TestTcpListenerFactory(int localPortOverride)
+		public TestTcpListenerFactory(int localPortOverride, bool autoIncrement = false)
 		{
 			this.localPortOverride = localPortOverride;
+			this.autoIncrement = autoIncrement;
 		}
 
 		public Task<TcpListener> CreateTcpListenerAsync(
@@ -160,9 +165,14 @@ public class PortForwardingTests : IDisposable
 			TraceSource trace,
 			CancellationToken cancellation)
 		{
-			Assert.True(localPort == localPortOverride || canChangePort);
 			var listener = new TcpListener(localIPAddress, this.localPortOverride);
 			listener.Start();
+
+			if (this.autoIncrement)
+			{
+				this.localPortOverride++;
+			}
+
 			return Task.FromResult(listener);
 		}
 	}
@@ -996,6 +1006,35 @@ public class PortForwardingTests : IDisposable
 	}
 
 	[Fact]
+	public async Task BlockForwardAlreadyForwardedPort()
+	{
+		this.sessionPair.ServerSession.Request += (_, e) => e.IsAuthorized = true;
+
+		var pfs = this.sessionPair.ServerSession.ActivateService<PortForwardingService>();
+		pfs.TcpListenerFactory = new TestTcpListenerFactory(TestPort2, autoIncrement: true);
+
+		await this.sessionPair.ConnectAsync();
+
+		using var forwarder1 = await this.sessionPair.ClientSession.ForwardFromRemotePortAsync(
+			IPAddress.Loopback, TestPort1);
+		Assert.NotNull(forwarder1);
+
+		// Bypass the ForwardFromRemotePort API because it has a client-side check
+		// that prevents validation of the remote block.
+		var portRequest = new PortForwardRequestMessage();
+		portRequest.Port = (uint)TestPort1;
+		var result = await this.sessionPair.ClientSession.RequestAsync(portRequest);
+		Assert.False(result);
+
+		forwarder1.Dispose();
+
+		// After disposing (cancelling the forwarding), now try again.
+		using var forwarder3 = await this.sessionPair.ClientSession.ForwardFromRemotePortAsync(
+			IPAddress.Loopback, TestPort1).WithTimeout(Timeout);
+		Assert.NotNull(forwarder3);
+	}
+
+	[Fact]
 	public async Task RaiseForwardedPortEvents()
 	{
 		this.sessionPair.ServerSession.Request += (_, e) => e.IsAuthorized = true;
@@ -1054,16 +1093,19 @@ public class PortForwardingTests : IDisposable
 		Assert.Empty(clientPfs.RemoteForwardedPorts);
 		Assert.Empty(serverPfs.LocalForwardedPorts);
 		Assert.Single(serverPfs.RemoteForwardedPorts);
+
+		// The client does not know (or need to know) that the remote side chose a different port.
 		Assert.Contains(
 			clientPfs.LocalForwardedPorts,
-			(p) => p.LocalPort == TestPort1 && p.RemotePort == TestPort2);
+			(p) => p.LocalPort == TestPort1 && p.RemotePort == TestPort1);
+
 		Assert.Contains(
 			serverPfs.RemoteForwardedPorts,
 			(p) => p.LocalPort == TestPort2 && p.RemotePort == TestPort1);
 
 		Assert.NotNull(clientLocalPortAddedEvent);
 		Assert.Equal(TestPort1, clientLocalPortAddedEvent.Port.LocalPort);
-		Assert.Equal(TestPort2, clientLocalPortAddedEvent.Port.RemotePort);
+		Assert.Equal(TestPort1, clientLocalPortAddedEvent.Port.RemotePort);
 		Assert.Null(clientRemotePortAddedEvent);
 		Assert.Null(serverLocalPortAddedEvent);
 		Assert.NotNull(serverRemotePortAddedEvent);
@@ -1094,7 +1136,7 @@ public class PortForwardingTests : IDisposable
 
 			Assert.NotNull(clientLocalChannelAddedEvent);
 			Assert.Equal(TestPort1, clientLocalChannelAddedEvent.Port.LocalPort);
-			Assert.Equal(TestPort2, clientLocalChannelAddedEvent.Port.RemotePort);
+			Assert.Equal(TestPort1, clientLocalChannelAddedEvent.Port.RemotePort);
 			Assert.NotNull(clientLocalChannelAddedEvent.Channel);
 			Assert.Null(clientRemoteChannelAddedEvent);
 
@@ -1128,7 +1170,7 @@ public class PortForwardingTests : IDisposable
 
 		Assert.NotNull(clientLocalChannelRemovedEvent);
 		Assert.Equal(TestPort1, clientLocalChannelRemovedEvent.Port.LocalPort);
-		Assert.Equal(TestPort2, clientLocalChannelRemovedEvent.Port.RemotePort);
+		Assert.Equal(TestPort1, clientLocalChannelRemovedEvent.Port.RemotePort);
 		Assert.NotNull(clientLocalChannelRemovedEvent.Channel);
 		Assert.Null(clientRemoteChannelRemovedEvent);
 		Assert.Null(serverLocalChannelRemovedEvent);

@@ -20,7 +20,7 @@ export class ForwardedPort {
 		if (localPort !== null && (typeof localPort !== 'number' || localPort <= 0)) {
 			throw new TypeError('Local port must be a positive integer.');
 		} else if (remotePort !== null && (typeof remotePort !== 'number' || remotePort <= 0)) {
-			throw new TypeError('Remote port must be a positive integer.');
+			throw new TypeError('Remote port must be a positive integer: ' + remotePort);
 		}
 
 		this.localPort = localPort;
