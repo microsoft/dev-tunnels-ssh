@@ -340,6 +340,10 @@ export class PortForwardingService extends SshService {
 			throw new TypeError('Remote port must be a positive integer.');
 		}
 
+		if (this.localForwarders.has(remotePort)) {
+			throw new Error(`Port ${remotePort} is already forwarded.`);
+		}
+
 		const forwarder = new LocalPortForwarder(
 			this,
 			this.session,
@@ -630,6 +634,14 @@ export class PortForwardingService extends SshService {
 			if (remotePort === 0) {
 				// The other side requested a random port. Reply with the chosen port number.
 				remotePort = localPort;
+			}
+
+			if (this.localForwarders.has(remotePort)) {
+				// The forwarder (TCP listener factory) chose a port that is already forwarded.
+				// This can happen (though its' very unlikely) if a random port was requested.
+				// Returning null here causes the forward request to be rejected.
+				forwarder.dispose();
+				return null;
 			}
 
 			// The remote port is the port referenced in exchanged messages,

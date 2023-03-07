@@ -284,6 +284,14 @@ public class PortForwardingService : SshService
 		if (string.IsNullOrEmpty(remoteHost)) throw new ArgumentNullException(nameof(remoteHost));
 		if (remotePort <= 0) throw new ArgumentOutOfRangeException(nameof(remotePort));
 
+		lock (this.localForwarders)
+		{
+			if (this.localForwarders.ContainsKey(remotePort))
+			{
+				throw new InvalidOperationException($"Port {remotePort} is already forwarded.");
+			}
+		}
+
 		var forwarder = new LocalPortForwarder(
 			this,
 			Session,
@@ -634,6 +642,15 @@ public class PortForwardingService : SshService
 			// so the forwarder is indexed on that port number, rather than the local port.
 			lock (this.localForwarders)
 			{
+				if (localForwarders.ContainsKey(remotePort))
+				{
+					// The forwarder (TCP listener factory) chose a port that is already forwarded.
+					// This can happen (though its' very unlikely) if a random port was requested.
+					// Returning null here causes the forward request to be rejected.
+					forwarder.Dispose();
+					return null;
+				}
+
 				this.localForwarders.Add(remotePort, forwarder);
 			}
 
