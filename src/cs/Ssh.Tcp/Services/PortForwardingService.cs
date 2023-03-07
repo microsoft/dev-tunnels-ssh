@@ -585,11 +585,12 @@ public class PortForwardingService : SshService
 					{
 						// The chosen local port may be different from the requested port. Use the
 						// requested port in the response, unless the request was for a random port.
-						response = new PortForwardSuccessMessage
-						{
-							Port = portForwardRequest.Port == 0 ? (uint)localPort.Value :
-								portForwardRequest.Port,
-						};
+						var forwardedPort = portForwardRequest.Port == 0 ? (uint)localPort.Value :
+								portForwardRequest.Port;
+						var portResponse = await this.MessageFactory.CreateSuccessMessageAsync(
+							(int)forwardedPort).ConfigureAwait(false);
+						portResponse.Port = forwardedPort;
+						response = portResponse;
 					}
 				}
 				else if (request.RequestType == CancelPortForwardRequestType)
