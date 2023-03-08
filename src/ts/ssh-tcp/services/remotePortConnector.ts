@@ -41,12 +41,14 @@ export class RemotePortConnector extends SshService {
 	}
 
 	/* @internal */
-	public async request(cancellation?: CancellationToken): Promise<boolean> {
+	public async request(
+		request: PortForwardRequestMessage,
+		cancellation?: CancellationToken,
+	): Promise<boolean> {
 		if (this.forwarding) {
 			throw new Error('Already forwarding.');
 		}
 
-		const request = new PortForwardRequestMessage();
 		request.addressToBind = this.remoteIPAddress;
 		request.port = this.remotePort;
 		request.wantReply = true;
