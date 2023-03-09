@@ -1013,7 +1013,7 @@ export class PortForwardingTests {
 	}
 
 	@test
-	public async connectToForwardedPortWithoutStartingLocalServer() {
+	public async connectToForwardedPortWithoutForwardingConnectionToLocalPort() {
 		const testPort = await getAvailablePort();
 
 		const [clientSession, serverSession] = await this.createSessions();
@@ -1024,7 +1024,13 @@ export class PortForwardingTests {
 		});
 
 		const clientPfs = clientSession.activateService(PortForwardingService);
-		clientPfs.acceptLocalConnectionsForForwardedPorts = false;
+		clientPfs.forwardConnectionsToLocalPorts = false;
+
+		let localStream;
+		clientSession.onChannelOpening((e) => {
+			localStream = new SshStream(e.channel);
+        });
+
 		const serverPfs = serverSession.activateService(PortForwardingService);
 		serverPfs.acceptLocalConnectionsForForwardedPorts = false;
 
@@ -1040,7 +1046,8 @@ export class PortForwardingTests {
 			timeoutMs,
 		);
 
-		await forwardPromise;
+		assert(localStream);
+		assert(remoteStream);
 	}
 
 	@test
