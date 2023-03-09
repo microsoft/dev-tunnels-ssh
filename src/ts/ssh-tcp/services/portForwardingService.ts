@@ -754,8 +754,11 @@ export class PortForwardingService extends SshService {
 
 		request.failureReason = portForwardRequest.failureReason;
 		request.failureDescription = portForwardRequest.failureDescription;
-		if (request.failureReason !== SshChannelOpenFailureReason.none ||
-			!request.isRemoteRequest || !this.acceptLocalConnectionsForForwardedPorts) {
+		if (
+			request.failureReason !== SshChannelOpenFailureReason.none ||
+			!request.isRemoteRequest ||
+			!this.acceptLocalConnectionsForForwardedPorts
+		) {
 			return;
 		}
 
