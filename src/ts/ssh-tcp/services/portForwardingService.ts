@@ -108,7 +108,6 @@ export class PortForwardingService extends SshService {
 	 */
 	public acceptLocalConnectionsForForwardedPorts: boolean = true;
 
-
 	/**
 	 * Gets or sets a value that controls whether the port-forwarding service forwards connections
 	 * to local TCP sockets.
@@ -119,7 +118,7 @@ export class PortForwardingService extends SshService {
 	 * default). It may be changed at any time while the session is connected, and the new value
 	 * will affect any newly forwarded ports after that, but not previously-forwarded ports.
 	 */
-	public forwardConnectionsToLocalPorts : boolean = true;
+	public forwardConnectionsToLocalPorts: boolean = true;
 
 	/**
 	 * Gets or sets a value that controls whether the port-forwarding service accepts
