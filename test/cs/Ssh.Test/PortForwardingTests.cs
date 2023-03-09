@@ -991,6 +991,37 @@ public class PortForwardingTests : IDisposable
 	}
 
 	[Fact]
+	public async Task ConnectToForwardedPortWithoutForwardingConnectionToLocalPort()
+	{
+		this.sessionPair.ServerSession.Request += (_, e) => e.IsAuthorized = true;
+
+		await this.sessionPair.ConnectAsync();
+		var serverPfs = this.sessionPair.ServerSession.ActivateService<PortForwardingService>();
+		serverPfs.AcceptLocalConnectionsForForwardedPorts = false;
+
+		var clientPfs = this.sessionPair.ClientSession.ActivateService<PortForwardingService>();
+		clientPfs.ForwardConnectionsToLocalPorts = false;
+
+		SshStream localStream = null;
+		this.sessionPair.ClientSession.ChannelOpening += (object sender, Events.SshChannelOpeningEventArgs e) =>
+		{
+			localStream = new SshStream(e.Channel);
+		};
+
+		var waitTask = this.sessionPair.ServerSession.WaitForForwardedPortAsync(TestPort1)
+			.WithTimeout(Timeout);
+		var forwardTask = this.sessionPair.ClientSession.ForwardFromRemotePortAsync(
+			IPAddress.Loopback, TestPort1).WithTimeout(Timeout);
+		await waitTask;
+
+		var remoteStream = await this.sessionPair.ServerSession
+				.ConnectToForwardedPortAsync(TestPort1).WithTimeout(Timeout);
+
+		Assert.NotNull(localStream);
+		Assert.NotNull(remoteStream);
+	}
+
+	[Fact]
 	public async Task BlockConnectToNonForwardedPort()
 	{
 		await this.sessionPair.ConnectAsync();

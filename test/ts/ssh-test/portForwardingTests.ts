@@ -1013,6 +1013,44 @@ export class PortForwardingTests {
 	}
 
 	@test
+	public async connectToForwardedPortWithoutForwardingConnectionToLocalPort() {
+		const testPort = await getAvailablePort();
+
+		const [clientSession, serverSession] = await this.createSessions();
+		await connectSessionPair(clientSession, serverSession);
+
+		serverSession.onRequest((e) => {
+			e.isAuthorized = e.request instanceof PortForwardRequestMessage;
+		});
+
+		const clientPfs = clientSession.activateService(PortForwardingService);
+		clientPfs.forwardConnectionsToLocalPorts = false;
+
+		let localStream;
+		clientSession.onChannelOpening((e) => {
+			localStream = new SshStream(e.channel);
+        });
+
+		const serverPfs = serverSession.activateService(PortForwardingService);
+		serverPfs.acceptLocalConnectionsForForwardedPorts = false;
+
+		const waitPromise = serverPfs.waitForForwardedPort(testPort);
+		const forwardPromise = await withTimeout(
+			clientPfs.forwardFromRemotePort(loopbackV4, testPort),
+			timeoutMs,
+		);
+		await withTimeout(waitPromise, timeoutMs);
+
+		const remoteStream = await withTimeout(
+			serverPfs.connectToForwardedPort(testPort),
+			timeoutMs,
+		);
+
+		assert(localStream);
+		assert(remoteStream);
+	}
+
+	@test
 	public async blockConnectToNonForwardedPort(): Promise<void> {
 		const testPort = await getAvailablePort();
 

@@ -109,6 +109,18 @@ export class PortForwardingService extends SshService {
 	public acceptLocalConnectionsForForwardedPorts: boolean = true;
 
 	/**
+	 * Gets or sets a value that controls whether the port-forwarding service forwards connections
+	 * to local TCP sockets.
+	 *
+	 * The default is true.
+	 *
+	 * This property is typically initialized before connecting a session (if not keeping the
+	 * default). It may be changed at any time while the session is connected, and the new value
+	 * will affect any newly forwarded ports after that, but not previously-forwarded ports.
+	 */
+	public forwardConnectionsToLocalPorts: boolean = true;
+
+	/**
 	 * Gets or sets a value that controls whether the port-forwarding service accepts
 	 * 'direct-tcpip' channel open requests and forwards the channel connections to the local port.
 	 *
@@ -754,7 +766,11 @@ export class PortForwardingService extends SshService {
 
 		request.failureReason = portForwardRequest.failureReason;
 		request.failureDescription = portForwardRequest.failureDescription;
-		if (request.failureReason !== SshChannelOpenFailureReason.none || !request.isRemoteRequest) {
+		if (
+			request.failureReason !== SshChannelOpenFailureReason.none ||
+			!request.isRemoteRequest ||
+			!this.forwardConnectionsToLocalPorts
+		) {
 			return;
 		}
 
