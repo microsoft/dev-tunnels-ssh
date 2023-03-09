@@ -1013,6 +1013,37 @@ export class PortForwardingTests {
 	}
 
 	@test
+	public async connectToForwardedPortWithoutStartingLocalServer() {
+		const testPort = await getAvailablePort();
+
+		const [clientSession, serverSession] = await this.createSessions();
+		await connectSessionPair(clientSession, serverSession);
+
+		serverSession.onRequest((e) => {
+			e.isAuthorized = e.request instanceof PortForwardRequestMessage;
+		});
+
+		const clientPfs = clientSession.activateService(PortForwardingService);
+		clientPfs.acceptLocalConnectionsForForwardedPorts = false;
+		const serverPfs = serverSession.activateService(PortForwardingService);
+		serverPfs.acceptLocalConnectionsForForwardedPorts = false;
+
+		const waitPromise = serverPfs.waitForForwardedPort(testPort);
+		const forwardPromise = await withTimeout(
+			clientPfs.forwardFromRemotePort(loopbackV4, testPort),
+			timeoutMs,
+		);
+		await withTimeout(waitPromise, timeoutMs);
+
+		const remoteStream = await withTimeout(
+			serverPfs.connectToForwardedPort(testPort),
+			timeoutMs,
+		);
+
+		await forwardPromise;
+	}
+
+	@test
 	public async blockConnectToNonForwardedPort(): Promise<void> {
 		const testPort = await getAvailablePort();
 

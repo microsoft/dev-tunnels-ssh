@@ -788,7 +788,8 @@ public class PortForwardingService : SshService
 
 		request.FailureReason = portForwardRequest.FailureReason;
 		request.FailureDescription = portForwardRequest.FailureDescription;
-		if (request.FailureReason != SshChannelOpenFailureReason.None || !request.IsRemoteRequest)
+		if (request.FailureReason != SshChannelOpenFailureReason.None ||
+			!request.IsRemoteRequest || !AcceptLocalConnectionsForForwardedPorts)
 		{
 			return;
 		}

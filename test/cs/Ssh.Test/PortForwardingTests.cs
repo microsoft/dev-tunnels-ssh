@@ -991,6 +991,30 @@ public class PortForwardingTests : IDisposable
 	}
 
 	[Fact]
+	public async Task ConnectToForwardedPortWithoutStartingLocalServer()
+	{
+		this.sessionPair.ServerSession.Request += (_, e) => e.IsAuthorized = true;
+
+		await this.sessionPair.ConnectAsync();
+		var serverPfs = this.sessionPair.ServerSession.ActivateService<PortForwardingService>();
+		serverPfs.AcceptLocalConnectionsForForwardedPorts = false;
+
+		var clientPfs = this.sessionPair.ClientSession.ActivateService<PortForwardingService>();
+		clientPfs.AcceptLocalConnectionsForForwardedPorts = false;
+
+		var waitTask = this.sessionPair.ServerSession.WaitForForwardedPortAsync(TestPort1)
+			.WithTimeout(Timeout);
+		var forwardTask = this.sessionPair.ClientSession.ForwardFromRemotePortAsync(
+			IPAddress.Loopback, TestPort1).WithTimeout(Timeout);
+		await waitTask;
+
+		var remoteStream = await this.sessionPair.ServerSession
+				.ConnectToForwardedPortAsync(TestPort1).WithTimeout(Timeout);
+
+		await forwardTask;
+	}
+
+	[Fact]
 	public async Task BlockConnectToNonForwardedPort()
 	{
 		await this.sessionPair.ConnectAsync();
