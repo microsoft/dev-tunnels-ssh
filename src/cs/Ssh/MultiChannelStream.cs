@@ -42,8 +42,6 @@ public class MultiChannelStream : IDisposable
 	private readonly Stream transportStream;
 	private readonly SshSession session;
 
-	private EventHandler<SshChannelOpeningEventArgs>? channelOpening;
-
 	/// <summary>
 	/// Creates a new multi-channel stream over an underlying transport stream.
 	/// </summary>
@@ -82,20 +80,7 @@ public class MultiChannelStream : IDisposable
 	/// Adding an event handler will activate the connection service on the session.
 	/// </remarks>
 	/// <exception cref="ObjectDisposedException">If a handler is added when the underlying ssh session is closed.</exception>
-	public event EventHandler<SshChannelOpeningEventArgs>? ChannelOpening
-	{
-		add
-		{
-			if (this.channelOpening == null && !IsClosed)
-			{
-				this.session.ActivateService<ConnectionService>();
-			}
-
-			this.channelOpening += value;
-		}
-
-		remove => this.channelOpening -= value;
-	}
+	public event EventHandler<SshChannelOpeningEventArgs>? ChannelOpening;
 
 	/// <summary>
 	/// Event that is rised when underlying ssh session is closed.
@@ -356,7 +341,7 @@ public class MultiChannelStream : IDisposable
 			e.Channel.MaxWindowSize = ChannelMaxWindowSize;
 		}
 
-		channelOpening?.Invoke(this, e);
+		ChannelOpening?.Invoke(this, e);
 	}
 
 	private void OnSessionClosed(object? sender, SshSessionClosedEventArgs e)

@@ -82,6 +82,7 @@ public class SshSession : IDisposable
 
 			// No key exchange, no encryption, no HMAC.
 			this.kexService = null;
+			ActivateService<ConnectionService>();
 		}
 		else
 		{

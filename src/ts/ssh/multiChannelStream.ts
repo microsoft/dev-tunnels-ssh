@@ -68,13 +68,7 @@ export class MultiChannelStream implements Disposable {
 	public readonly onClosed = this.closedEmitter.event;
 
 	private readonly channelOpeningEmitter = new Emitter<SshChannelOpeningEventArgs>();
-	public get onChannelOpening() {
-		if (!this.isClosed) {
-			this.session.activateService(ConnectionService);
-		}
-
-		return this.channelOpeningEmitter.event;
-	}
+	public readonly onChannelOpening = this.channelOpeningEmitter.event;
 
 	/**
 	 * Initiates the SSH session over the transport stream by exchanging initial messages with the

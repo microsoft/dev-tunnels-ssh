@@ -185,6 +185,7 @@ export class SshSession implements Disposable {
 
 			// No key exchange, no encryption, no HMAC.
 			this.kexService = null;
+			this.activateService(ConnectionService);
 		} else {
 			this.kexService = new KeyExchangeService(this, isClientSession ?? false);
 		}
