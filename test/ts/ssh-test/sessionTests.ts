@@ -174,11 +174,11 @@ export class SessionTests {
 			serverRaisedClientAuthenticated = true;
 		});
 
-		let authenticatedServerKey: KeyPair | null = null;
+		let authenticatedServerKey: KeyPair = null!;
 		let serverPrincipal = new Object();
 
 		clientSession.onAuthenticating((e) => {
-			authenticatedServerKey = e.publicKey;
+			authenticatedServerKey = e.publicKey!;
 			e.authenticationPromise = Promise.resolve(serverPrincipal);
 		});
 
@@ -230,14 +230,14 @@ export class SessionTests {
 		let authenticationType: SshAuthenticationType | undefined = undefined;
 		let authenticatedClientUsername: string | null = null;
 		let authenticatedClientPassword: string | null = null;
-		let authenticatedClientKey: KeyPair | null = null;
+		let authenticatedClientKey: KeyPair = null!;
 		let clientPrincipal = new Object();
 
 		serverSession.onAuthenticating((e) => {
 			authenticationType = e.authenticationType;
 			authenticatedClientUsername = e.username;
 			authenticatedClientPassword = e.password;
-			authenticatedClientKey = e.publicKey;
+			authenticatedClientKey = e.publicKey!;
 			e.authenticationPromise = Promise.resolve(clientPrincipal);
 		});
 
@@ -246,11 +246,11 @@ export class SessionTests {
 			serverRaisedClientAuthenticated = true;
 		});
 
-		let authenticatedServerKey: KeyPair | null = null;
+		let authenticatedServerKey: KeyPair = null!;
 		let serverPrincipal = new Object();
 
 		clientSession.onAuthenticating((e) => {
-			authenticatedServerKey = e.publicKey;
+			authenticatedServerKey = e.publicKey!;
 			e.authenticationPromise = Promise.resolve(serverPrincipal);
 		});
 
@@ -311,11 +311,11 @@ export class SessionTests {
 			serverRaisedClientAuthenticated = true;
 		});
 
-		let authenticatedServerKey: KeyPair | null = null;
+		let authenticatedServerKey: KeyPair = null!;
 		let serverPrincipal = new Object();
 
 		clientSession.onAuthenticating((e) => {
-			authenticatedServerKey = e.publicKey;
+			authenticatedServerKey = e.publicKey!;
 			e.authenticationPromise = Promise.resolve(serverPrincipal);
 		});
 

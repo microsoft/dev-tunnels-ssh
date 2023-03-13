@@ -181,7 +181,7 @@ export class ChannelTests {
 			clientExtension,
 		);
 
-		let serverRequest: ChannelRequestMessage | null = null;
+		let serverRequest: ChannelRequestMessage = null!;
 		serverSession.onChannelOpening((e) => {
 			e.channel.onRequest((e) => {
 				serverRequest = e.request;
@@ -220,7 +220,7 @@ export class ChannelTests {
 			clientExtension,
 		);
 
-		let serverRequest: ChannelRequestMessage | null = null;
+		let serverRequest: ChannelRequestMessage = null!;
 		serverSession.onChannelOpening((e) => {
 			e.channel.onRequest((e) => {
 				serverRequest = e.request;
@@ -266,7 +266,7 @@ export class ChannelTests {
 			clientExtension,
 		);
 
-		let serverRequest: ChannelRequestMessage | null = null;
+		let serverRequest: ChannelRequestMessage = null!;
 		serverSession.onChannelOpening((e) => {
 			e.channel.onRequest((e) => {
 				serverRequest = e.request;
@@ -327,7 +327,7 @@ export class ChannelTests {
 		const clientChannel = await clientSession.openChannel();
 		const serverChannel = await serverChannelPromise;
 
-		let serverRequest: ChannelRequestMessage | null = null;
+		let serverRequest: ChannelRequestMessage = null!;
 		serverChannel.onRequest((e) => {
 			serverRequest = e.request;
 			e.isAuthorized = success;
@@ -610,7 +610,7 @@ export class ChannelTests {
 		const [clientSession, serverSession] = await ChannelTests.createSessions();
 		const clientChannel = await clientSession.openChannel();
 
-		let closedEvent: SshChannelClosedEventArgs | null = null;
+		let closedEvent: SshChannelClosedEventArgs = null!;
 		clientChannel.onClosed((e) => {
 			closedEvent = e;
 		});
@@ -628,7 +628,7 @@ export class ChannelTests {
 		const [clientSession, serverSession] = await ChannelTests.createSessions();
 		const clientChannel = await clientSession.openChannel();
 
-		let closedEvent: SshChannelClosedEventArgs | null = null;
+		let closedEvent: SshChannelClosedEventArgs = null!;
 		clientChannel.onClosed((e) => {
 			closedEvent = e;
 		});

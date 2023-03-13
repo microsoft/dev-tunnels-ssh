@@ -61,7 +61,7 @@ export class KeyExchangeService extends SshService {
 	private isInitialExchange: boolean = false;
 	private exchangeContext: ExchangeContext | null = null;
 
-	constructor(session: SshSession, private readonly isClientSession: boolean) {
+	public constructor(session: SshSession, private readonly isClientSession: boolean) {
 		super(session);
 	}
 
@@ -640,8 +640,8 @@ export class KeyExchangeService extends SshService {
 			`Server (${serverAlgorithms.join(', ')}) ` +
 			`Client (${clientAlgorithms.join(', ')})`;
 
-		for (let client of clientAlgorithms) {
-			for (let server of serverAlgorithms) {
+		for (const client of clientAlgorithms) {
+			for (const server of serverAlgorithms) {
 				if (server === client) {
 					const result = server;
 					this.trace(

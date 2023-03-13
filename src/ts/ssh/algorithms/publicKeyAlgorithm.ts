@@ -55,6 +55,7 @@ export interface KeyPair extends Disposable {
 	exportParameters(): Promise<KeyPairParameters>;
 }
 
+// eslint-disable-next-line @typescript-eslint/no-empty-interface
 interface KeyPairParameters {}
 
 export interface RsaParameters extends KeyPairParameters {

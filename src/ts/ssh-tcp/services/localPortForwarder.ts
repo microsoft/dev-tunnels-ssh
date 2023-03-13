@@ -93,7 +93,7 @@ export class LocalPortForwarder extends SshService {
 			if (this.localIPAddress === '127.0.0.1' || this.localIPAddress === '0.0.0.0') {
 				// Call the factory again to create another listener, but this time with the
 				// corresponding IPv6 local address, and not allowing a port change.
-				listenAddress = '0.0.0.0' ? '::' : '::1';
+				listenAddress = this.localIPAddress === '0.0.0.0' ? '::' : '::1';
 				try {
 					this.tcpListener2 = await this.pfs.tcpListenerFactory.createTcpListener(
 						listenAddress,
@@ -109,7 +109,8 @@ export class LocalPortForwarder extends SshService {
 					this.trace(
 						TraceLevel.Warning,
 						SshTraceEventIds.portForwardServerListenFailed,
-						`PortForwardingService failed to listen on {listenAddress}:{LocalPort}: {e.message}`,
+						'PortForwardingService failed to listen on ' +
+							`${listenAddress}:{this.port}: ${e.message}`,
 						e,
 					);
 

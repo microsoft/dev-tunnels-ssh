@@ -8,6 +8,7 @@ import { SshServiceConstructor } from './sshService';
  * Decorator applied to suclasses of `SshService` that declares how the service gets activated.
  */
 export function serviceActivation(activation: ServiceActivation) {
+	// eslint-disable-next-line @typescript-eslint/ban-types
 	return (constructor: Function) => {
 		if (!(<any>constructor).activations) {
 			(<any>constructor).activations = [];
@@ -61,11 +62,11 @@ export function findService(
 	serviceConfigs: Map<SshServiceConstructor, any>,
 	predicate: (activation: ServiceActivation) => boolean,
 ): SshServiceConstructor | null {
-	for (let serviceType of serviceConfigs.keys()) {
+	for (const serviceType of serviceConfigs.keys()) {
 		const activations: ServiceActivation[] = (<any>serviceType).activations;
 
 		let foundActivation = false;
-		for (let activation of activations) {
+		for (const activation of activations) {
 			foundActivation = true;
 			if (predicate(activation)) {
 				return serviceType;
@@ -75,7 +76,7 @@ export function findService(
 		if (!foundActivation) {
 			throw new Error(
 				`SSH service type '${serviceType.name}' must have one or more ` +
-					`'serviceActivation' decorators.`,
+					'\'serviceActivation\' decorators.',
 			);
 		}
 	}

@@ -9,7 +9,7 @@ export { CancellationToken, CancellationTokenSource };
  * Error thrown when an operation is cancelled via a CancellationToken.
  */
 export class CancellationError extends Error {
-	constructor(message?: string) {
+	public constructor(message?: string) {
 		super(message || 'Operation cancelled.');
 	}
 }

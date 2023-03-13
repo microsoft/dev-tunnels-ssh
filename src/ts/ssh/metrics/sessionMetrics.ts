@@ -24,9 +24,9 @@ export class SessionMetrics {
 
 	/* @internal */
 	public constructor() {
-		if (typeof performance === 'object' && performance.now) {
+		if (typeof performance === 'object' && typeof performance.now === 'function') {
 			Object.defineProperty(this, 'time', { get: this.browserTime });
-		} else if (typeof process === 'object' && process.hrtime) {
+		} else if (typeof process === 'object' && typeof process.hrtime === 'function') {
 			Object.defineProperty(this, 'time', { get: this.nodejsTime });
 		}
 		this.startTime = this.time;

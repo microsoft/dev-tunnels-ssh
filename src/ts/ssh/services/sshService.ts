@@ -39,7 +39,7 @@ export interface SshServiceConstructor<T extends SshService = SshService> {
 export class SshService implements Disposable {
 	private disposed: boolean = false;
 
-	constructor(public readonly session: SshSession) {
+	public constructor(public readonly session: SshSession) {
 		if (!(session instanceof SshSession)) {
 			// Other packages provide services that inherit from SshService. When they do, they
 			// reference the SshSession type from a specific version of this package. But at runtime,

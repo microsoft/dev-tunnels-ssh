@@ -20,7 +20,7 @@ class SshRpcMessageReader implements rpc.MessageReader {
 	private headersLength: number | null = null;
 	private messageLength: number | null = null;
 
-	constructor(public channel: SshChannel) {
+	public constructor(public channel: SshChannel) {
 		this.onError = this.errorEmitter.event;
 		this.onClose = this.closeEmitter.event;
 		this.onPartialMessage = this.partialMessageEmitter.event;
@@ -118,7 +118,7 @@ class SshRpcMessageWriter implements rpc.MessageWriter {
 	>();
 	private readonly closeEmitter = new rpc.Emitter<void>();
 
-	constructor(public channel: SshChannel) {
+	public constructor(public channel: SshChannel) {
 		this.onError = this.errorEmitter.event;
 		this.onClose = this.closeEmitter.event;
 
@@ -159,7 +159,7 @@ class SshRpcMessageWriter implements rpc.MessageWriter {
 }
 
 export class SshRpcMessageStream {
-	constructor(channel: SshChannel) {
+	public constructor(channel: SshChannel) {
 		this.reader = new SshRpcMessageReader(channel);
 		this.writer = new SshRpcMessageWriter(channel);
 	}

@@ -64,7 +64,7 @@ export class Pkcs1KeyFormatter implements KeyFormatter {
 				throw new Error('KeyPair object does not have a private key.');
 			}
 
-			let keyData = new KeyData();
+			const keyData = new KeyData();
 			const parameters = await keyPair.exportParameters();
 			if (includePrivate) {
 				keyData.keyType = Pkcs1KeyFormatter.privateKeyType;

@@ -63,11 +63,11 @@ export class ConnectionService extends SshService {
 			);
 		}
 
-		for (let channel of this.channelMap.values()) {
+		for (const channel of this.channelMap.values()) {
 			channel.close(e);
 		}
 
-		for (let channelCompletion of channelCompletions) {
+		for (const channelCompletion of channelCompletions) {
 			channelCompletion.reject(e);
 		}
 	}
@@ -82,11 +82,11 @@ export class ConnectionService extends SshService {
 			);
 		}
 
-		for (let channel of channels) {
+		for (const channel of channels) {
 			channel.dispose();
 		}
 
-		for (let channelCompletion of channelCompletions) {
+		for (const channelCompletion of channelCompletions) {
 			channelCompletion.reject(new SshConnectionError('Session closed.'));
 		}
 
@@ -472,7 +472,8 @@ export class ConnectionService extends SshService {
 		return channel;
 	}
 
-	public _removeChannel(channel: SshChannel) {
+	/* @internal */
+	public removeChannel(channel: SshChannel) {
 		this.channelMap.delete(channel.channelId);
 		this.pendingChannels.delete(channel.channelId);
 	}

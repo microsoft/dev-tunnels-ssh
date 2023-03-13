@@ -246,7 +246,7 @@ export class SessionContour implements Disposable {
 				this.updateSemaphore.dispose();
 			}
 		} finally {
-			for (let eventRegistration of eventRegistrations) {
+			for (const eventRegistration of eventRegistrations) {
 				eventRegistration.dispose();
 			}
 		}
@@ -392,7 +392,7 @@ export class SessionContour implements Disposable {
 
 		const intervalCount = (bytes.length - 3) / metricsPerInterval - 2;
 		if (intervalCount < 1 || bytes.length !== 3 + metricsPerInterval * (intervalCount + 2)) {
-			throw new Error(`Incomplete session contour string.`);
+			throw new Error('Incomplete session contour string.');
 		}
 
 		const maxIntervals = Math.pow(2, Math.ceil(Math.log2(intervalCount)));

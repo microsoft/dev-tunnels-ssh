@@ -45,6 +45,7 @@ declare namespace Pkcs8KeyFormatter {
 }
 
 /** Provides import/export of the PKCS#8 key format. */
+// eslint-disable-next-line no-redeclare
 export class Pkcs8KeyFormatter implements KeyFormatter {
 	private static readonly publicKeyType = 'PUBLIC KEY';
 	private static readonly privateKeyType = 'PRIVATE KEY';

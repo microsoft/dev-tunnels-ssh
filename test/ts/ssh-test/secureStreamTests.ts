@@ -50,7 +50,7 @@ export class SecureStreamTests {
 		const server = new SecureStream(serverStream, SecureStreamTests.serverCredentials);
 		server.onAuthenticating((e) => (e.authenticationPromise = Promise.resolve({})));
 
-		let serverAuthenticatingEvent: SshAuthenticatingEventArgs | null = null;
+		let serverAuthenticatingEvent: SshAuthenticatingEventArgs = null!;
 		const client = new SecureStream(clientStream, SecureStreamTests.clientCredentials);
 		client.onAuthenticating((e) => {
 			serverAuthenticatingEvent = e;
@@ -109,7 +109,7 @@ export class SecureStreamTests {
 	public async authenticateClient({ authenticateSuccess }: { authenticateSuccess: boolean }) {
 		const [serverStream, clientStream] = await DuplexStream.createStreams();
 
-		let clientAuthenticatingEvent: SshAuthenticatingEventArgs | null = null;
+		let clientAuthenticatingEvent: SshAuthenticatingEventArgs = null!;
 		const server = new SecureStream(serverStream, SecureStreamTests.serverCredentials);
 		server.onAuthenticating((e) => {
 			clientAuthenticatingEvent = e;

@@ -154,7 +154,7 @@ export class Semaphore implements Disposable {
 		if (this.disposed) return;
 
 		this.disposed = true;
-		for (let completion of this.completions) {
+		for (const completion of this.completions) {
 			completion.reject(new ObjectDisposedError(this));
 		}
 		this.completions.splice(0, this.completions.length);

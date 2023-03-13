@@ -255,7 +255,7 @@ export class SshSession implements Disposable {
 		if (typeof serviceTypeOrName === 'function') {
 			serviceType = serviceTypeOrName;
 		} else {
-			let serviceName: string = serviceTypeOrName;
+			const serviceName: string = serviceTypeOrName;
 			serviceType = findService(
 				this.config.services,
 				(a: ServiceActivation) => a.serviceRequest === serviceName,
@@ -1097,7 +1097,7 @@ export class SshSession implements Disposable {
 		const message = new ExtensionInfoMessage();
 		message.extensionInfo = {};
 
-		for (let extensionName of this.config.protocolExtensions) {
+		for (const extensionName of this.config.protocolExtensions) {
 			if (extensionName === SshProtocolExtensionNames.serverSignatureAlgorithms) {
 				// Send the list of enabled host key signature algorithms.
 				const publicKeyAlgorithms = Array.from(
@@ -1127,7 +1127,7 @@ export class SshSession implements Disposable {
 			return;
 		}
 
-		for (let extensionName of this.config.protocolExtensions) {
+		for (const extensionName of this.config.protocolExtensions) {
 			const proposedExtension = message.extensionInfo[extensionName];
 			if (typeof proposedExtension === 'string') {
 				this.protocol.extensions.set(extensionName, proposedExtension);
@@ -1228,7 +1228,7 @@ export class SshSession implements Disposable {
 		// Dispose the connection service before other services, to ensure
 		// channels are disposed before services that work with them.
 		this.connectionService?.dispose();
-		for (let service of this.activatedServices.values()) {
+		for (const service of this.activatedServices.values()) {
 			if (service !== this.connectionService) {
 				service.dispose();
 			}

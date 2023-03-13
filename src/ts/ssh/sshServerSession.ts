@@ -141,7 +141,7 @@ export class SshServerSession extends SshSession {
 		// Try to find the requested server session in the list of available disconnected
 		// server sessions, by validating the reconnect token.
 		let reconnectSession: SshServerSession | undefined;
-		for (let reconnectableSession of this.reconnectableSessions) {
+		for (const reconnectableSession of this.reconnectableSessions) {
 			if (
 				reconnectableSession !== this &&
 				(await this.verifyReconnectToken(
@@ -219,7 +219,7 @@ export class SshServerSession extends SshSession {
 			this.protocol = undefined;
 
 			// Re-send the lost messages that the client requested.
-			for (let message of messagesToResend) {
+			for (const message of messagesToResend) {
 				await reconnectSession.sendMessage(message, cancellation);
 			}
 

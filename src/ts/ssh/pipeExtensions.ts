@@ -83,10 +83,10 @@ export class PipeExtensions {
 		});
 
 		channel.onDataReceived((data) => {
-			const _ = PipeExtensions.forwardData(channel, toChannel, data);
+			void PipeExtensions.forwardData(channel, toChannel, data).catch();
 		});
 		toChannel.onDataReceived((data) => {
-			const _ = PipeExtensions.forwardData(toChannel, channel, data);
+			void PipeExtensions.forwardData(toChannel, channel, data).catch();
 		});
 
 		channel.onClosed((e) => {
@@ -126,7 +126,7 @@ export class PipeExtensions {
 	): Promise<void> {
 		try {
 			const toChannel = await toSession.openChannel(e.request, null, cancellation);
-			const _ = PipeExtensions.pipeChannel(e.channel, toChannel);
+			void PipeExtensions.pipeChannel(e.channel, toChannel).catch();
 		} catch (err) {
 			if (!(err instanceof Error)) throw err;
 

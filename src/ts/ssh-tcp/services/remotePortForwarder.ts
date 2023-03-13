@@ -79,7 +79,7 @@ export class RemotePortForwarder extends RemotePortConnector {
 		});
 
 		const connectCompletion = new PromiseCompletionSource<void>();
-		let cancellationRegistration = cancellation
+		const cancellationRegistration = cancellation
 			? cancellation.onCancellationRequested(() => socket.destroy(new Error('Cancelled.')))
 			: null;
 		try {

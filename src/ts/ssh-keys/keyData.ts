@@ -49,7 +49,7 @@ export class KeyData {
 			return null;
 		}
 
-		let headers = new Map<string, string>();
+		const headers = new Map<string, string>();
 		let i = 1;
 		if (lines[i].includes(':')) {
 			for (; i < lines.length - 1 && lines[i].length > 0; i++) {
@@ -71,7 +71,7 @@ export class KeyData {
 			i++;
 		}
 
-		let base64Data = lines.slice(i, lines.length - 1).join('');
+		const base64Data = lines.slice(i, lines.length - 1).join('');
 
 		let data: Buffer;
 		try {
@@ -106,7 +106,7 @@ export class KeyData {
 	public encodePem(): string {
 		let s = `-----BEGIN ${this.keyType}-----\n`;
 
-		for (let [name, value] of this.headers) {
+		for (const [name, value] of this.headers) {
 			// TODO: Wrap the value with \ if it's long.
 			s += `${name}: ${value}\n`;
 		}

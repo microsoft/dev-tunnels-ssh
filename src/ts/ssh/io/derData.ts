@@ -308,7 +308,7 @@ export class DerWriter {
 		for (let i = 2; i < values.length; i++) {
 			let value = values[i];
 			if (value >= 128) {
-				let bytes: number[] = [];
+				const bytes: number[] = [];
 				bytes.push(value & 0x7f);
 
 				while (value >= 128) {

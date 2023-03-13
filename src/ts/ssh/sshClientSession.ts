@@ -180,16 +180,15 @@ export class SshClientSession extends SshSession {
 				cancellation,
 			);
 		} else {
-			return new Promise(async (resolve, reject) => {
-				await this.authenticateClientWithCompletion(
+			return new Promise((resolve, reject) =>
+				this.authenticateClientWithCompletion(
 					credentials,
 					(err, result) => {
 						if (err) reject(err);
 						else resolve(result);
 					},
 					callbackOrCancellation,
-				);
-			});
+				));
 		}
 	}
 
@@ -491,7 +490,7 @@ export class SshClientSession extends SshSession {
 		}
 
 		let count = 0;
-		for (let message of messagesToResend) {
+		for (const message of messagesToResend) {
 			await this.sendMessage(message, cancellation);
 			count++;
 		}

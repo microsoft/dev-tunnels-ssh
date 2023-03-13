@@ -38,7 +38,7 @@ export class ForwardedPortsCollection implements ReadonlySet<ForwardedPort> {
 
 	/** Lists all the ports in the collection. */
 	public *values(): IterableIterator<ForwardedPort> {
-		for (let [port, channels] of this.portChannelMap.values()) {
+		for (const [port, channels] of this.portChannelMap.values()) {
 			yield port;
 		}
 	}
@@ -50,7 +50,7 @@ export class ForwardedPortsCollection implements ReadonlySet<ForwardedPort> {
 
 	/** Lists all the ports in the collection. */
 	public *entries(): IterableIterator<[ForwardedPort, ForwardedPort]> {
-		for (let [port, channels] of this.portChannelMap.values()) {
+		for (const [port, channels] of this.portChannelMap.values()) {
 			yield [port, port];
 		}
 	}
@@ -72,7 +72,7 @@ export class ForwardedPortsCollection implements ReadonlySet<ForwardedPort> {
 		) => void,
 		thisArg?: any,
 	): void {
-		for (let [port, channels] of this.portChannelMap.values()) {
+		for (const [port, channels] of this.portChannelMap.values()) {
 			callbackfn.apply(thisArg, [port, port, this]);
 		}
 	}
@@ -100,7 +100,7 @@ export class ForwardedPortsCollection implements ReadonlySet<ForwardedPort> {
 
 	/** Finds the first port in the collection that matches a predicate. */
 	public find(predicate: (port: ForwardedPort) => boolean): ForwardedPort | undefined {
-		for (let port of this.values()) {
+		for (const port of this.values()) {
 			if (predicate(port)) {
 				return port;
 			}

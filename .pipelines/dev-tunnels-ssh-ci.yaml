@@ -66,9 +66,9 @@ jobs:
           nugetConfigPath: NuGet.config
 
       - task: NodeTool@0
-        displayName: Use Node 14.x
+        displayName: Use Node 18.x
         inputs:
-          versionSpec: 14.x
+          versionSpec: 18.x
 
       - task: Npm@1
         displayName: Restore npm packages

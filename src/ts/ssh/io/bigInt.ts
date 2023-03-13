@@ -70,7 +70,7 @@ export class BigInt {
 
 	public toInt32(): number {
 		if (this.buffer.length > 4) {
-			throw new TypeError(`BigInt value cannot be converted to a 32-bit signed integer.`);
+			throw new TypeError('BigInt value cannot be converted to a 32-bit signed integer.');
 		}
 
 		let value = this.buffer[0];
