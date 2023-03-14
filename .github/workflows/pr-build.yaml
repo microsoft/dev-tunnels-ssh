@@ -29,7 +29,7 @@ jobs:
       # On the Mac build machines, libssl 1.1 is installed
       # but not linked in the path expected by .NET. Fix it now.
       - name: Link libssl on Mac OS
-        run: ln -sn /usr/local/opt/openssl/lib/libssl.1.1.dylib /usr/local/lib/libssl.1.1.dylib
+        run: ln -sn /usr/local/opt/openssl@1.1/lib/libssl.1.1.dylib /usr/local/lib/libssl.1.1.dylib
         if: matrix.os == 'macOS-latest'
 
       - name: Install dotnet versions
