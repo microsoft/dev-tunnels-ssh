@@ -10,7 +10,7 @@ import { Duplex } from 'stream';
  * Adapts an SshChannel as a Readable+Writable stream.
  */
 export class SshStream extends Duplex {
-	constructor(channel: SshChannel) {
+	public constructor(channel: SshChannel) {
 		let readPaused: PromiseCompletionSource<void> | null = null;
 		super({
 			async write(chunk: Buffer | string | any, encoding: BufferEncoding, cb) {
@@ -95,11 +95,10 @@ export class SshStream extends Duplex {
 			},
 		});
 
-		const self = this;
 		channel.onDataReceived(async (data) => {
 			const buffer = Buffer.alloc(data.length);
 			data.copy(buffer);
-			const result = self.push(buffer);
+			const result = this.push(buffer);
 
 			// Our flow control isn't great. Once we hit the highWaterMark,
 			// we stop adjusting the SSH window until our own reader has caught up,
@@ -121,7 +120,7 @@ export class SshStream extends Duplex {
 		});
 
 		channel.onClosed(() => {
-			self.push(null);
+			this.push(null);
 		});
 
 		this.channel = channel;
@@ -132,9 +131,10 @@ export class SshStream extends Duplex {
 	/**
 	 * Destroys the stream and closes the underlying SSH channel.
 	 */
-	public destroy() {
-		this.channel.close().catch();
-		super.destroy();
+	public destroy(error?: Error) {
+		void this.channel.close().catch();
+		super.destroy(error);
+		return this;
 	}
 
 	public toString() {

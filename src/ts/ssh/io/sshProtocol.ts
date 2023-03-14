@@ -108,7 +108,7 @@ export class SshProtocol implements Disposable {
 		// session will do key exchange separately. Also exclude any disconnect messages that
 		// may have been attempted when the connection was lost.
 		const messagesToRetransmit = new Array<SshMessage>();
-		for (let sequencedMessage of this.recentSentMessages) {
+		for (const sequencedMessage of this.recentSentMessages) {
 			if (sequencedMessage.sequence >= startingSequenceNumber) {
 				const message = sequencedMessage.message;
 				if (!(message instanceof KeyExchangeMessage || message instanceof DisconnectMessage)) {
@@ -411,7 +411,7 @@ export class SshProtocol implements Disposable {
 				mac = await this.computeHmac(hmac, payload, this.outboundPacketSequence);
 			} else if (hmac?.authenticatedEncryption) {
 				// With a GCM cipher, the packet length is not included in the plaintext.
-				let packetWithoutLength = payload.slice(SshProtocol.packetLengthSize, payload.length);
+				const packetWithoutLength = payload.slice(SshProtocol.packetLengthSize, payload.length);
 				const encryptedPacket = await encryption!.transform(packetWithoutLength);
 				encryptedPacket.copy(packetWithoutLength);
 

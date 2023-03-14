@@ -49,7 +49,7 @@ export interface Random {
 	getBytes(buffer: Buffer): void;
 }
 
-// tslint:disable:variable-name
+/* eslint-disable @typescript-eslint/naming-convention, id-match */
 const DiffieHellman: typeof WebDiffieHellman = useWebCrypto
 	? WebDiffieHellman
 	: require('./node/nodeKeyExchange').NodeDiffieHellman;
@@ -62,16 +62,19 @@ const Encryption: typeof WebEncryption = useWebCrypto
 	? WebEncryption
 	: require('./node/nodeEncryption').NodeEncryption;
 const Hmac: typeof WebHmac = useWebCrypto ? WebHmac : require('./node/nodeHmac').NodeHmac;
+// eslint-disable-next-line no-redeclare
 const Random: typeof WebRandom = useWebCrypto ? WebRandom : require('./node/nodeRandom').NodeRandom;
-// tslint:enable:variable-name
+/* eslint-enable @typescript-eslint/naming-convention, id-match */
 
+// eslint-disable-next-line no-redeclare
 namespace Rsa {
-	// tslint:disable-next-line:no-shadowed-variable
+	// eslint-disable-next-line no-shadow,@typescript-eslint/no-shadow
 	export type KeyPair = WebRsa.KeyPair;
 }
 
+// eslint-disable-next-line no-redeclare
 namespace ECDsa {
-	// tslint:disable-next-line:no-shadowed-variable
+	// eslint-disable-next-line no-shadow,@typescript-eslint/no-shadow
 	export type KeyPair = WebECDsa.KeyPair;
 }
 

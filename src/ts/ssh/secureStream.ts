@@ -54,6 +54,7 @@ export class SecureStream extends Duplex implements Disposable {
 				encoding: BufferEncoding,
 				cb: (error?: Error | null) => void,
 			) {
+				// eslint-disable-next-line no-underscore-dangle
 				return this.connectedStream._write(chunk, encoding, cb);
 			},
 			writev(
@@ -61,12 +62,15 @@ export class SecureStream extends Duplex implements Disposable {
 				chunks: { chunk: Buffer; encoding: BufferEncoding }[],
 				cb: (error?: Error | null) => void,
 			) {
+				// eslint-disable-next-line no-underscore-dangle
 				return this.connectedStream._writev!(chunks, cb);
 			},
 			final(this: SecureStream, cb: (err?: Error | null) => void) {
+				// eslint-disable-next-line no-underscore-dangle
 				return this.connectedStream._final(cb);
 			},
 			read(this: SecureStream, size: number) {
+				// eslint-disable-next-line no-underscore-dangle
 				return this.connectedStream._read(size);
 			},
 		});

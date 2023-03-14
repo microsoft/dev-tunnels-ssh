@@ -21,7 +21,7 @@ export class DefaultKeyFormatter implements KeyFormatter {
 	}
 
 	public async import(keyData: KeyData): Promise<KeyPair | null> {
-		for (let [keyFormat, keyFormatter] of keyFormatters) {
+		for (const [keyFormat, keyFormatter] of keyFormatters) {
 			if (
 				keyFormat !== KeyFormat.Default &&
 				keyFormat !== KeyFormat.Ssh &&
@@ -38,7 +38,7 @@ export class DefaultKeyFormatter implements KeyFormatter {
 	}
 
 	public async decrypt(keyData: KeyData, passphrase: string | null): Promise<KeyData | null> {
-		for (let [keyFormat, keyFormatter] of keyFormatters) {
+		for (const [keyFormat, keyFormatter] of keyFormatters) {
 			if (
 				keyFormat !== KeyFormat.Default &&
 				keyFormat !== KeyFormat.Ssh &&

@@ -3,7 +3,7 @@
 //
 
 import { Buffer } from 'buffer';
-import { getDiffieHellman, DiffieHellman } from 'diffie-hellman';
+import { getDiffieHellman } from 'diffie-hellman';
 import { KeyExchangeAlgorithm, KeyExchange } from '../keyExchangeAlgorithm';
 import { WebHmac } from './webHmac';
 import { BigInt } from '../../io/bigInt';
@@ -23,7 +23,7 @@ export class WebDiffieHellman extends KeyExchangeAlgorithm {
 	}
 }
 class WebDiffieHellmanKex implements KeyExchange {
-	private dh: DiffieHellman;
+	private dh: ReturnType<typeof getDiffieHellman>;
 
 	public constructor(
 		bitLength: number,

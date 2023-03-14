@@ -98,7 +98,7 @@ export class MultiChannelStreamTests {
 		const channelType = 'MyChannelType';
 
 		var serverChannelOpeningEventFired = false;
-		var serverChannelPromise: Promise<SshChannel> | undefined = undefined;
+		var serverChannelPromise: Promise<SshChannel> = undefined!;
 		var clientChannelOpeningEventFired = false;
 
 		const [serverStream, clientStream] = await DuplexStream.createStreams();

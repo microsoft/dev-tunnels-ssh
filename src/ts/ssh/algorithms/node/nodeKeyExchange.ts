@@ -28,7 +28,7 @@ export class NodeDiffieHellman extends KeyExchangeAlgorithm {
 }
 
 class NodeDiffieHellmanKex implements KeyExchange {
-	private dh: crypto.DiffieHellman;
+	private dh: crypto.DiffieHellmanGroup;
 
 	public constructor(
 		bitLength: number,

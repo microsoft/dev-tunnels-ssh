@@ -138,8 +138,8 @@ export class SshChannel implements Disposable {
 	 * The default value is `defaultMaxWindowSize`. The value may be configured for a channel
 	 * opened by this side by setting `ChannelOpenMessage.maxWindowSize` in the message object
 	 * passed to `SshSession.openChannel()`, or for a channel opened by the other side by
-	 * assigning to this property while handling the `SshSession.onChannelOpening` event
-	 *  Changing the maximum window size at any other time is not valid because the other
+	 * assigning to this property while handling the `SshSession.onChannelOpening` event.
+	 * Changing the maximum window size at any other time is not valid because the other
 	 * side would not be aware of the change.
 	 */
 	public set maxWindowSize(value: number) {
@@ -604,7 +604,7 @@ export class SshChannel implements Disposable {
 		this.disposed = true;
 
 		this.requestCompletionSource?.reject(new ObjectDisposedError(this));
-		this.connectionService._removeChannel(this);
+		this.connectionService.removeChannel(this);
 		this.sendSemaphore.dispose();
 	}
 

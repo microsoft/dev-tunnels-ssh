@@ -47,7 +47,7 @@ export class Sec1KeyFormatter implements KeyFormatter {
 				throw new Error('KeyPair object does not have a private key.');
 			}
 
-			let keyData = new KeyData();
+			const keyData = new KeyData();
 			const parameters = await keyPair.exportParameters();
 			keyData.keyType = Sec1KeyFormatter.privateKeyType;
 			keyData.data = Sec1KeyFormatter.exportECPrivate(parameters);

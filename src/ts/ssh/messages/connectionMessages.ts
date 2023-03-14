@@ -211,7 +211,7 @@ export class ChannelDataMessage extends ChannelMessage {
 	}
 
 	public toString() {
-		return this.data ? formatBuffer(this.data, '') : `[0]`;
+		return this.data ? formatBuffer(this.data, '') : '[0]';
 	}
 }
 

@@ -266,7 +266,6 @@ export class WebECDsa extends PublicKeyAlgorithm {
 		return (4 + 1 + keySizeInBytes) * 2;
 	}
 
-	// eslint-disable-next-line @typescript-eslint/tslint/config
 	public static readonly KeyPair = WebECDsaKeyPair;
 }
 
@@ -339,7 +338,8 @@ class WebECDsaSignerVerifier implements Signer, Verifier {
 	public dispose(): void {}
 }
 
+// eslint-disable-next-line no-redeclare
 export namespace WebECDsa {
-	// tslint:disable-next-line:no-shadowed-variable
+	// eslint-disable-next-line no-shadow, @typescript-eslint/no-shadow
 	export type KeyPair = WebECDsaKeyPair;
 }

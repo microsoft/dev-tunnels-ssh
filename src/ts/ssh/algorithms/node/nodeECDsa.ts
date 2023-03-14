@@ -327,7 +327,6 @@ export class NodeECDsa extends PublicKeyAlgorithm {
 		return (4 + 1 + keySizeInBytes) * 2;
 	}
 
-	// eslint-disable-next-line @typescript-eslint/tslint/config
 	public static readonly KeyPair = NodeECDsaKeyPair;
 }
 

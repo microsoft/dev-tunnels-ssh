@@ -1232,16 +1232,24 @@ export class PortForwardingTests {
 			);
 
 			assert(clientLocalChannelAddedEvent);
-			assert.equal(clientLocalChannelAddedEvent!.port.localPort, testPort1);
-			assert.equal(clientLocalChannelAddedEvent!.port.remotePort, testPort1);
-			assert(clientLocalChannelAddedEvent!.channel);
+			assert.equal(
+				(<ForwardedPortChannelEventArgs>clientLocalChannelAddedEvent).port.localPort,
+				testPort1);
+			assert.equal(
+				(<ForwardedPortChannelEventArgs>clientLocalChannelAddedEvent).port.remotePort,
+				testPort1);
+			assert((<ForwardedPortChannelEventArgs>clientLocalChannelAddedEvent).channel);
 			assert(!clientRemoteChannelAddedEvent);
 
 			assert(!serverLocalChannelAddedEvent);
 			assert(serverRemoteChannelAddedEvent);
-			assert.equal(serverRemoteChannelAddedEvent!.port.localPort, testPort2);
-			assert.equal(serverRemoteChannelAddedEvent!.port.remotePort, testPort1);
-			assert(serverRemoteChannelAddedEvent!.channel);
+			assert.equal(
+				(<ForwardedPortChannelEventArgs>serverRemoteChannelAddedEvent).port.localPort,
+				testPort2);
+			assert.equal(
+				(<ForwardedPortChannelEventArgs>serverRemoteChannelAddedEvent).port.remotePort,
+				testPort1);
+			assert((<ForwardedPortChannelEventArgs>serverRemoteChannelAddedEvent).channel);
 
 			assert(!clientLocalChannelRemovedEvent);
 			assert(!clientRemoteChannelRemovedEvent);
@@ -1269,9 +1277,13 @@ export class PortForwardingTests {
 		);
 
 		assert(clientLocalChannelRemovedEvent);
-		assert.equal(clientLocalChannelRemovedEvent!.port.localPort, testPort1);
-		assert.equal(clientLocalChannelRemovedEvent!.port.remotePort, testPort1);
-		assert(clientLocalChannelRemovedEvent!.channel);
+		assert.equal(
+			(<ForwardedPortChannelEventArgs>clientLocalChannelRemovedEvent).port.localPort,
+			testPort1);
+		assert.equal(
+			(<ForwardedPortChannelEventArgs>clientLocalChannelRemovedEvent).port.remotePort,
+			testPort1);
+		assert((<ForwardedPortChannelEventArgs>clientLocalChannelRemovedEvent).channel);
 		assert(!clientRemoteChannelRemovedEvent);
 		assert(!serverLocalChannelRemovedEvent);
 		assert.equal(serverRemoteChannelRemovedEvent!.port.localPort, testPort2);

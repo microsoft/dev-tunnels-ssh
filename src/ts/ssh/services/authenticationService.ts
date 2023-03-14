@@ -274,7 +274,7 @@ export class AuthenticationService extends SshService {
 			(cancellation?: CancellationToken) => Promise<void>
 		>();
 
-		for (let publicKey of credentials.publicKeys ?? []) {
+		for (const publicKey of credentials.publicKeys ?? []) {
 			if (!publicKey) continue;
 
 			const username = credentials.username ?? '';

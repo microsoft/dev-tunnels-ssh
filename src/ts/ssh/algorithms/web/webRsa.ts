@@ -213,7 +213,6 @@ export class WebRsa extends PublicKeyAlgorithm {
 		return hashAlgorithmName.replace('SHA2-', 'SHA-');
 	}
 
-	// eslint-disable-next-line @typescript-eslint/tslint/config
 	public static readonly KeyPair = WebRsaKeyPair;
 }
 
@@ -264,7 +263,8 @@ class WebRsaSignerVerifier implements Signer, Verifier {
 	public dispose(): void {}
 }
 
+// eslint-disable-next-line no-redeclare
 export namespace WebRsa {
-	// tslint:disable-next-line:no-shadowed-variable
+	// eslint-disable-next-line no-shadow,@typescript-eslint/no-shadow
 	export type KeyPair = WebRsaKeyPair;
 }

@@ -244,7 +244,7 @@ export class PortForwardingService extends SshService {
 		localPort?: number,
 		cancellation?: CancellationToken,
 	): Promise<RemotePortForwarder | null> {
-		let localHost =
+		const localHost =
 			typeof localHostOrCancellation === 'string' ? localHostOrCancellation : '127.0.0.1';
 		if (typeof localPort === 'undefined') localPort = remotePort;
 
@@ -353,7 +353,7 @@ export class PortForwardingService extends SshService {
 		remotePort?: number,
 		cancellation?: CancellationToken,
 	): Promise<LocalPortForwarder> {
-		let remoteHost =
+		const remoteHost =
 			typeof remoteHostOrCancellation === 'string' ? remoteHostOrCancellation : '127.0.0.1';
 		if (typeof remotePort === 'undefined') remotePort = localPort;
 
@@ -580,7 +580,7 @@ export class PortForwardingService extends SshService {
 		) {
 			const message =
 				'PortForwardingService blocking attempt to re-forward ' +
-				`already-forwarded port {portForwardRequest.port}.`;
+				`already-forwarded port ${portForwardRequest.port}.`;
 			this.session.trace(
 				TraceLevel.Warning,
 				SshTraceEventIds.portForwardRequestInvalid,
@@ -737,7 +737,7 @@ export class PortForwardingService extends SshService {
 					this.trace(
 						TraceLevel.Error,
 						SshTraceEventIds.portForwardRequestInvalid,
-						`PortForwardingService received forwarding channel ` +
+						'PortForwardingService received forwarding channel ' +
 							`for ${remoteEndPoint} that was not requested.`,
 					);
 					request.failureReason = SshChannelOpenFailureReason.connectFailed;
@@ -865,7 +865,7 @@ export class PortForwardingService extends SshService {
 		this.localForwarders.clear();
 		this.remoteConnectors.clear();
 
-		for (let disposable of disposables) {
+		for (const disposable of disposables) {
 			disposable.dispose();
 		}
 

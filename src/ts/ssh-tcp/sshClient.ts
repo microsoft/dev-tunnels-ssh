@@ -67,7 +67,7 @@ export class SshClient implements Disposable {
 		serverPort?: number,
 		cancellation?: CancellationToken,
 	): Promise<Stream> {
-		let socket = new net.Socket();
+		const socket = new net.Socket();
 		await new Promise((resolve, reject) => {
 			socket.on('connect', resolve);
 			socket.on('error', reject);

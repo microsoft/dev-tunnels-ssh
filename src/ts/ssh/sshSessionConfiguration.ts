@@ -61,7 +61,7 @@ export class SshSessionConfiguration {
 		this.services.set(ConnectionService, null);
 		this.services.set(AuthenticationService, null);
 
-		for (let [messageNumber, messageType] of SshMessage.index) {
+		for (const [messageNumber, messageType] of SshMessage.index) {
 			this.messages.set(messageNumber, messageType);
 		}
 

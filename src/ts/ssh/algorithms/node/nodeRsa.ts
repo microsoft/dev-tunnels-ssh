@@ -277,7 +277,6 @@ export class NodeRsa extends PublicKeyAlgorithm {
 		return hashAlgorithmName.replace('SHA2-', 'SHA');
 	}
 
-	// eslint-disable-next-line @typescript-eslint/tslint/config
 	public static readonly KeyPair = NodeRsaKeyPair;
 }
 

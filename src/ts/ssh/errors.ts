@@ -7,24 +7,25 @@ import { SshChannelOpenFailureReason } from './messages/connectionMessages';
 import { Disposable } from 'vscode-jsonrpc';
 
 export class SshConnectionError extends Error {
-	constructor(message?: string, public readonly reason?: SshDisconnectReason) {
+	public constructor(message?: string, public readonly reason?: SshDisconnectReason) {
 		super(message);
 	}
 }
 
 export class SshReconnectError extends Error {
-	constructor(message?: string, public readonly reason?: SshReconnectFailureReason) {
+	public constructor(message?: string, public readonly reason?: SshReconnectFailureReason) {
 		super(message);
 	}
 }
 
 export class SshChannelError extends Error {
-	constructor(message?: string, public readonly reason?: SshChannelOpenFailureReason) {
+	public constructor(message?: string, public readonly reason?: SshChannelOpenFailureReason) {
 		super(message);
 	}
 }
 
 export class ObjectDisposedError extends Error {
+	// eslint-disable-next-line @typescript-eslint/ban-types
 	public constructor(objectOrMessage?: Disposable | Function | string) {
 		let message: string;
 
@@ -33,6 +34,7 @@ export class ObjectDisposedError extends Error {
 			message = <string>objectOrMessage;
 		} else if (typeof objectOrMessage === 'function') {
 			// Constructor function (class name).
+			// eslint-disable-next-line @typescript-eslint/ban-types
 			message = (<Function>objectOrMessage).name + ' disposed.';
 		} else {
 			// Disposable object - get its class name.

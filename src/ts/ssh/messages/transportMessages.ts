@@ -89,7 +89,7 @@ export class UnimplementedMessage extends SshMessage {
 	}
 
 	public toString(): string {
-		return !!this.unimplementedMessageType
+		return this.unimplementedMessageType
 			? `${super.toString()} (messageType=${this.unimplementedMessageType})`
 			: `${super.toString()} (sequenceNumber=${this.sequenceNumber})`;
 	}
@@ -237,7 +237,7 @@ export class ExtensionInfoMessage extends SshMessage {
 	protected onWrite(writer: SshDataWriter): void {
 		const keys = Object.keys(this.extensionInfo);
 		writer.writeUInt32(keys.length);
-		for (let key of keys) {
+		for (const key of keys) {
 			writer.writeString(key, 'ascii');
 			writer.writeString(this.extensionInfo[key] || '', 'utf8');
 		}
