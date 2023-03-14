@@ -247,7 +247,7 @@ jobs:
       - task: CmdLine@2
         displayName: Link libssl
         inputs:
-          script: ln -sn /usr/local/opt/openssl/lib/libssl.1.1.dylib /usr/local/lib/libssl.1.1.dylib
+          script: ln -sn /usr/local/opt/openssl@1.1/lib/libssl.1.1.dylib /usr/local/lib/libssl.1.1.dylib
 
       - task: UseDotNet@2
         displayName: Install .NET Core 3.1 Runtime
