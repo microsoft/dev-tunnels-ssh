@@ -137,7 +137,7 @@ public static class PipeExtensions
 		return (SshMessage?)response.Success ?? response.Failure!;
 	}
 
-	private static async Task<SshChannel?> ForwardChannelAsync(
+	private static async Task<ChannelMessage> ForwardChannelAsync(
 		SshChannelOpeningEventArgs e,
 		SshSession toSession,
 		CancellationToken cancellation)
@@ -149,14 +149,16 @@ public static class PipeExtensions
 			toChannel = await toSession.OpenChannelAsync(e.Request, null, cancellation)
 				.ConfigureAwait(false);
 			_ = PipeAsync(e.Channel, toChannel);
+			return new ChannelOpenConfirmationMessage();
 		}
 		catch (SshChannelException cex)
 		{
-			e.FailureReason = cex.OpenFailureReason;
-			e.FailureDescription = cex.Message;
+			return new ChannelOpenFailureMessage
+			{
+				ReasonCode = cex.OpenFailureReason,
+				Description = cex.Message,
+			};
 		}
-
-		return toChannel;
 	}
 
 	private static async Task<SshMessage> ForwardChannelRequestAsync(

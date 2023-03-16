@@ -52,7 +52,7 @@ public class SshChannelOpeningEventArgs
 	/// An event-handler may assign a task to this property to handle the channel opening
 	/// as an asynchronous operation.
 	/// </summary>
-	public Task? OpeningTask { get; set; }
+	public Task<ChannelMessage>? OpeningTask { get; set; }
 
 	/// <summary>
 	/// Specifies a reason that the channel could not be opened.

@@ -1357,12 +1357,11 @@ public class SshSession : IDisposable
 		return channel;
 	}
 
-	internal async Task OnChannelOpeningAsync(
+	internal async Task<ChannelMessage> OnChannelOpeningAsync(
 		SshChannelOpeningEventArgs e,
 		CancellationToken cancellation,
 		bool resolveService = true)
 	{
-		bool serviceFound = false;
 		if (resolveService)
 		{
 			var (serviceType, serviceConfig) = ServiceActivationAttribute.FindService(
@@ -1372,23 +1371,29 @@ public class SshSession : IDisposable
 			{
 				// A service was configured for activation via this channel type.
 				var service = ActivateService(serviceType, serviceConfig);
-				await service.OnChannelOpeningAsync(e, cancellation).ConfigureAwait(false);
-				serviceFound = true;
+				return await service.OnChannelOpeningAsync(e, cancellation).ConfigureAwait(false);
 			}
 		}
 
-		// If service is found, it would be calling OnChannelOpeningAsync again.
-		// Avoid calling ChannelOpening multiple times.
-		if (!serviceFound)
+		e.Cancellation = cancellation;
+
+		ChannelOpening?.Invoke(this, e);
+
+		if (e.OpeningTask != null)
 		{
-			e.Cancellation = cancellation;
-
-			ChannelOpening?.Invoke(this, e);
-
-			if (e.OpeningTask != null)
+			return await e.OpeningTask.ConfigureAwait(false);
+		}
+		else if (e.FailureReason != SshChannelOpenFailureReason.None)
+		{
+			return new ChannelOpenFailureMessage
 			{
-				await e.OpeningTask.ConfigureAwait(false);
-			}
+				ReasonCode = e.FailureReason,
+				Description = e.FailureDescription,
+			};
+		}
+		else
+		{
+			return new ChannelOpenConfirmationMessage();
 		}
 	}
 

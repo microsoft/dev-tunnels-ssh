@@ -21,6 +21,9 @@ import {
 	ConnectionMessage,
 	ChannelRequestMessage,
 	ChannelOpenMessage,
+	ChannelMessage,
+	ChannelOpenFailureMessage,
+	ChannelOpenConfirmationMessage,
 } from './messages/connectionMessages';
 import { AuthenticationMessage } from './messages/authenticationMessages';
 import {
@@ -74,9 +77,8 @@ export class SshSession implements Disposable {
 	protected kexService: KeyExchangeService | null;
 	protected connectionService: ConnectionService | null = null;
 	private connectPromise?: Promise<void>;
-	private requestHandler:
-		| ((err?: Error, result?: SessionRequestResponseMessage) => void)
-		| null = null;
+	private requestHandler: ((err?: Error, result?: SessionRequestResponseMessage) => void) | null =
+		null;
 	private versionExchangePromise?: Promise<void>;
 	private readonly blockedMessages: SshMessage[] = [];
 	private readonly blockedMessagesSemaphore = new Semaphore(1);
@@ -148,8 +150,8 @@ export class SshSession implements Disposable {
 	public readonly onChannelOpening = this.channelOpeningEmitter.event;
 
 	private readonly requestEmitter = new Emitter<SshRequestEventArgs<SessionRequestMessage>>();
-	public readonly onRequest: Event<SshRequestEventArgs<SessionRequestMessage>> = this
-		.requestEmitter.event;
+	public readonly onRequest: Event<SshRequestEventArgs<SessionRequestMessage>> =
+		this.requestEmitter.event;
 
 	/**
 	 * Gets or sets a function that handles trace messages associated with the session.
@@ -807,7 +809,7 @@ export class SshSession implements Disposable {
 	 */
 	public async requestResponse<
 		TSuccess extends SessionRequestSuccessMessage,
-		TFailure extends SessionRequestFailureMessage
+		TFailure extends SessionRequestFailureMessage,
 	>(
 		request: SessionRequestMessage,
 		successType: { new (): TSuccess },
@@ -1067,7 +1069,7 @@ export class SshSession implements Disposable {
 		args: SshChannelOpeningEventArgs,
 		cancellation?: CancellationToken,
 		resolveService: boolean = true,
-	): Promise<void> {
+	): Promise<ChannelMessage> {
 		if (resolveService) {
 			const serviceType = findService(
 				this.config.services,
@@ -1079,8 +1081,7 @@ export class SshSession implements Disposable {
 				const service = this.activateService(serviceType);
 
 				// `onChannelOpening` should really be 'protected internal'.
-				await (<any>service).onChannelOpening(args, cancellation);
-				return;
+				return <ChannelMessage>await (<any>service).onChannelOpening(args, cancellation);
 			}
 		}
 
@@ -1088,7 +1089,14 @@ export class SshSession implements Disposable {
 		this.channelOpeningEmitter.fire(args);
 
 		if (args.openingPromise) {
-			await args.openingPromise;
+			return await args.openingPromise;
+		} else if (args.failureReason) {
+			const failureMessage = new ChannelOpenFailureMessage();
+			failureMessage.reasonCode = args.failureReason;
+			failureMessage.description = args.failureDescription ?? undefined;
+			return failureMessage;
+		} else {
+			return new ChannelOpenConfirmationMessage();
 		}
 	}
 

@@ -17,6 +17,9 @@ import {
 } from './messages/transportMessages';
 import {
 	ChannelFailureMessage,
+	ChannelMessage,
+	ChannelOpenConfirmationMessage,
+	ChannelOpenFailureMessage,
 	ChannelRequestMessage,
 	ChannelSuccessMessage,
 	SshChannelOpenFailureReason,
@@ -123,20 +126,23 @@ export class PipeExtensions {
 		e: SshChannelOpeningEventArgs,
 		toSession: SshSession,
 		cancellation?: CancellationToken,
-	): Promise<void> {
+	): Promise<ChannelMessage> {
 		try {
 			const toChannel = await toSession.openChannel(e.request, null, cancellation);
 			void PipeExtensions.pipeChannel(e.channel, toChannel).catch();
+			return new ChannelOpenConfirmationMessage();
 		} catch (err) {
 			if (!(err instanceof Error)) throw err;
 
+			const failureMessage = new ChannelOpenFailureMessage();
 			if (err instanceof SshChannelError) {
-				e.failureReason = err.reason ?? SshChannelOpenFailureReason.connectFailed;
+				failureMessage.reasonCode = err.reason ?? SshChannelOpenFailureReason.connectFailed;
 			} else {
-				e.failureReason = SshChannelOpenFailureReason.connectFailed;
+				failureMessage.reasonCode = SshChannelOpenFailureReason.connectFailed;
 			}
 
-			e.failureDescription = err.message;
+			failureMessage.description = err.message;
+			return failureMessage;
 		}
 	}
 

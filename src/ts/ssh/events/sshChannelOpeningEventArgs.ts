@@ -3,7 +3,7 @@
 //
 
 import { SshChannel } from '../sshChannel';
-import { ChannelOpenMessage, SshChannelOpenFailureReason } from '../messages/connectionMessages';
+import { ChannelMessage, ChannelOpenMessage, SshChannelOpenFailureReason } from '../messages/connectionMessages';
 import { CancellationToken } from 'vscode-jsonrpc';
 
 export class SshChannelOpeningEventArgs {
@@ -37,7 +37,7 @@ export class SshChannelOpeningEventArgs {
 	 * resolved. An event-handler may assign a promise to this property to handle the channel
 	 * opening as an asynchronous operation.
 	 */
-	public openingPromise?: Promise<void>;
+	public openingPromise?: Promise<ChannelMessage>;
 
 	/**
 	 * Gets a token that is cancelled if the session ends before the request handler

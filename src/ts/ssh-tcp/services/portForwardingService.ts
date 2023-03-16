@@ -3,6 +3,9 @@
 //
 
 import {
+	ChannelMessage,
+	ChannelOpenConfirmationMessage,
+	ChannelOpenFailureMessage,
 	SshService,
 	SshSession,
 	SshChannel,
@@ -711,7 +714,7 @@ export class PortForwardingService extends SshService {
 	protected async onChannelOpening(
 		request: SshChannelOpeningEventArgs,
 		cancellation?: CancellationToken,
-	): Promise<void> {
+	): Promise<ChannelMessage> {
 		if (!request) throw new TypeError('Request is required.');
 
 		const channelType = request.request.channelType;
@@ -719,8 +722,9 @@ export class PortForwardingService extends SshService {
 			channelType !== PortForwardingService.portForwardChannelType &&
 			channelType !== PortForwardingService.reversePortForwardChannelType
 		) {
-			request.failureReason = SshChannelOpenFailureReason.unknownChannelType;
-			return;
+			const failureMessage = new ChannelOpenFailureMessage();
+			failureMessage.reasonCode = SshChannelOpenFailureReason.unknownChannelType;
+			return failureMessage;
 		}
 
 		let remoteConnector: RemotePortConnector | null = null;
@@ -740,9 +744,10 @@ export class PortForwardingService extends SshService {
 						'PortForwardingService received forwarding channel ' +
 							`for ${remoteEndPoint} that was not requested.`,
 					);
-					request.failureReason = SshChannelOpenFailureReason.connectFailed;
-					request.failureDescription = 'Forwarding channel was not requested.';
-					return;
+					const failureMessage = new ChannelOpenFailureMessage();
+					failureMessage.reasonCode = SshChannelOpenFailureReason.connectFailed;
+					failureMessage.description = 'Forwarding channel was not requested.';
+					return failureMessage;
 				}
 			} else if (!this.acceptRemoteConnectionsForNonForwardedPorts) {
 				const errorMessage = 'The session has disabled connections to non-forwarded ports.';
@@ -751,9 +756,10 @@ export class PortForwardingService extends SshService {
 					SshTraceEventIds.portForwardChannelOpenFailed,
 					errorMessage,
 				);
-				request.failureDescription = errorMessage;
-				request.failureReason = SshChannelOpenFailureReason.administrativelyProhibited;
-				return;
+				const failureMessage = new ChannelOpenFailureMessage();
+				failureMessage.reasonCode = SshChannelOpenFailureReason.administrativelyProhibited;
+				failureMessage.description = errorMessage;
+				return failureMessage;
 			}
 		}
 
@@ -762,41 +768,45 @@ export class PortForwardingService extends SshService {
 			request.channel,
 			request.isRemoteRequest,
 		);
-		await super.onChannelOpening(portForwardRequest, cancellation);
+		const responseMessage = await super.onChannelOpening(portForwardRequest, cancellation);
 
-		request.failureReason = portForwardRequest.failureReason;
-		request.failureDescription = portForwardRequest.failureDescription;
 		if (
-			request.failureReason !== SshChannelOpenFailureReason.none ||
-			!request.isRemoteRequest ||
-			!this.forwardConnectionsToLocalPorts
+			responseMessage instanceof ChannelOpenConfirmationMessage &&
+			request.isRemoteRequest &&
+			this.forwardConnectionsToLocalPorts
 		) {
-			return;
+			if (remoteConnector) {
+				// The forwarding was initiated by this session.
+				await remoteConnector.onPortChannelOpening(request, cancellation);
+
+				const localPort =
+					remoteConnector instanceof RemotePortForwarder ? remoteConnector.localPort : null;
+				const remotePort =
+					remoteConnector instanceof RemotePortForwarder
+						? remoteConnector.remotePort
+						: portForwardMessage.port;
+				const forwardedPort = new ForwardedPort(localPort, remotePort, false);
+				this.localForwardedPorts.addChannel(forwardedPort, request.channel);
+			} else {
+				// THe forwarding was initiated by the remote session.
+				await RemotePortForwarder.forwardChannel(
+					this,
+					request,
+					portForwardMessage.host,
+					portForwardMessage.port,
+					this.trace,
+					cancellation,
+				);
+				if (request.failureReason) {
+					const failureMessage = new ChannelOpenFailureMessage();
+					failureMessage.reasonCode = request.failureReason;
+					failureMessage.description = request.failureDescription ?? undefined;
+					return failureMessage;
+				}
+			}
 		}
 
-		if (remoteConnector) {
-			// The forwarding was initiated by this session.
-			await (<any>remoteConnector).onChannelOpening(request, cancellation);
-
-			const localPort =
-				remoteConnector instanceof RemotePortForwarder ? remoteConnector.localPort : null;
-			const remotePort =
-				remoteConnector instanceof RemotePortForwarder
-					? remoteConnector.remotePort
-					: portForwardMessage.port;
-			const forwardedPort = new ForwardedPort(localPort, remotePort, false);
-			this.localForwardedPorts.addChannel(forwardedPort, request.channel);
-		} else {
-			// THe forwarding was initiated by the remote session.
-			await RemotePortForwarder.forwardChannel(
-				this,
-				request,
-				portForwardMessage.host,
-				portForwardMessage.port,
-				this.trace,
-				cancellation,
-			);
-		}
+		return responseMessage;
 	}
 
 	/* @internal */
