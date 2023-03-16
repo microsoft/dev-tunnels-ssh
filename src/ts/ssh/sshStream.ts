@@ -19,8 +19,8 @@ export class SshStream extends Duplex {
 					let buffer: Buffer;
 					if (typeof chunk === 'string') {
 						buffer = Buffer.from(chunk, encoding);
-					} else if (chunk instanceof Buffer) {
-						buffer = chunk;
+					} else if (chunk instanceof Buffer || chunk instanceof Uint8Array) {
+						buffer = chunk as Buffer;
 					} else {
 						throw new Error('Unsupported chunk type: ' + typeof chunk);
 					}
@@ -46,7 +46,7 @@ export class SshStream extends Duplex {
 							accumulator: number,
 							chunk: { chunk: Buffer | string | any; encoding?: BufferEncoding },
 						): number {
-							if (chunk.chunk instanceof Buffer) {
+							if (chunk.chunk instanceof Buffer || chunk.chunk instanceof Uint8Array) {
 								return accumulator + chunk.chunk.length;
 							} else {
 								throw new Error('Unsupported chunk type: ' + typeof chunk.chunk);
