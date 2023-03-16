@@ -239,7 +239,17 @@ export class ConnectionService extends SshService {
 		let responseMessage: ChannelMessage;
 		const args = new SshChannelOpeningEventArgs(message, channel, true);
 		try {
-			responseMessage = await this.session.handleChannelOpening(args, cancellation);
+			await this.session.handleChannelOpening(args, cancellation);
+			if (args.openingPromise) {
+				responseMessage = await args.openingPromise;
+			} else if (args.failureReason !== SshChannelOpenFailureReason.none) {
+				const failureMessage = new ChannelOpenFailureMessage();
+				failureMessage.reasonCode = args.failureReason;
+				failureMessage.description = args.failureDescription ?? undefined;
+				responseMessage = failureMessage;
+			} else {
+				responseMessage = new ChannelOpenConfirmationMessage();
+			}
 		} catch (e) {
 			channel.dispose();
 			throw e;

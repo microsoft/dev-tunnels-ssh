@@ -3,9 +3,6 @@
 //
 
 import {
-	ChannelMessage,
-	ChannelOpenConfirmationMessage,
-	ChannelOpenFailureMessage,
 	SshService,
 	SshSession,
 	SshChannel,
@@ -714,7 +711,7 @@ export class PortForwardingService extends SshService {
 	protected async onChannelOpening(
 		request: SshChannelOpeningEventArgs,
 		cancellation?: CancellationToken,
-	): Promise<ChannelMessage> {
+	): Promise<void> {
 		if (!request) throw new TypeError('Request is required.');
 
 		const channelType = request.request.channelType;
@@ -722,9 +719,8 @@ export class PortForwardingService extends SshService {
 			channelType !== PortForwardingService.portForwardChannelType &&
 			channelType !== PortForwardingService.reversePortForwardChannelType
 		) {
-			const failureMessage = new ChannelOpenFailureMessage();
-			failureMessage.reasonCode = SshChannelOpenFailureReason.unknownChannelType;
-			return failureMessage;
+			request.failureReason = SshChannelOpenFailureReason.unknownChannelType;
+			return;
 		}
 
 		let remoteConnector: RemotePortConnector | null = null;
@@ -744,10 +740,9 @@ export class PortForwardingService extends SshService {
 						'PortForwardingService received forwarding channel ' +
 							`for ${remoteEndPoint} that was not requested.`,
 					);
-					const failureMessage = new ChannelOpenFailureMessage();
-					failureMessage.reasonCode = SshChannelOpenFailureReason.connectFailed;
-					failureMessage.description = 'Forwarding channel was not requested.';
-					return failureMessage;
+					request.failureReason = SshChannelOpenFailureReason.connectFailed;
+					request.failureDescription = 'Forwarding channel was not requested.';
+					return;
 				}
 			} else if (!this.acceptRemoteConnectionsForNonForwardedPorts) {
 				const errorMessage = 'The session has disabled connections to non-forwarded ports.';
@@ -756,10 +751,9 @@ export class PortForwardingService extends SshService {
 					SshTraceEventIds.portForwardChannelOpenFailed,
 					errorMessage,
 				);
-				const failureMessage = new ChannelOpenFailureMessage();
-				failureMessage.reasonCode = SshChannelOpenFailureReason.administrativelyProhibited;
-				failureMessage.description = errorMessage;
-				return failureMessage;
+				request.failureReason = SshChannelOpenFailureReason.administrativelyProhibited;
+				request.failureDescription = errorMessage;
+				return;
 			}
 		}
 
@@ -768,10 +762,12 @@ export class PortForwardingService extends SshService {
 			request.channel,
 			request.isRemoteRequest,
 		);
-		const responseMessage = await super.onChannelOpening(portForwardRequest, cancellation);
+		await super.onChannelOpening(portForwardRequest, cancellation);
+		request.failureReason = portForwardRequest.failureReason;
+		request.failureDescription = portForwardRequest.failureDescription;
+		request.openingPromise = portForwardRequest.openingPromise;
 
-		if (
-			responseMessage instanceof ChannelOpenConfirmationMessage &&
+		if (request.failureReason === SshChannelOpenFailureReason.none &&
 			request.isRemoteRequest &&
 			this.forwardConnectionsToLocalPorts
 		) {
@@ -797,16 +793,8 @@ export class PortForwardingService extends SshService {
 					this.trace,
 					cancellation,
 				);
-				if (request.failureReason) {
-					const failureMessage = new ChannelOpenFailureMessage();
-					failureMessage.reasonCode = request.failureReason;
-					failureMessage.description = request.failureDescription ?? undefined;
-					return failureMessage;
-				}
 			}
 		}
-
-		return responseMessage;
 	}
 
 	/* @internal */

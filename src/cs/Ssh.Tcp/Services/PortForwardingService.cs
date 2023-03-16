@@ -726,7 +726,7 @@ public class PortForwardingService : SshService
 		return Task.FromResult(true);
 	}
 
-	protected override async Task<ChannelMessage> OnChannelOpeningAsync(
+	protected override async Task OnChannelOpeningAsync(
 		SshChannelOpeningEventArgs request,
 		CancellationToken cancellation)
 	{
@@ -738,10 +738,8 @@ public class PortForwardingService : SshService
 		string? channelType = request.Request.ChannelType;
 		if (channelType != PortForwardChannelType && channelType != ReversePortForwardChannelType)
 		{
-			return new ChannelOpenFailureMessage
-			{
-				ReasonCode = SshChannelOpenFailureReason.UnknownChannelType,
-			};
+			request.FailureReason = SshChannelOpenFailureReason.UnknownChannelType;
+			return;
 		}
 
 		RemotePortConnector? remoteConnector = null;
@@ -780,11 +778,9 @@ public class PortForwardingService : SshService
 						TraceEventType.Warning,
 						SshTraceEventIds.PortForwardChannelInvalid,
 						errorMessage);
-					return new ChannelOpenFailureMessage
-					{
-						ReasonCode = SshChannelOpenFailureReason.ConnectFailed,
-						Description = errorMessage,
-					};
+					request.FailureReason = SshChannelOpenFailureReason.ConnectFailed;
+					request.FailureDescription = errorMessage;
+					return;
 				}
 			}
 			else if (!AcceptRemoteConnectionsForNonForwardedPorts)
@@ -794,20 +790,20 @@ public class PortForwardingService : SshService
 					TraceEventType.Warning,
 					SshTraceEventIds.PortForwardChannelOpenFailed,
 					errorMessage);
-				return new ChannelOpenFailureMessage
-				{
-					ReasonCode = SshChannelOpenFailureReason.AdministrativelyProhibited,
-					Description = errorMessage,
-				};
+				request.FailureReason = SshChannelOpenFailureReason.AdministrativelyProhibited;
+				request.FailureDescription = errorMessage;
+				return;
 			}
 		}
 
 		var portForwardRequest = new SshChannelOpeningEventArgs(
 			portForwardMessage, request.Channel, request.IsRemoteRequest);
-		var responseMessage = await base.OnChannelOpeningAsync(portForwardRequest, cancellation)
-			.ConfigureAwait(false);
+		await base.OnChannelOpeningAsync(portForwardRequest, cancellation).ConfigureAwait(false);
+		request.FailureReason = portForwardRequest.FailureReason;
+		request.FailureDescription = portForwardRequest.FailureDescription;
+		request.OpeningTask = portForwardRequest.OpeningTask;
 
-		if (responseMessage is ChannelOpenConfirmationMessage &&
+		if (request.FailureReason == SshChannelOpenFailureReason.None &&
 			request.IsRemoteRequest && ForwardConnectionsToLocalPorts)
 		{
 			if (remoteConnector != null)
@@ -832,18 +828,8 @@ public class PortForwardingService : SshService
 					(int)portForwardMessage.Port,
 					Session.Trace,
 					cancellation).ConfigureAwait(false);
-				if (request.FailureReason != SshChannelOpenFailureReason.None)
-				{
-					responseMessage = new ChannelOpenFailureMessage
-					{
-						ReasonCode = request.FailureReason,
-						Description = request.FailureDescription,
-					};
-				}
 			}
 		}
-
-		return responseMessage;
 	}
 
 	internal async Task<SshChannel> OpenChannelAsync(

@@ -21,9 +21,6 @@ import {
 	ConnectionMessage,
 	ChannelRequestMessage,
 	ChannelOpenMessage,
-	ChannelMessage,
-	ChannelOpenFailureMessage,
-	ChannelOpenConfirmationMessage,
 } from './messages/connectionMessages';
 import { AuthenticationMessage } from './messages/authenticationMessages';
 import {
@@ -1069,7 +1066,7 @@ export class SshSession implements Disposable {
 		args: SshChannelOpeningEventArgs,
 		cancellation?: CancellationToken,
 		resolveService: boolean = true,
-	): Promise<ChannelMessage> {
+	): Promise<void> {
 		if (resolveService) {
 			const serviceType = findService(
 				this.config.services,
@@ -1081,23 +1078,13 @@ export class SshSession implements Disposable {
 				const service = this.activateService(serviceType);
 
 				// `onChannelOpening` should really be 'protected internal'.
-				return <ChannelMessage>await (<any>service).onChannelOpening(args, cancellation);
+				await (<any>service).onChannelOpening(args, cancellation);
+				return;
 			}
 		}
 
 		args.cancellation = cancellation ?? CancellationToken.None;
 		this.channelOpeningEmitter.fire(args);
-
-		if (args.openingPromise) {
-			return await args.openingPromise;
-		} else if (args.failureReason) {
-			const failureMessage = new ChannelOpenFailureMessage();
-			failureMessage.reasonCode = args.failureReason;
-			failureMessage.description = args.failureDescription ?? undefined;
-			return failureMessage;
-		} else {
-			return new ChannelOpenConfirmationMessage();
-		}
 	}
 
 	/* @internal */

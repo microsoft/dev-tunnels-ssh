@@ -7,8 +7,6 @@ import { suite, test, slow, timeout, pending } from '@testdeck/mocha';
 
 import {
 	CancellationToken,
-	ChannelMessage,
-	ChannelOpenConfirmationMessage,
 	ChannelRequestMessage,
 	DebugMessage,
 	KeyPair,
@@ -301,9 +299,8 @@ class TestService3 extends SshService {
 
 	public channel: SshChannel | undefined;
 
-	public async onChannelOpening(args: SshChannelOpeningEventArgs): Promise<ChannelMessage> {
+	public async onChannelOpening(args: SshChannelOpeningEventArgs): Promise<void> {
 		this.channel = args.channel;
-		return new ChannelOpenConfirmationMessage();
 	}
 }
 

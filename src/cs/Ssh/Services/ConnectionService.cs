@@ -311,14 +311,29 @@ internal class ConnectionService : SshService
 		var e = new SshChannelOpeningEventArgs(message, channel, isRemoteRequest: true);
 		try
 		{
-			responseMessage = await Session.OnChannelOpeningAsync(e, cancellation)
-				.ConfigureAwait(false);
+			await Session.OnChannelOpeningAsync(e, cancellation).ConfigureAwait(false);
+			if (e.OpeningTask != null)
+			{
+				responseMessage = await e.OpeningTask.ConfigureAwait(false);
+			}
+			else if (e.FailureReason != SshChannelOpenFailureReason.None)
+			{
+				responseMessage = new ChannelOpenFailureMessage
+				{
+					ReasonCode = e.FailureReason,
+					Description = e.FailureDescription,
+				};
+			}
+			else
+			{
+				responseMessage = new ChannelOpenConfirmationMessage();
+			}
 		}
 		catch (ArgumentException aex)
 		{
 			responseMessage = new ChannelOpenFailureMessage
 			{
-				ReasonCode = e.FailureReason,
+				ReasonCode = SshChannelOpenFailureReason.ConnectFailed,
 				Description = aex.Message,
 			};
 		}

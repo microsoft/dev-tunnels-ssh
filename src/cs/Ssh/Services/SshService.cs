@@ -101,7 +101,7 @@ public abstract class SshService : IDisposable
 	/// an implementation of this method may add any event-handlers to the
 	/// <see cref="SshChannelOpeningEventArgs.Channel" /> including a request event handler.
 	/// </remarks>
-	protected internal virtual Task<ChannelMessage> OnChannelOpeningAsync(
+	protected internal virtual Task OnChannelOpeningAsync(
 		SshChannelOpeningEventArgs request,
 		CancellationToken cancellation)
 	{

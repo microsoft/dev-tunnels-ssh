@@ -280,12 +280,12 @@ public class ServiceTests : IDisposable
 
 		public SshChannel Channel { get; private set; }
 
-		protected override Task<ChannelMessage> OnChannelOpeningAsync(
+		protected override Task OnChannelOpeningAsync(
 			SshChannelOpeningEventArgs args,
 			CancellationToken cancellation)
 		{
 			Channel = args.Channel;
-			return Task.FromResult<ChannelMessage>(new ChannelOpenConfirmationMessage());
+			return Task.CompletedTask;
 		}
 	}
 

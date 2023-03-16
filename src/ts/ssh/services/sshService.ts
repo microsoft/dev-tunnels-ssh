@@ -8,7 +8,7 @@ import { SshChannel } from '../sshChannel';
 import { SshRequestEventArgs } from '../events/sshRequestEventArgs';
 import { SshChannelOpeningEventArgs } from '../events/sshChannelOpeningEventArgs';
 import { SessionRequestMessage } from '../messages/transportMessages';
-import { ChannelMessage, ChannelRequestMessage } from '../messages/connectionMessages';
+import { ChannelRequestMessage } from '../messages/connectionMessages';
 import { SshMessage } from '../messages/sshMessage';
 import { Trace } from '../trace';
 
@@ -96,7 +96,7 @@ export class SshService implements Disposable {
 	protected async onChannelOpening(
 		request: SshChannelOpeningEventArgs,
 		cancellation?: CancellationToken,
-	): Promise<ChannelMessage> {
+	): Promise<void> {
 		if (!request) throw new TypeError('Request is required.');
 
 		return this.session.handleChannelOpening(request, cancellation, false);

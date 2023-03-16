@@ -3,7 +3,11 @@
 //
 
 import { SshChannel } from '../sshChannel';
-import { ChannelMessage, ChannelOpenMessage, SshChannelOpenFailureReason } from '../messages/connectionMessages';
+import {
+	ChannelMessage,
+	ChannelOpenMessage,
+	SshChannelOpenFailureReason,
+} from '../messages/connectionMessages';
 import { CancellationToken } from 'vscode-jsonrpc';
 
 export class SshChannelOpeningEventArgs {
@@ -35,7 +39,8 @@ export class SshChannelOpeningEventArgs {
 	/**
 	 * Gets or sets an optional promise that blocks opening the channel until the promise is
 	 * resolved. An event-handler may assign a promise to this property to handle the channel
-	 * opening as an asynchronous operation.
+	 * opening as an asynchronous operation. The promise must resolve to an instance of
+	 * `ChannelOpenConfirmationMessage`, `ChannelOpenFailureMessage`, or a subclass of one of those.
 	 */
 	public openingPromise?: Promise<ChannelMessage>;
 

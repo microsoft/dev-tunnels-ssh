@@ -1357,7 +1357,7 @@ public class SshSession : IDisposable
 		return channel;
 	}
 
-	internal async Task<ChannelMessage> OnChannelOpeningAsync(
+	internal async Task OnChannelOpeningAsync(
 		SshChannelOpeningEventArgs e,
 		CancellationToken cancellation,
 		bool resolveService = true)
@@ -1371,30 +1371,13 @@ public class SshSession : IDisposable
 			{
 				// A service was configured for activation via this channel type.
 				var service = ActivateService(serviceType, serviceConfig);
-				return await service.OnChannelOpeningAsync(e, cancellation).ConfigureAwait(false);
+				await service.OnChannelOpeningAsync(e, cancellation).ConfigureAwait(false);
+				return;
 			}
 		}
 
 		e.Cancellation = cancellation;
-
 		ChannelOpening?.Invoke(this, e);
-
-		if (e.OpeningTask != null)
-		{
-			return await e.OpeningTask.ConfigureAwait(false);
-		}
-		else if (e.FailureReason != SshChannelOpenFailureReason.None)
-		{
-			return new ChannelOpenFailureMessage
-			{
-				ReasonCode = e.FailureReason,
-				Description = e.FailureDescription,
-			};
-		}
-		else
-		{
-			return new ChannelOpenConfirmationMessage();
-		}
 	}
 
 	/// <summary>
