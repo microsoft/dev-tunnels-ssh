@@ -1362,7 +1362,6 @@ public class SshSession : IDisposable
 		CancellationToken cancellation,
 		bool resolveService = true)
 	{
-		bool serviceFound = false;
 		if (resolveService)
 		{
 			var (serviceType, serviceConfig) = ServiceActivationAttribute.FindService(
@@ -1373,23 +1372,12 @@ public class SshSession : IDisposable
 				// A service was configured for activation via this channel type.
 				var service = ActivateService(serviceType, serviceConfig);
 				await service.OnChannelOpeningAsync(e, cancellation).ConfigureAwait(false);
-				serviceFound = true;
+				return;
 			}
 		}
 
-		// If service is found, it would be calling OnChannelOpeningAsync again.
-		// Avoid calling ChannelOpening multiple times.
-		if (!serviceFound)
-		{
-			e.Cancellation = cancellation;
-
-			ChannelOpening?.Invoke(this, e);
-
-			if (e.OpeningTask != null)
-			{
-				await e.OpeningTask.ConfigureAwait(false);
-			}
-		}
+		e.Cancellation = cancellation;
+		ChannelOpening?.Invoke(this, e);
 	}
 
 	/// <summary>

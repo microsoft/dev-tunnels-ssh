@@ -307,15 +307,35 @@ internal class ConnectionService : SshService
 			remoteMaxWindowSize: message.MaxWindowSize,
 			remoteMaxPacketSize: message.MaxPacketSize);
 
+		ChannelMessage responseMessage;
 		var e = new SshChannelOpeningEventArgs(message, channel, isRemoteRequest: true);
 		try
 		{
 			await Session.OnChannelOpeningAsync(e, cancellation).ConfigureAwait(false);
+			if (e.OpeningTask != null)
+			{
+				responseMessage = await e.OpeningTask.ConfigureAwait(false);
+			}
+			else if (e.FailureReason != SshChannelOpenFailureReason.None)
+			{
+				responseMessage = new ChannelOpenFailureMessage
+				{
+					ReasonCode = e.FailureReason,
+					Description = e.FailureDescription,
+				};
+			}
+			else
+			{
+				responseMessage = new ChannelOpenConfirmationMessage();
+			}
 		}
 		catch (ArgumentException aex)
 		{
-			e.FailureReason = SshChannelOpenFailureReason.ConnectFailed;
-			e.FailureDescription = aex.Message;
+			responseMessage = new ChannelOpenFailureMessage
+			{
+				ReasonCode = SshChannelOpenFailureReason.ConnectFailed,
+				Description = aex.Message,
+			};
 		}
 		catch (Exception)
 		{
@@ -323,18 +343,12 @@ internal class ConnectionService : SshService
 			throw;
 		}
 
-		if (e.FailureReason != SshChannelOpenFailureReason.None)
+		if (responseMessage is ChannelOpenFailureMessage)
 		{
+			responseMessage.RecipientChannel = senderChannel;
 			try
 			{
-				await Session.SendMessageAsync(
-					new ChannelOpenFailureMessage
-					{
-						RecipientChannel = senderChannel,
-						ReasonCode = e.FailureReason,
-						Description = e.FailureDescription,
-					},
-					cancellation).ConfigureAwait(false);
+				await Session.SendMessageAsync(responseMessage, cancellation).ConfigureAwait(false);
 				return;
 			}
 			finally
@@ -360,15 +374,12 @@ internal class ConnectionService : SshService
 			return;
 		}
 
-		await Session.SendMessageAsync(
-			new ChannelOpenConfirmationMessage
-			{
-				RecipientChannel = channel.RemoteChannelId,
-				SenderChannel = channel.ChannelId,
-				MaxWindowSize = channel.MaxWindowSize,
-				MaxPacketSize = channel.MaxPacketSize,
-			},
-			cancellation).ConfigureAwait(false);
+		var confirmationMessage = (ChannelOpenConfirmationMessage)responseMessage;
+		confirmationMessage.RecipientChannel = channel.RemoteChannelId;
+		confirmationMessage.SenderChannel = channel.ChannelId;
+		confirmationMessage.MaxWindowSize = channel.MaxWindowSize;
+		confirmationMessage.MaxPacketSize = channel.MaxPacketSize;
+		await Session.SendMessageAsync(confirmationMessage, cancellation).ConfigureAwait(false);
 
 		lock (this.lockObject)
 		{

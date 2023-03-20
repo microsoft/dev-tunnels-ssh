@@ -751,8 +751,8 @@ export class PortForwardingService extends SshService {
 					SshTraceEventIds.portForwardChannelOpenFailed,
 					errorMessage,
 				);
-				request.failureDescription = errorMessage;
 				request.failureReason = SshChannelOpenFailureReason.administrativelyProhibited;
+				request.failureDescription = errorMessage;
 				return;
 			}
 		}
@@ -763,39 +763,37 @@ export class PortForwardingService extends SshService {
 			request.isRemoteRequest,
 		);
 		await super.onChannelOpening(portForwardRequest, cancellation);
-
 		request.failureReason = portForwardRequest.failureReason;
 		request.failureDescription = portForwardRequest.failureDescription;
-		if (
-			request.failureReason !== SshChannelOpenFailureReason.none ||
-			!request.isRemoteRequest ||
-			!this.forwardConnectionsToLocalPorts
+		request.openingPromise = portForwardRequest.openingPromise;
+
+		if (request.failureReason === SshChannelOpenFailureReason.none &&
+			request.isRemoteRequest &&
+			this.forwardConnectionsToLocalPorts
 		) {
-			return;
-		}
+			if (remoteConnector) {
+				// The forwarding was initiated by this session.
+				await remoteConnector.onPortChannelOpening(request, cancellation);
 
-		if (remoteConnector) {
-			// The forwarding was initiated by this session.
-			await (<any>remoteConnector).onChannelOpening(request, cancellation);
-
-			const localPort =
-				remoteConnector instanceof RemotePortForwarder ? remoteConnector.localPort : null;
-			const remotePort =
-				remoteConnector instanceof RemotePortForwarder
-					? remoteConnector.remotePort
-					: portForwardMessage.port;
-			const forwardedPort = new ForwardedPort(localPort, remotePort, false);
-			this.localForwardedPorts.addChannel(forwardedPort, request.channel);
-		} else {
-			// THe forwarding was initiated by the remote session.
-			await RemotePortForwarder.forwardChannel(
-				this,
-				request,
-				portForwardMessage.host,
-				portForwardMessage.port,
-				this.trace,
-				cancellation,
-			);
+				const localPort =
+					remoteConnector instanceof RemotePortForwarder ? remoteConnector.localPort : null;
+				const remotePort =
+					remoteConnector instanceof RemotePortForwarder
+						? remoteConnector.remotePort
+						: portForwardMessage.port;
+				const forwardedPort = new ForwardedPort(localPort, remotePort, false);
+				this.localForwardedPorts.addChannel(forwardedPort, request.channel);
+			} else {
+				// THe forwarding was initiated by the remote session.
+				await RemotePortForwarder.forwardChannel(
+					this,
+					request,
+					portForwardMessage.host,
+					portForwardMessage.port,
+					this.trace,
+					cancellation,
+				);
+			}
 		}
 	}
 

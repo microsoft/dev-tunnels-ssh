@@ -36,7 +36,10 @@ export {
 } from './messages/transportMessages';
 export {
 	SshChannelOpenFailureReason,
+	ChannelMessage,
+	ChannelOpenFailureMessage,
 	ChannelOpenMessage,
+	ChannelOpenConfirmationMessage,
 	ChannelRequestMessage,
 	ChannelRequestType,
 	CommandRequestMessage,

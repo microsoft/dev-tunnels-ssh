@@ -22,7 +22,8 @@ export class RemotePortStreamer extends RemotePortConnector {
 	 */
 	public readonly onStreamOpened: Event<SshStream> = this.streamOpenedEmitter.event;
 
-	protected async onChannelOpening(
+	/* @internal */
+	public async onPortChannelOpening(
 		request: SshChannelOpeningEventArgs,
 		cancellation?: CancellationToken,
 	): Promise<void> {

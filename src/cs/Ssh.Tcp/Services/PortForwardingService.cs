@@ -778,8 +778,8 @@ public class PortForwardingService : SshService
 						TraceEventType.Warning,
 						SshTraceEventIds.PortForwardChannelInvalid,
 						errorMessage);
-					request.FailureDescription = errorMessage;
 					request.FailureReason = SshChannelOpenFailureReason.ConnectFailed;
+					request.FailureDescription = errorMessage;
 					return;
 				}
 			}
@@ -790,8 +790,8 @@ public class PortForwardingService : SshService
 					TraceEventType.Warning,
 					SshTraceEventIds.PortForwardChannelOpenFailed,
 					errorMessage);
-				request.FailureDescription = errorMessage;
 				request.FailureReason = SshChannelOpenFailureReason.AdministrativelyProhibited;
+				request.FailureDescription = errorMessage;
 				return;
 			}
 		}
@@ -799,37 +799,36 @@ public class PortForwardingService : SshService
 		var portForwardRequest = new SshChannelOpeningEventArgs(
 			portForwardMessage, request.Channel, request.IsRemoteRequest);
 		await base.OnChannelOpeningAsync(portForwardRequest, cancellation).ConfigureAwait(false);
-
 		request.FailureReason = portForwardRequest.FailureReason;
 		request.FailureDescription = portForwardRequest.FailureDescription;
-		if (request.FailureReason != SshChannelOpenFailureReason.None ||
-			!request.IsRemoteRequest || !ForwardConnectionsToLocalPorts)
-		{
-			return;
-		}
+		request.OpeningTask = portForwardRequest.OpeningTask;
 
-		if (remoteConnector != null)
+		if (request.FailureReason == SshChannelOpenFailureReason.None &&
+			request.IsRemoteRequest && ForwardConnectionsToLocalPorts)
 		{
-			// The forwarding was initiated by this session.
-			await remoteConnector.OnChannelOpeningAsync(request, cancellation)
-				.ConfigureAwait(false);
-			var remoteForwarder = remoteConnector as RemotePortForwarder;
-			var forwardedPort = new ForwardedPort(
-				localPort: remoteForwarder?.LocalPort,
-				remotePort: remoteForwarder?.RemotePort ?? (int)portForwardMessage.Port,
-				isRemote: false);
-			LocalForwardedPorts.AddChannel(forwardedPort, request.Channel);
-		}
-		else
-		{
-			// The forwarding was initiated by the remote session.
-			await RemotePortForwarder.ForwardChannelAsync(
-				this,
-				request,
-				portForwardMessage.Host,
-				(int)portForwardMessage.Port,
-				Session.Trace,
-				cancellation).ConfigureAwait(false);
+			if (remoteConnector != null)
+			{
+				// The forwarding was initiated by this session.
+				await remoteConnector.OnChannelOpeningAsync(request, cancellation)
+					.ConfigureAwait(false);
+				var remoteForwarder = remoteConnector as RemotePortForwarder;
+				var forwardedPort = new ForwardedPort(
+					localPort: remoteForwarder?.LocalPort,
+					remotePort: remoteForwarder?.RemotePort ?? (int)portForwardMessage.Port,
+					isRemote: false);
+				LocalForwardedPorts.AddChannel(forwardedPort, request.Channel);
+			}
+			else
+			{
+				// The forwarding was initiated by the remote session.
+				await RemotePortForwarder.ForwardChannelAsync(
+					this,
+					request,
+					portForwardMessage.Host,
+					(int)portForwardMessage.Port,
+					Session.Trace,
+					cancellation).ConfigureAwait(false);
+			}
 		}
 	}
 

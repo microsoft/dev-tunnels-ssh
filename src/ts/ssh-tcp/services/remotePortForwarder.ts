@@ -48,7 +48,7 @@ export class RemotePortForwarder extends RemotePortConnector {
 	public readonly localPort: number;
 
 	/* @internal */
-	protected async onChannelOpening(
+	public async onPortChannelOpening(
 		request: SshChannelOpeningEventArgs,
 		cancellation?: CancellationToken,
 	): Promise<void> {

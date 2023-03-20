@@ -74,9 +74,8 @@ export class SshSession implements Disposable {
 	protected kexService: KeyExchangeService | null;
 	protected connectionService: ConnectionService | null = null;
 	private connectPromise?: Promise<void>;
-	private requestHandler:
-		| ((err?: Error, result?: SessionRequestResponseMessage) => void)
-		| null = null;
+	private requestHandler: ((err?: Error, result?: SessionRequestResponseMessage) => void) | null =
+		null;
 	private versionExchangePromise?: Promise<void>;
 	private readonly blockedMessages: SshMessage[] = [];
 	private readonly blockedMessagesSemaphore = new Semaphore(1);
@@ -148,8 +147,8 @@ export class SshSession implements Disposable {
 	public readonly onChannelOpening = this.channelOpeningEmitter.event;
 
 	private readonly requestEmitter = new Emitter<SshRequestEventArgs<SessionRequestMessage>>();
-	public readonly onRequest: Event<SshRequestEventArgs<SessionRequestMessage>> = this
-		.requestEmitter.event;
+	public readonly onRequest: Event<SshRequestEventArgs<SessionRequestMessage>> =
+		this.requestEmitter.event;
 
 	/**
 	 * Gets or sets a function that handles trace messages associated with the session.
@@ -807,7 +806,7 @@ export class SshSession implements Disposable {
 	 */
 	public async requestResponse<
 		TSuccess extends SessionRequestSuccessMessage,
-		TFailure extends SessionRequestFailureMessage
+		TFailure extends SessionRequestFailureMessage,
 	>(
 		request: SessionRequestMessage,
 		successType: { new (): TSuccess },
@@ -1086,10 +1085,6 @@ export class SshSession implements Disposable {
 
 		args.cancellation = cancellation ?? CancellationToken.None;
 		this.channelOpeningEmitter.fire(args);
-
-		if (args.openingPromise) {
-			await args.openingPromise;
-		}
 	}
 
 	/* @internal */

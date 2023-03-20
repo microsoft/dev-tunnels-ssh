@@ -16,6 +16,7 @@ import {
 	ChannelFailureMessage,
 	ChannelEofMessage,
 	SshChannelOpenFailureReason,
+	ChannelMessage,
 } from '../messages/connectionMessages';
 import { SshSession } from '../sshSession';
 import { CancellationToken, Disposable } from 'vscode-jsonrpc';
@@ -235,21 +236,29 @@ export class ConnectionService extends SshService {
 			message.maxPacketSize!,
 		);
 
+		let responseMessage: ChannelMessage;
 		const args = new SshChannelOpeningEventArgs(message, channel, true);
 		try {
 			await this.session.handleChannelOpening(args, cancellation);
+			if (args.openingPromise) {
+				responseMessage = await args.openingPromise;
+			} else if (args.failureReason !== SshChannelOpenFailureReason.none) {
+				const failureMessage = new ChannelOpenFailureMessage();
+				failureMessage.reasonCode = args.failureReason;
+				failureMessage.description = args.failureDescription ?? undefined;
+				responseMessage = failureMessage;
+			} else {
+				responseMessage = new ChannelOpenConfirmationMessage();
+			}
 		} catch (e) {
 			channel.dispose();
 			throw e;
 		}
 
-		if (args.failureReason !== SshChannelOpenFailureReason.none) {
-			const failureMessage = new ChannelOpenFailureMessage();
-			failureMessage.recipientChannel = senderChannel;
-			failureMessage.reasonCode = args.failureReason;
-			failureMessage.description = args.failureDescription || undefined;
+		if (responseMessage instanceof ChannelOpenFailureMessage) {
+			responseMessage.recipientChannel = senderChannel;
 			try {
-				await this.session.sendMessage(failureMessage, cancellation);
+				await this.session.sendMessage(responseMessage, cancellation);
 			} finally {
 				channel.dispose();
 			}
@@ -268,7 +277,7 @@ export class ConnectionService extends SshService {
 
 		this.channelMap.set(channel.channelId, channel);
 
-		const confirmationMessage = new ChannelOpenConfirmationMessage();
+		const confirmationMessage = <ChannelOpenConfirmationMessage>responseMessage;
 		confirmationMessage.recipientChannel = channel.remoteChannelId;
 		confirmationMessage.senderChannel = channel.channelId;
 		confirmationMessage.maxWindowSize = channel.maxWindowSize;

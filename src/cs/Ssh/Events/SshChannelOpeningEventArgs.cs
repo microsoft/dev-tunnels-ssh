@@ -50,9 +50,11 @@ public class SshChannelOpeningEventArgs
 	/// <summary>
 	/// Gets or sets an optional task that blocks opening the channel until the task is completed.
 	/// An event-handler may assign a task to this property to handle the channel opening
-	/// as an asynchronous operation.
+	/// as an asynchronous operation. The task result must be an instance of
+	/// <see cref="ChannelOpenConfirmationMessage" />, <see cref="ChannelOpenFailureMessage" />,
+	/// or a subclass of one of those.
 	/// </summary>
-	public Task? OpeningTask { get; set; }
+	public Task<ChannelMessage>? OpeningTask { get; set; }
 
 	/// <summary>
 	/// Specifies a reason that the channel could not be opened.

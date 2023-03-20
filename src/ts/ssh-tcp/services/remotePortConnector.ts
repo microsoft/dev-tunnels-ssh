@@ -7,6 +7,7 @@ import {
 	SshService,
 	SshSession,
 	SessionRequestFailureMessage,
+	SshChannelOpeningEventArgs,
 } from '@microsoft/dev-tunnels-ssh';
 import { PortForwardRequestMessage } from '../messages/portForwardRequestMessage';
 import { PortForwardSuccessMessage } from '../messages/portForwardSuccessMessage';
@@ -15,7 +16,7 @@ import { PortForwardingService } from './portForwardingService';
 /**
  * Base class for services that receive SSH channels forwarded from a remote port.
  */
-export class RemotePortConnector extends SshService {
+export abstract class RemotePortConnector extends SshService {
 	private port: number;
 	private forwarding: boolean = false;
 
@@ -39,6 +40,12 @@ export class RemotePortConnector extends SshService {
 	public get remotePort() {
 		return this.port;
 	}
+
+	/* @internal */
+	public abstract onPortChannelOpening(
+		request: SshChannelOpeningEventArgs,
+		cancellation?: CancellationToken,
+	): Promise<void>;
 
 	/* @internal */
 	public async request(
