@@ -837,9 +837,17 @@ public class SshChannel : IDisposable
 		CancelPendingRequests();
 
 		this.connectionService.RemoveChannel(this);
-		this.sendSemaphore.Dispose();
-		this.sendingWindowSemaphore.Dispose();
-		this.channelRequestSemaphore.Dispose();
+
+		// SemaphoreSlim.Dispose() is not thread-safe and may cause WaitAsync(CancellationToken) not being cancelled
+		// when SemaphoreSlim.Dispose is invoked immediately after CancellationTokenSource.Cancel.
+		// See https://github.com/dotnet/runtime/issues/59639
+		// SemaphoreSlim.Dispose() only disposes it's wait handle, which is not initialized unless its AvailableWaitHandle
+		// property is read, which we don't use.
+
+		// this.sendSemaphore.Dispose();
+		// this.sendingWindowSemaphore.Dispose();
+		// this.channelRequestSemaphore.Dispose();
+
 		this.taskChain.Dispose();
 	}
 

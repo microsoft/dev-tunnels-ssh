@@ -188,7 +188,14 @@ public class SshStream : Stream
 			// Asynchronously close the channel, but don't wait for it.
 			_ = Channel.CloseAsync();
 
-			this.readSemaphore.Dispose();
+			// SemaphoreSlim.Dispose() is not thread-safe and may cause WaitAsync(CancellationToken) not being cancelled
+			// when SemaphoreSlim.Dispose is invoked immediately after CancellationTokenSource.Cancel.
+			// See https://github.com/dotnet/runtime/issues/59639
+			// SemaphoreSlim.Dispose() only disposes it's wait handle, which is not initialized unless its AvailableWaitHandle
+			// property is read, which we don't use.
+
+			// this.readSemaphore.Dispose();
+
 			IsDisposed = true;
 		}
 
