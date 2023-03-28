@@ -29,7 +29,12 @@ public class SshSession : IDisposable
 {
 	private readonly ConcurrentQueue<SshMessage> blockedMessages =
 		new ConcurrentQueue<SshMessage>();
+
+#pragma warning disable CA2213 // Disposable fields should be disposed
 	private readonly SemaphoreSlim blockedMessagesSemaphore = new SemaphoreSlim(1);
+	private readonly SemaphoreSlim sessionRequestSemaphore = new SemaphoreSlim(1);
+#pragma warning restore CA2213 // Disposable fields should be disposed
+
 	private readonly ConcurrentDictionary<Type, SshService> services =
 		new ConcurrentDictionary<Type, SshService>();
 	private KeyExchangeService? kexService;
@@ -38,7 +43,6 @@ public class SshSession : IDisposable
 		new CancellationTokenSource();
 	private readonly ConcurrentQueue<IRequestHandler> requestHandlers = new ();
 	private readonly TaskChain taskChain;
-	private readonly SemaphoreSlim sessionRequestSemaphore = new SemaphoreSlim(1);
 	private Task? versionExchangeTask;
 	private Exception? closedException;
 

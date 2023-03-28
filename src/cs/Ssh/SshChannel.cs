@@ -46,11 +46,15 @@ public class SshChannel : IDisposable
 	public const uint DefaultMaxWindowSize = DefaultMaxPacketSize * 32;
 
 	private readonly ConnectionService connectionService;
+
+#pragma warning disable CA2213 // Disposable fields should be disposed
 	private readonly SemaphoreSlim sendSemaphore = new SemaphoreSlim(0);
 	private readonly SemaphoreSlim sendingWindowSemaphore = new SemaphoreSlim(1);
+	private readonly SemaphoreSlim channelRequestSemaphore = new SemaphoreSlim(1);
+#pragma warning restore CA2213 // Disposable fields should be disposed
+
 	private readonly ConcurrentQueue<TaskCompletionSource<bool>> requestCompletionSources = new ();
 	private readonly TaskChain taskChain;
-	private readonly SemaphoreSlim channelRequestSemaphore = new SemaphoreSlim(1);
 
 	private uint remoteWindowSize;
 	private uint maxWindowSize;

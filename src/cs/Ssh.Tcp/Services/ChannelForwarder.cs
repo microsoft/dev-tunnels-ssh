@@ -15,7 +15,11 @@ internal class ChannelForwarder : IDisposable
 {
 	private readonly PortForwardingService pfs;
 	private bool disposed;
+
+#pragma warning disable CA2213 // Disposable fields should be disposed
 	private readonly SemaphoreSlim receiveSemaphore;
+#pragma warning restore CA2213 // Disposable fields should be disposed
+
 	private readonly ConcurrentQueue<Buffer> receiveQueue;
 	private SshChannelClosedEventArgs? channelClosedEvent;
 	private readonly NetworkStream stream;
@@ -57,15 +61,7 @@ internal class ChannelForwarder : IDisposable
 		data.CopyTo(copy);
 
 		this.receiveQueue.Enqueue(copy);
-
-		try
-		{
-			this.receiveSemaphore.Release();
-		}
-		catch (ObjectDisposedException)
-		{
-			// The semaphore was disposed.
-		}
+		this.receiveSemaphore.Release();
 
 		Channel.AdjustWindow((uint)data.Count);
 	}
@@ -78,15 +74,7 @@ internal class ChannelForwarder : IDisposable
 		}
 
 		this.channelClosedEvent = e;
-
-		try
-		{
-			this.receiveSemaphore.Release();
-		}
-		catch (ObjectDisposedException)
-		{
-			// The semaphore was disposed.
-		}
+		this.receiveSemaphore.Release();
 	}
 
 	private async void ForwardFromChannelToStream()
@@ -119,12 +107,6 @@ internal class ChannelForwarder : IDisposable
 		{
 			await this.receiveSemaphore.WaitAsync(this.disposeCancellationSource.Token)
 				.ConfigureAwait(false);
-		}
-		catch (ObjectDisposedException)
-		{
-			// The semaphore was disposed.
-			CloseStream(abort: true);
-			return false;
 		}
 		catch (OperationCanceledException)
 		when (this.disposeCancellationSource.IsCancellationRequested)

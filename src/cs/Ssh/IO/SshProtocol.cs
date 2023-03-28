@@ -31,7 +31,11 @@ internal class SshProtocol : IDisposable
 	private Stream? stream;
 	private readonly SshSessionConfiguration config;
 	private readonly SessionMetrics metrics;
+
+#pragma warning disable CA2213 // Disposable fields should be disposed
 	private readonly SemaphoreSlim sessionSemaphore;
+#pragma warning restore CA2213 // Disposable fields should be disposed
+
 	private readonly TraceSource trace;
 
 	private ulong inboundPacketSequence;

@@ -10,7 +10,11 @@ namespace Microsoft.DevTunnels.Ssh;
 internal class TaskChain : IDisposable
 {
 	private Task? runInSequenceTask;
+
+#pragma warning disable CA2213 // Disposable fields should be disposed
 	private readonly SemaphoreSlim semaphore = new (1);
+#pragma warning restore CA2213 // Disposable fields should be disposed
+
 	private bool isDisposed;
 	private readonly TraceSource trace;
 

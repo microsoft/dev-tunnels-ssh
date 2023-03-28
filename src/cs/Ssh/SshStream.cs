@@ -18,7 +18,10 @@ namespace Microsoft.DevTunnels.Ssh;
 /// </remarks>
 public class SshStream : Stream
 {
+#pragma warning disable CA2213 // Disposable fields should be disposed
 	private readonly SemaphoreSlim readSemaphore;
+#pragma warning restore CA2213 // Disposable fields should be disposed
+
 	private readonly ConcurrentQueue<Buffer> readQueue;
 	private Buffer readBuffer;
 	private int readBufferOffset;
