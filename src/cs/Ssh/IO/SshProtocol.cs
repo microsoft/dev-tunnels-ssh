@@ -31,7 +31,11 @@ internal class SshProtocol : IDisposable
 	private Stream? stream;
 	private readonly SshSessionConfiguration config;
 	private readonly SessionMetrics metrics;
+
+#pragma warning disable CA2213 // Disposable fields should be disposed
 	private readonly SemaphoreSlim sessionSemaphore;
+#pragma warning restore CA2213 // Disposable fields should be disposed
+
 	private readonly TraceSource trace;
 
 	private ulong inboundPacketSequence;
@@ -852,6 +856,13 @@ internal class SshProtocol : IDisposable
 	{
 		this.Disconnect();
 		Algorithms?.Dispose();
-		this.sessionSemaphore.Dispose();
+
+		// SemaphoreSlim.Dispose() is not thread-safe and may cause WaitAsync(CancellationToken) not being cancelled
+		// when SemaphoreSlim.Dispose is invoked immediately after CancellationTokenSource.Cancel.
+		// See https://github.com/dotnet/runtime/issues/59639
+		// SemaphoreSlim.Dispose() only disposes it's wait handle, which is not initialized unless its AvailableWaitHandle
+		// property is read, which we don't use.
+
+		// this.sessionSemaphore.Dispose();
 	}
 }

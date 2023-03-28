@@ -29,7 +29,12 @@ public class SshSession : IDisposable
 {
 	private readonly ConcurrentQueue<SshMessage> blockedMessages =
 		new ConcurrentQueue<SshMessage>();
+
+#pragma warning disable CA2213 // Disposable fields should be disposed
 	private readonly SemaphoreSlim blockedMessagesSemaphore = new SemaphoreSlim(1);
+	private readonly SemaphoreSlim sessionRequestSemaphore = new SemaphoreSlim(1);
+#pragma warning restore CA2213 // Disposable fields should be disposed
+
 	private readonly ConcurrentDictionary<Type, SshService> services =
 		new ConcurrentDictionary<Type, SshService>();
 	private KeyExchangeService? kexService;
@@ -38,7 +43,6 @@ public class SshSession : IDisposable
 		new CancellationTokenSource();
 	private readonly ConcurrentQueue<IRequestHandler> requestHandlers = new ();
 	private readonly TaskChain taskChain;
-	private readonly SemaphoreSlim sessionRequestSemaphore = new SemaphoreSlim(1);
 	private Task? versionExchangeTask;
 	private Exception? closedException;
 
@@ -742,8 +746,15 @@ public class SshSession : IDisposable
 			Protocol?.Dispose();
 			Protocol = null;
 
-			this.blockedMessagesSemaphore.Dispose();
-			this.sessionRequestSemaphore.Dispose();
+			// SemaphoreSlim.Dispose() is not thread-safe and may cause WaitAsync(CancellationToken) not being cancelled
+			// when SemaphoreSlim.Dispose is invoked immediately after CancellationTokenSource.Cancel.
+			// See https://github.com/dotnet/runtime/issues/59639
+			// SemaphoreSlim.Dispose() only disposes it's wait handle, which is not initialized unless its AvailableWaitHandle
+			// property is read, which we don't use.
+
+			// this.blockedMessagesSemaphore.Dispose();
+			// this.sessionRequestSemaphore.Dispose();
+
 			this.taskChain.Dispose();
 		}
 	}

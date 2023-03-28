@@ -18,7 +18,10 @@ namespace Microsoft.DevTunnels.Ssh;
 /// </remarks>
 public class SshStream : Stream
 {
+#pragma warning disable CA2213 // Disposable fields should be disposed
 	private readonly SemaphoreSlim readSemaphore;
+#pragma warning restore CA2213 // Disposable fields should be disposed
+
 	private readonly ConcurrentQueue<Buffer> readQueue;
 	private Buffer readBuffer;
 	private int readBufferOffset;
@@ -188,7 +191,14 @@ public class SshStream : Stream
 			// Asynchronously close the channel, but don't wait for it.
 			_ = Channel.CloseAsync();
 
-			this.readSemaphore.Dispose();
+			// SemaphoreSlim.Dispose() is not thread-safe and may cause WaitAsync(CancellationToken) not being cancelled
+			// when SemaphoreSlim.Dispose is invoked immediately after CancellationTokenSource.Cancel.
+			// See https://github.com/dotnet/runtime/issues/59639
+			// SemaphoreSlim.Dispose() only disposes it's wait handle, which is not initialized unless its AvailableWaitHandle
+			// property is read, which we don't use.
+
+			// this.readSemaphore.Dispose();
+
 			IsDisposed = true;
 		}
 

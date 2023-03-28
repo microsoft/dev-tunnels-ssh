@@ -202,13 +202,9 @@ public sealed class SessionContour : IDisposable
 		{
 			while (!cancellation.IsCancellationRequested)
 			{
-				try
+				await this.updateSemaphore.WaitAsync(cancellation).ConfigureAwait(false);
+				if (this.disposed)
 				{
-					await this.updateSemaphore.WaitAsync(cancellation).ConfigureAwait(false);
-				}
-				catch (ObjectDisposedException)
-				{
-					// The semaphore was disposed.
 					break;
 				}
 
@@ -240,11 +236,6 @@ public sealed class SessionContour : IDisposable
 					this.latencySum[intervalIndex] += latency;
 					this.latencyCount[intervalIndex]++;
 				}
-			}
-
-			if (this.disposed)
-			{
-				this.updateSemaphore.Dispose();
 			}
 		}
 		finally
@@ -314,7 +305,12 @@ public sealed class SessionContour : IDisposable
 	{
 		this.disposed = true;
 
-		// The semaphore will be disposed after all remaining updates have been processed.
+		// SemaphoreSlim.Dispose() is not thread-safe and may cause WaitAsync(CancellationToken) not being cancelled
+		// when SemaphoreSlim.Dispose is invoked immediately after CancellationTokenSource.Cancel.
+		// See https://github.com/dotnet/runtime/issues/59639
+		// SemaphoreSlim.Dispose() only disposes it's wait handle, which is not initialized unless its AvailableWaitHandle
+		// property is read, which we don't use.
+
 		this.updateSemaphore.TryRelease();
 	}
 

@@ -15,7 +15,11 @@ internal class ChannelForwarder : IDisposable
 {
 	private readonly PortForwardingService pfs;
 	private bool disposed;
+
+#pragma warning disable CA2213 // Disposable fields should be disposed
 	private readonly SemaphoreSlim receiveSemaphore;
+#pragma warning restore CA2213 // Disposable fields should be disposed
+
 	private readonly ConcurrentQueue<Buffer> receiveQueue;
 	private SshChannelClosedEventArgs? channelClosedEvent;
 	private readonly NetworkStream stream;
@@ -57,15 +61,7 @@ internal class ChannelForwarder : IDisposable
 		data.CopyTo(copy);
 
 		this.receiveQueue.Enqueue(copy);
-
-		try
-		{
-			this.receiveSemaphore.Release();
-		}
-		catch (ObjectDisposedException)
-		{
-			// The semaphore was disposed.
-		}
+		this.receiveSemaphore.Release();
 
 		Channel.AdjustWindow((uint)data.Count);
 	}
@@ -78,15 +74,7 @@ internal class ChannelForwarder : IDisposable
 		}
 
 		this.channelClosedEvent = e;
-
-		try
-		{
-			this.receiveSemaphore.Release();
-		}
-		catch (ObjectDisposedException)
-		{
-			// The semaphore was disposed.
-		}
+		this.receiveSemaphore.Release();
 	}
 
 	private async void ForwardFromChannelToStream()
@@ -119,12 +107,6 @@ internal class ChannelForwarder : IDisposable
 		{
 			await this.receiveSemaphore.WaitAsync(this.disposeCancellationSource.Token)
 				.ConfigureAwait(false);
-		}
-		catch (ObjectDisposedException)
-		{
-			// The semaphore was disposed.
-			CloseStream(abort: true);
-			return false;
 		}
 		catch (OperationCanceledException)
 		when (this.disposeCancellationSource.IsCancellationRequested)
@@ -326,7 +308,13 @@ internal class ChannelForwarder : IDisposable
 			catch (ObjectDisposedException) { }
 			this.disposeCancellationSource.Dispose();
 
-			this.receiveSemaphore.Dispose();
+			// SemaphoreSlim.Dispose() is not thread-safe and may cause WaitAsync(CancellationToken) not being cancelled
+			// when SemaphoreSlim.Dispose is invoked immediately after CancellationTokenSource.Cancel.
+			// See https://github.com/dotnet/runtime/issues/59639
+			// SemaphoreSlim.Dispose() only disposes it's wait handle, which is not initialized unless its AvailableWaitHandle
+			// property is read, which we don't use.
+
+			// this.receiveSemaphore.Dispose();
 		}
 	}
 }
