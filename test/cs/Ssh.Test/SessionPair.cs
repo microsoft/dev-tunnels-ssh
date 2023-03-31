@@ -13,7 +13,8 @@ class SessionPair : IDisposable
 {
 	private const string TestUsername = "test";
 
-	public readonly TraceSource Trace = new TraceSource(nameof(SessionTests));
+	public readonly TraceSource ClientTrace = new TraceSource(nameof(SshClientSession));
+	public readonly TraceSource ServerTrace = new TraceSource(nameof(SshServerSession));
 
 	public SessionPair(
 		SshSessionConfiguration serverConfig = null,
@@ -31,7 +32,8 @@ class SessionPair : IDisposable
 			clientConfig = serverConfig;
 		}
 
-		Trace.Switch.Level = SourceLevels.All;
+		ClientTrace.Switch.Level = SourceLevels.All;
+		ServerTrace.Switch.Level = SourceLevels.All;
 
 		var (serverStream, clientStream) = FullDuplexStream.CreatePair();
 		ServerStream = new MockNetworkStream(serverStream);
@@ -48,10 +50,10 @@ class SessionPair : IDisposable
 			ClientKey = SshAlgorithms.PublicKey.RsaWithSha256.GenerateKeyPair();
 		}
 
-		ServerSession = new SshServerSession(serverConfig, disconnectedSessions, Trace);
+		ServerSession = new SshServerSession(serverConfig, disconnectedSessions, ServerTrace);
 		ServerSession.Credentials = new[] { ServerKey };
 
-		ClientSession = new SshClientSession(clientConfig, Trace);
+		ClientSession = new SshClientSession(clientConfig, ClientTrace);
 
 		ServerSession.Authenticating += (sender, e) =>
 			e.AuthenticationTask = Task.FromResult(new ClaimsPrincipal());
@@ -99,11 +101,19 @@ class SessionPair : IDisposable
 		try
 		{
 			ClientSession.Dispose();
+		}
+		catch (Exception ex)
+		{
+			ClientTrace.TraceEvent(TraceEventType.Error, 0, ex.ToString());
+		}
+
+		try
+		{
 			ServerSession.Dispose();
 		}
 		catch (Exception ex)
 		{
-			Trace.TraceEvent(TraceEventType.Error, 0, ex.ToString());
+			ServerTrace.TraceEvent(TraceEventType.Error, 0, ex.ToString());
 		}
 	}
 

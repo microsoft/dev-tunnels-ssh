@@ -56,7 +56,23 @@ public abstract class SshMessage
 		else
 		{
 			writer.Write(MessageType);
+			OnWrite(ref writer);
+		}
+	}
 
+	/// <summary>
+	/// Rewrites the message to its buffer to ensure the buffer has the correct values.
+	/// </summary>
+	/// <remarks>
+	/// This should be called after modifying properties of a message that was (potentially)
+	/// received, before re-sending it.
+	/// </remarks>
+	public void Rewrite()
+	{
+		if (this.RawBytes.Count > 0)
+		{
+			var writer = new SshDataWriter(RawBytes);
+			writer.Write(MessageType);
 			OnWrite(ref writer);
 		}
 	}

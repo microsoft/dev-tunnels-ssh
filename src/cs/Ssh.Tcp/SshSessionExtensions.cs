@@ -2,6 +2,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Net;
 using System.Net.Sockets;
 using System.Threading;
@@ -260,7 +261,7 @@ public static class SshSessionExtensions
 	/// to ensure the port is ready for connections. Attempting to connect before the other side
 	/// has forwarded the port may result in an <see cref="InvalidOperationException" />.
 	/// </remarks>
-	public static async Task<SshStream> ConnectToForwardedPortAsync(
+	public static async Task<Stream> ConnectToForwardedPortAsync(
 		this SshSession session,
 		int forwardedPort,
 		CancellationToken cancellation = default)

@@ -31,6 +31,6 @@ public class ChannelDataMessage : ChannelMessage
 
 	public override string ToString()
 	{
-		return Data.ToString(nameof(ChannelDataMessage));
+		return Data.ToString(base.ToString());
 	}
 }

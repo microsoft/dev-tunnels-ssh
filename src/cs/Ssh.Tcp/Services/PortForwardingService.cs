@@ -3,6 +3,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.IO;
 using System.Linq;
 using System.Net;
 using System.Net.Sockets;
@@ -61,7 +62,7 @@ public class PortForwardingService : SshService
 	/// <remarks>
 	/// There may be 0 to multiple channel forawarders per forwarded port.
 	/// </remarks>
-	private readonly ICollection<ChannelForwarder> channelForwarders = new List<ChannelForwarder>();
+	private readonly ICollection<StreamForwarder> streamForwarders = new List<StreamForwarder>();
 
 	public PortForwardingService(SshSession session)
 		: base(session)
@@ -149,6 +150,32 @@ public class PortForwardingService : SshService
 	/// <see cref="ForwardToRemotePortAsync" /> or <see cref="StreamToRemotePortAsync" />.
 	/// </remarks>
 	public ForwardedPortsCollection RemoteForwardedPorts { get; } = new ForwardedPortsCollection();
+
+	/// <summary>
+	/// Event raised when an incoming or outgoing connection to a forwarded port is
+	/// about to be established.
+	/// </summary>
+	public event EventHandler<ForwardedPortConnectingEventArgs>? ForwardedPortConnecting;
+
+	internal async Task<Stream?> OnForwardedPortConnectingAsync(
+		int port,
+		bool isIncoming,
+		SshStream stream,
+		CancellationToken cancellation)
+	{
+		var e = new ForwardedPortConnectingEventArgs(port, isIncoming, stream, cancellation);
+		ForwardedPortConnecting?.Invoke(this, e);
+
+		// The event-handler may optionally return a task that will provide a transformed stream.
+		if (e.TransformTask != null)
+		{
+			return await e.TransformTask.ConfigureAwait(false);
+		}
+		else
+		{
+			return stream;
+		}
+	}
 
 	/// <summary>
 	/// Gets or sets a factory for creating TCP listeners.
@@ -454,7 +481,7 @@ public class PortForwardingService : SshService
 	/// to ensure the port is ready for connections. Attempting to connect before the other side
 	/// has forwarded the port may result in an <see cref="InvalidOperationException" />.
 	/// </remarks>
-	public async Task<SshStream> ConnectToForwardedPortAsync(
+	public async Task<Stream> ConnectToForwardedPortAsync(
 		int forwardedPort,
 		CancellationToken cancellation)
 	{
@@ -468,7 +495,16 @@ public class PortForwardingService : SshService
 			forwardedPort,
 			cancellation).ConfigureAwait(false);
 
-		return new SshStream(channel);
+		var forwardedStream = await OnForwardedPortConnectingAsync(
+			forwardedPort, isIncoming: false, new SshStream(channel), cancellation)
+			.ConfigureAwait(false);
+		if (forwardedStream == null)
+		{
+			throw new SshChannelException(
+				$"The connection to forwarded port was rejected by the connecting event-handler.");
+		}
+
+		return forwardedStream;
 	}
 
 	/// <summary>
@@ -824,8 +860,9 @@ public class PortForwardingService : SshService
 				await RemotePortForwarder.ForwardChannelAsync(
 					this,
 					request,
-					portForwardMessage.Host,
-					(int)portForwardMessage.Port,
+					localHost: portForwardMessage.Host,
+					localPort: (int)portForwardMessage.Port,
+					remotePort: (int)portForwardMessage.Port,
 					Session.Trace,
 					cancellation).ConfigureAwait(false);
 			}
@@ -893,26 +930,26 @@ public class PortForwardingService : SshService
 		return channel;
 	}
 
-	internal void AddChannelForwarder(ChannelForwarder channelForwarder)
+	internal void AddStreamForwarder(StreamForwarder streamForwarder)
 	{
 		if (this.disposed)
 		{
-			channelForwarder.Dispose();
+			streamForwarder.Dispose();
 		}
 		else
 		{
-			lock (this.channelForwarders)
+			lock (this.streamForwarders)
 			{
-				this.channelForwarders.Add(channelForwarder);
+				this.streamForwarders.Add(streamForwarder);
 			}
-		}
-	}
 
-	internal void RemoveChannelForwarder(ChannelForwarder channelForwarder)
-	{
-		lock (this.channelForwarders)
-		{
-			this.channelForwarders.Remove(channelForwarder);
+			streamForwarder.Closed += (_, _) =>
+			{
+				lock (this.streamForwarders)
+				{
+					this.streamForwarders.Remove(streamForwarder);
+				}
+			};
 		}
 	}
 
@@ -924,10 +961,10 @@ public class PortForwardingService : SshService
 
 			var disposables = new List<IDisposable>();
 
-			lock (this.channelForwarders)
+			lock (this.streamForwarders)
 			{
-				disposables.AddRange(this.channelForwarders);
-				this.channelForwarders.Clear();
+				disposables.AddRange(this.streamForwarders);
+				this.streamForwarders.Clear();
 			}
 
 			lock (this.localForwarders)

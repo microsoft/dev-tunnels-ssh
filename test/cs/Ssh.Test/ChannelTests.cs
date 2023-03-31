@@ -948,8 +948,8 @@ public class ChannelTests : IDisposable
 		var traceListener = new TestTraceListener();
 		traceListener.EventIds.Add(SshTraceEventIds.SendingChannelData);
 		traceListener.EventIds.Add(SshTraceEventIds.ReceivingChannelData);
-		this.sessionPair.Trace.Listeners.Add(traceListener);
-		this.sessionPair.Trace.Switch.Level = SourceLevels.All;
+		this.sessionPair.ClientTrace.Listeners.Add(traceListener);
+		this.sessionPair.ServerTrace.Listeners.Add(traceListener);
 
 		var testData = new[] { new byte[] { 1, 2, 3 } };
 		await SendDataFromClientToServerChannelAsync(testData, channels.Client, channels.Server, closeChannels: false);

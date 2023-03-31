@@ -29,6 +29,7 @@ public class SecureStream : Stream
 	private readonly SshClientCredentials? clientCredentials;
 	private readonly SshServerCredentials? serverCredentials;
 	private SshStream? stream;
+	private readonly TaskCompletionSource<bool> connectCompletion = new ();
 
 	/// <summary>
 	/// Creates a secure stream over an underlying transport stream, using client credentials
@@ -128,50 +129,60 @@ public class SecureStream : Stream
 				"An Authenticating event handler must be registered before connecting.");
 		}
 
-		if (this.serverCredentials != null)
+		try
 		{
-			var serverSession = (SshServerSession)this.session;
-			serverSession.Credentials = this.serverCredentials;
-		}
-
-		await this.session.ConnectAsync(this.transportStream, cancellation).ConfigureAwait(false);
-
-		SshChannel? channel = null;
-		if (this.clientCredentials != null)
-		{
-			SshConnectionException? ex = null;
-			var clientSession = (SshClientSession)this.session;
-			if (!(await clientSession.AuthenticateServerAsync(cancellation).ConfigureAwait(false)))
+			if (this.serverCredentials != null)
 			{
-				ex = new SshConnectionException(
-					"Server authentication failed.", SshDisconnectReason.HostKeyNotVerifiable);
+				var serverSession = (SshServerSession)this.session;
+				serverSession.Credentials = this.serverCredentials;
 			}
 
-			if (ex == null && !(await clientSession.AuthenticateClientAsync(
-				this.clientCredentials, cancellation).ConfigureAwait(false)))
+			await this.session.ConnectAsync(this.transportStream, cancellation).ConfigureAwait(false);
+
+			SshChannel? channel = null;
+			if (this.clientCredentials != null)
 			{
-				ex = new SshConnectionException(
-					"Client authentication failed.", SshDisconnectReason.NoMoreAuthMethodsAvailable);
+				SshConnectionException? ex = null;
+				var clientSession = (SshClientSession)this.session;
+				if (!(await clientSession.AuthenticateServerAsync(cancellation).ConfigureAwait(false)))
+				{
+					ex = new SshConnectionException(
+						"Server authentication failed.", SshDisconnectReason.HostKeyNotVerifiable);
+				}
+
+				if (ex == null && !(await clientSession.AuthenticateClientAsync(
+					this.clientCredentials, cancellation).ConfigureAwait(false)))
+				{
+					ex = new SshConnectionException(
+						"Client authentication failed.", SshDisconnectReason.NoMoreAuthMethodsAvailable);
+				}
+
+				if (ex != null)
+				{
+					await this.session.CloseAsync(ex.DisconnectReason, ex).ConfigureAwait(false);
+					throw ex;
+				}
+
+				channel = await this.session.OpenChannelAsync(cancellation).ConfigureAwait(false);
+			}
+			else
+			{
+				channel = await this.session.AcceptChannelAsync(cancellation).ConfigureAwait(false);
 			}
 
-			if (ex != null)
+			this.stream = CreateStream(channel);
+			channel.Closed += (_, _) =>
 			{
-				await this.session.CloseAsync(ex.DisconnectReason, ex).ConfigureAwait(false);
-				throw ex;
-			}
-
-			channel = await this.session.OpenChannelAsync(cancellation).ConfigureAwait(false);
+				this.Dispose();
+			};
 		}
-		else
+		catch (Exception ex)
 		{
-			channel = await this.session.AcceptChannelAsync(cancellation).ConfigureAwait(false);
+			this.connectCompletion.TrySetException(ex);
+			throw;
 		}
 
-		this.stream = CreateStream(channel);
-		channel.Closed += (_, _) =>
-		{
-			this.Dispose();
-		};
+		this.connectCompletion.TrySetResult(true);
 	}
 
 	/// <summary>
@@ -254,17 +265,25 @@ public class SecureStream : Stream
 		ConnectedStream.Write(buffer, offset, count);
 	}
 
-	public override Task<int> ReadAsync(
+#pragma warning disable CA1835 // Use Memory<> Stream overloads
+
+	public override async Task<int> ReadAsync(
 		byte[] buffer, int offset, int count, CancellationToken cancellation)
 	{
-		return ConnectedStream.ReadAsync(buffer, offset, count, cancellation);
+		await this.connectCompletion.Task.ConfigureAwait(false);
+		return await ConnectedStream.ReadAsync(buffer, offset, count, cancellation)
+			.ConfigureAwait(false);
 	}
 
-	public override Task WriteAsync(
+	public override async Task WriteAsync(
 		byte[] buffer, int offset, int count, CancellationToken cancellation)
 	{
-		return ConnectedStream.WriteAsync(buffer, offset, count, cancellation);
+		await this.connectCompletion.Task.ConfigureAwait(false);
+		await ConnectedStream.WriteAsync(buffer, offset, count, cancellation)
+			.ConfigureAwait(false);
 	}
+
+#pragma warning restore CA1835
 
 	#region Seek / position / length are not supported
 
