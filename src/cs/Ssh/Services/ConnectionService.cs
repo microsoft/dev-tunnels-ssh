@@ -526,7 +526,7 @@ internal class ConnectionService : SshService
 
 			// Set the channel max window size property to match the value sent in the open message,
 			// and lock it to prevent any further changes.
-			channel.MaxWindowSize = message.MaxWindowSize;
+			channel.MaxWindowSize = openMessage.MaxWindowSize;
 			channel.IsMaxWindowSizeLocked = true;
 
 			this.channels.Add(channel.ChannelId, channel);

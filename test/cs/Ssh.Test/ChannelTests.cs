@@ -744,10 +744,14 @@ public class ChannelTests : IDisposable
 
 		this.serverSession.ChannelOpening -= openingHandler;
 
-		Assert.True(clientMaxWindowSize == null ||
-			clientChannel.MaxWindowSize == clientMaxWindowSize.Value);
-		Assert.True(serverMaxWindowSize == null ||
-			serverChannel.MaxWindowSize == serverMaxWindowSize.Value);
+		if (clientMaxWindowSize != null)
+		{
+			Assert.Equal(clientMaxWindowSize.Value, clientChannel.MaxWindowSize);
+		}
+		if (serverMaxWindowSize != null)
+		{
+			Assert.Equal(serverMaxWindowSize.Value, serverChannel.MaxWindowSize);
+		}
 
 		return new Channels
 		{
@@ -960,7 +964,7 @@ public class ChannelTests : IDisposable
 		Assert.Collection(traceListener.Events, (item) =>
 		{
 			Assert.Equal(SshTraceEventIds.SendingChannelData, item.Key);
-			Assert.StartsWith("Sending #8 ChannelDataMessage[3] (55BC801D)\n0000: 01 02 03 ", item.Value);
+			Assert.StartsWith("Sending #8 ChannelDataMessage(RecipientChannel: 0)[3] (55BC801D)\n0000: 01 02 03 ", item.Value);
 		});
 		traceListener.Events.Clear();
 
@@ -970,7 +974,7 @@ public class ChannelTests : IDisposable
 		Assert.Collection(traceListener.Events, (item) =>
 		{
 			Assert.Equal(SshTraceEventIds.ReceivingChannelData, item.Key);
-			Assert.StartsWith("Receiving #9 ChannelDataMessage[3] (55BC801D)\n0000: 01 02 03 ", item.Value);
+			Assert.StartsWith("Receiving #9 ChannelDataMessage(RecipientChannel: 0)[3] (55BC801D)\n0000: 01 02 03 ", item.Value);
 		});
 	}
 
