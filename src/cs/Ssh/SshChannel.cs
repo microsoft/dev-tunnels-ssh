@@ -111,9 +111,9 @@ public class SshChannel : IDisposable
 	/// value for a nonstandard channel type. (A session may carry multiple channels of the
 	/// same type.)
 	/// </summary>
-	public string ChannelType { get; private set; }
+	public string ChannelType { get; }
 
-	public uint ChannelId { get; private set; }
+	public uint ChannelId { get; }
 
 	public uint RemoteChannelId { get; private set; }
 
@@ -122,7 +122,7 @@ public class SshChannel : IDisposable
 	/// <summary>
 	/// Gets the message that requested opening the channel.
 	/// </summary>
-	public ChannelOpenMessage OpenMessage { get; private set; }
+	public ChannelOpenMessage OpenMessage { get; }
 
 	/// <summary>
 	/// Gets the message that confirmed opening the channel.

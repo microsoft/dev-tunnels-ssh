@@ -69,7 +69,8 @@ public class RemotePortForwarder : RemotePortConnector
 		var channel = request.Channel;
 
 		// The ChannelForwarder takes ownership of the TcpClient; it will be disposed
-		// when the PortForwardingService is diposed.
+		// when the PortForwardingService is diposed. And the channel will be disposed when the
+		// connection ends, so the SshStream does not need to be disposed separately.
 #pragma warning disable CA2000 // Dispose objects before losing scope
 		var tcpClient = new TcpClient();
 

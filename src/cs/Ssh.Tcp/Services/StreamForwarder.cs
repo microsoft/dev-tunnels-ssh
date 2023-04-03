@@ -1,6 +1,9 @@
 ﻿// Copyright (c) Microsoft. All rights reserved.
 
 using System;
+#if SSH_ENABLE_SPAN
+using System.Buffers;
+#endif
 using System.Diagnostics;
 using System.IO;
 using System.Net.Sockets;
@@ -11,6 +14,8 @@ namespace Microsoft.DevTunnels.Ssh.Tcp;
 
 public class StreamForwarder : IDisposable
 {
+	private const int BufferSize = 8192;
+
 	private bool disposed;
 
 	public StreamForwarder(
@@ -44,11 +49,17 @@ public class StreamForwarder : IDisposable
 		catch (Exception ex)
 		{
 			// Catch all exceptions in this async void method.
-			Trace.TraceEvent(
-				TraceEventType.Error,
-				SshTraceEventIds.UnknownError,
-				$"{nameof(PortForwardingService)} unexpected error forwarding stream: {ex}");
-			Close(abort: true);
+			try
+			{
+				Trace.TraceEvent(
+					TraceEventType.Error,
+					SshTraceEventIds.UnknownError,
+					$"{nameof(PortForwardingService)} unexpected error forwarding stream: {ex}");
+				Close(abort: true);
+			}
+			catch (Exception)
+			{
+			}
 		}
 	}
 
@@ -85,9 +96,11 @@ public class StreamForwarder : IDisposable
 		Stream destination,
 		CancellationToken cancellation = default)
 	{
-		byte[] buffer = new byte[8192];
 #if SSH_ENABLE_SPAN
-		var memory = new Memory<byte>(buffer);
+		using var memoryOwner = MemoryPool<byte>.Shared.Rent(BufferSize);
+		var memory = memoryOwner.Memory;
+#else
+		byte[] buffer = new byte[BufferSize];
 #endif
 		while (!cancellation.IsCancellationRequested)
 		{
@@ -139,16 +152,20 @@ public class StreamForwarder : IDisposable
 				string message = "Channel forwarder reached end of stream.";
 				Trace.TraceEvent(
 					TraceEventType.Verbose, SshTraceEventIds.ChannelClosed, message);
+				await destination.FlushAsync(CancellationToken.None).ConfigureAwait(false);
 				break;
 			}
 			else
 			{
 				string message = $"Channel forwarder stream read error: {readException.Message}";
 				Trace.TraceEvent(TraceEventType.Verbose, SshTraceEventIds.ChannelClosed, message);
+				await destination.FlushAsync(CancellationToken.None).ConfigureAwait(false);
+				destination.Close();
 				return false;
 			}
 		}
 
+		destination.Close();
 		return true;
 	}
 

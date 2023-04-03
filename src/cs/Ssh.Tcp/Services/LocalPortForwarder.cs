@@ -206,10 +206,15 @@ public class LocalPortForwarder : SshService
 					break;
 				}
 
-				// The event handler may return a transformed channel stream.
+				// The channel will be disposed when the connection ends.
+				// The SshStream does not need to be disposed separately.
+				// The event handler may return a transformed stream.
+#pragma warning disable CA2000 // Dispose objects before losing scope
 				var forwardedStream = await this.pfs.OnForwardedPortConnectingAsync(
 					RemotePort ?? LocalPort, isIncoming: false, new SshStream(channel), cancellation)
 					.ConfigureAwait(false);
+#pragma warning restore CA2000
+
 				if (forwardedStream == null)
 				{
 					// The event handler rejected the connection.

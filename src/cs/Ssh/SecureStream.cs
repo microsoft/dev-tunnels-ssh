@@ -142,25 +142,18 @@ public class SecureStream : Stream
 			SshChannel? channel = null;
 			if (this.clientCredentials != null)
 			{
-				SshConnectionException? ex = null;
 				var clientSession = (SshClientSession)this.session;
 				if (!(await clientSession.AuthenticateServerAsync(cancellation).ConfigureAwait(false)))
 				{
-					ex = new SshConnectionException(
+					throw new SshConnectionException(
 						"Server authentication failed.", SshDisconnectReason.HostKeyNotVerifiable);
 				}
 
-				if (ex == null && !(await clientSession.AuthenticateClientAsync(
+				if (!(await clientSession.AuthenticateClientAsync(
 					this.clientCredentials, cancellation).ConfigureAwait(false)))
 				{
-					ex = new SshConnectionException(
+					throw new SshConnectionException(
 						"Client authentication failed.", SshDisconnectReason.NoMoreAuthMethodsAvailable);
-				}
-
-				if (ex != null)
-				{
-					await this.session.CloseAsync(ex.DisconnectReason, ex).ConfigureAwait(false);
-					throw ex;
 				}
 
 				channel = await this.session.OpenChannelAsync(cancellation).ConfigureAwait(false);
@@ -178,6 +171,9 @@ public class SecureStream : Stream
 		}
 		catch (Exception ex)
 		{
+			var disconnectReason = (ex as SshConnectionException)?.DisconnectReason ??
+				SshDisconnectReason.ProtocolError;
+			await this.session.CloseAsync(disconnectReason, ex).ConfigureAwait(false);
 			this.connectCompletion.TrySetException(ex);
 			throw;
 		}

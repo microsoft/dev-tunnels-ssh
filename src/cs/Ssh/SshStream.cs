@@ -186,8 +186,10 @@ public class SshStream : Stream
 
 	protected override void Dispose(bool disposing)
 	{
-		if (disposing)
+		if (disposing && !IsDisposed)
 		{
+			IsDisposed = true;
+
 			// Asynchronously close the channel, but don't wait for it.
 			_ = Channel.CloseAsync();
 
