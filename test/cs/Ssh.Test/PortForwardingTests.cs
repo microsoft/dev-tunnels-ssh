@@ -627,7 +627,18 @@ public class PortForwardingTests : IDisposable
 		var writeBuffer = new byte[count];
 		for (int i = 0; i < count; i++) writeBuffer[i] = (byte)(i % 256);
 		await writeStream.WriteAsync(writeBuffer, 0, writeBuffer.Length);
-		await writeStream.FlushAsync();
+
+#if NET4
+		if (writeStream is System.IO.Compression.DeflateStream)
+		{
+			// .NET Framework DeflateStream doesn't write to the underlying stream until it is closed.
+			writeStream.Close();
+		}
+		else
+#endif
+		{
+			await writeStream.FlushAsync();
+		}
 
 		var readBuffer = new byte[count + 10];
 		int totalReadCount = 0;
@@ -1020,7 +1031,7 @@ public class PortForwardingTests : IDisposable
 			{
 				e.TransformTask = Task.FromResult<Stream>(
 					new System.IO.Compression.DeflateStream(
-						e.Stream, System.IO.Compression.CompressionMode.Compress));
+						e.Stream, System.IO.Compression.CompressionMode.Compress, leaveOpen: true));
 			};
 			clientPfs.ForwardedPortConnecting += (_, e) =>
 			{
