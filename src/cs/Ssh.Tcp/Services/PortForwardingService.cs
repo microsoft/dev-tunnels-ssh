@@ -3,6 +3,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.IO;
 using System.Linq;
 using System.Net;
 using System.Net.Sockets;
@@ -61,7 +62,12 @@ public class PortForwardingService : SshService
 	/// <remarks>
 	/// There may be 0 to multiple channel forawarders per forwarded port.
 	/// </remarks>
-	private readonly ICollection<ChannelForwarder> channelForwarders = new List<ChannelForwarder>();
+	private readonly ICollection<StreamForwarder> streamForwarders = new List<StreamForwarder>();
+
+	/// <summary>
+	/// Object to lock on whenever accessing or disposing any of the disposable collections above.
+	/// </summary>
+	private object DisposablesLock => this.streamForwarders;
 
 	public PortForwardingService(SshSession session)
 		: base(session)
@@ -149,6 +155,46 @@ public class PortForwardingService : SshService
 	/// <see cref="ForwardToRemotePortAsync" /> or <see cref="StreamToRemotePortAsync" />.
 	/// </remarks>
 	public ForwardedPortsCollection RemoteForwardedPorts { get; } = new ForwardedPortsCollection();
+
+	/// <summary>
+	/// Event raised when an incoming or outgoing connection to a forwarded port is
+	/// about to be established.
+	/// </summary>
+	public event EventHandler<ForwardedPortConnectingEventArgs>? ForwardedPortConnecting;
+
+	internal async Task<Stream?> OnForwardedPortConnectingAsync(
+		int port,
+		bool isIncoming,
+		SshStream stream,
+		CancellationToken cancellation)
+	{
+		if (ForwardedPortConnecting != null)
+		{
+			try
+			{
+				var e = new ForwardedPortConnectingEventArgs(port, isIncoming, stream, cancellation);
+				ForwardedPortConnecting?.Invoke(this, e);
+
+				// The event-handler may optionally return a task that will provide a transformed stream.
+				if (e.TransformTask != null)
+				{
+					return await e.TransformTask.ConfigureAwait(false);
+				}
+			}
+			catch (Exception ex)
+			{
+				Trace.TraceEvent(
+					TraceEventType.Warning,
+					SshTraceEventIds.PortForwardConnectionFailed,
+					$"Forwarded port connecting event-handler failed: {ex.Message}");
+
+				// A null stream result will cause the caller to close the connection.
+				return null;
+			}
+		}
+
+		return stream;
+	}
 
 	/// <summary>
 	/// Gets or sets a factory for creating TCP listeners.
@@ -245,7 +291,7 @@ public class PortForwardingService : SshService
 
 		remotePort = forwarder.RemotePort;
 		var remoteEndPoint = new IPEndPoint(remoteIPAddress, remotePort);
-		lock (this.remoteConnectors)
+		lock (DisposablesLock)
 		{
 			// The remote port is the port sent in the message to the other side,
 			// so the connector is indexed on that port number, rather than the local port.
@@ -257,7 +303,7 @@ public class PortForwardingService : SshService
 		forwarder.Disposed += (_, _) =>
 		{
 			LocalForwardedPorts.RemovePort(forwardedPort);
-			lock (this.remoteConnectors)
+			lock (DisposablesLock)
 			{
 				this.remoteConnectors.Remove(remotePort);
 			}
@@ -310,7 +356,7 @@ public class PortForwardingService : SshService
 		if (string.IsNullOrEmpty(remoteHost)) throw new ArgumentNullException(nameof(remoteHost));
 		if (remotePort <= 0) throw new ArgumentOutOfRangeException(nameof(remotePort));
 
-		lock (this.localForwarders)
+		lock (DisposablesLock)
 		{
 			if (this.localForwarders.ContainsKey(remotePort))
 			{
@@ -330,14 +376,14 @@ public class PortForwardingService : SshService
 
 		// The remote port is the port sent in the message to the other side,
 		// so the forwarder is indexed on that port number, rather than the local port.
-		lock (this.localForwarders)
+		lock (DisposablesLock)
 		{
 			this.localForwarders.Add(remotePort, forwarder);
 		}
 
 		forwarder.Disposed += (_, _) =>
 		{
-			lock (this.localForwarders)
+			lock (DisposablesLock)
 			{
 				this.localForwarders.Remove(remotePort);
 			}
@@ -382,7 +428,7 @@ public class PortForwardingService : SshService
 
 		remotePort = streamer.RemotePort;
 		var remoteEndPoint = new IPEndPoint(remoteIPAddress, remotePort);
-		lock (this.remoteConnectors)
+		lock (DisposablesLock)
 		{
 			// The remote port is the port sent in the message to the other side,
 			// so the connector is indexed on that port number. (There is no local port anyway.)
@@ -394,7 +440,7 @@ public class PortForwardingService : SshService
 		streamer.Disposed += (_, _) =>
 		{
 			LocalForwardedPorts.RemovePort(forwardedPort);
-			lock (this.remoteConnectors)
+			lock (DisposablesLock)
 			{
 				this.remoteConnectors.Remove(remotePort);
 			}
@@ -454,7 +500,7 @@ public class PortForwardingService : SshService
 	/// to ensure the port is ready for connections. Attempting to connect before the other side
 	/// has forwarded the port may result in an <see cref="InvalidOperationException" />.
 	/// </remarks>
-	public async Task<SshStream> ConnectToForwardedPortAsync(
+	public async Task<Stream> ConnectToForwardedPortAsync(
 		int forwardedPort,
 		CancellationToken cancellation)
 	{
@@ -468,7 +514,22 @@ public class PortForwardingService : SshService
 			forwardedPort,
 			cancellation).ConfigureAwait(false);
 
-		return new SshStream(channel);
+		// The channel will be disposed when the connection ends.
+		// The SshStream does not need to be disposed separately.
+		// The event handler may return a transformed stream.
+#pragma warning disable CA2000 // Dispose objects before losing scope
+		var forwardedStream = await OnForwardedPortConnectingAsync(
+			forwardedPort, isIncoming: false, new SshStream(channel), cancellation)
+			.ConfigureAwait(false);
+#pragma warning restore CA2000
+		if (forwardedStream == null)
+		{
+			channel.Dispose();
+			throw new SshChannelException(
+				$"The connection to forwarded port was rejected by the connecting event-handler.");
+		}
+
+		return forwardedStream;
 	}
 
 	/// <summary>
@@ -669,7 +730,7 @@ public class PortForwardingService : SshService
 
 			// The remote port is the port referenced in exchanged messages,
 			// so the forwarder is indexed on that port number, rather than the local port.
-			lock (this.localForwarders)
+			lock (DisposablesLock)
 			{
 				if (localForwarders.ContainsKey(remotePort))
 				{
@@ -687,7 +748,7 @@ public class PortForwardingService : SshService
 			{
 				var forwardedPort = new ForwardedPort(localPort, remotePort, isRemote: true);
 				RemoteForwardedPorts.RemovePort(forwardedPort);
-				lock (this.localForwarders)
+				lock (DisposablesLock)
 				{
 					this.localForwarders.Remove(remotePort);
 				}
@@ -712,7 +773,7 @@ public class PortForwardingService : SshService
 		cancellation.ThrowIfCancellationRequested();
 
 		LocalPortForwarder? forwarder;
-		lock (this.localForwarders)
+		lock (DisposablesLock)
 		{
 			if (!this.localForwarders.TryGetValue(forwardedPort, out forwarder))
 			{
@@ -758,7 +819,7 @@ public class PortForwardingService : SshService
 				// ForwardFromRemotePortAsync() or StreamFromRemotePortAsync().
 				for (int i = 0; i < 20 && remoteConnector == null; i++)
 				{
-					lock (this.remoteConnectors)
+					lock (DisposablesLock)
 					{
 						this.remoteConnectors.TryGetValue(
 							(int)portForwardMessage.Port, out remoteConnector);
@@ -824,8 +885,9 @@ public class PortForwardingService : SshService
 				await RemotePortForwarder.ForwardChannelAsync(
 					this,
 					request,
-					portForwardMessage.Host,
-					(int)portForwardMessage.Port,
+					localHost: portForwardMessage.Host,
+					localPort: (int)portForwardMessage.Port,
+					remotePort: (int)portForwardMessage.Port,
 					Session.Trace,
 					cancellation).ConfigureAwait(false);
 			}
@@ -893,51 +955,46 @@ public class PortForwardingService : SshService
 		return channel;
 	}
 
-	internal void AddChannelForwarder(ChannelForwarder channelForwarder)
+	internal void AddStreamForwarder(StreamForwarder streamForwarder)
 	{
-		if (this.disposed)
+		lock (DisposablesLock)
 		{
-			channelForwarder.Dispose();
-		}
-		else
-		{
-			lock (this.channelForwarders)
+			if (this.disposed)
 			{
-				this.channelForwarders.Add(channelForwarder);
+				streamForwarder.Dispose();
+			}
+			else
+			{
+				this.streamForwarders.Add(streamForwarder);
 			}
 		}
-	}
 
-	internal void RemoveChannelForwarder(ChannelForwarder channelForwarder)
-	{
-		lock (this.channelForwarders)
+		streamForwarder.Closed += (_, _) =>
 		{
-			this.channelForwarders.Remove(channelForwarder);
-		}
+			lock (DisposablesLock)
+			{
+				this.streamForwarders.Remove(streamForwarder);
+			}
+		};
 	}
 
 	protected override void Dispose(bool disposing)
 	{
 		if (disposing && !this.disposed)
 		{
-			this.disposed = true;
-
 			var disposables = new List<IDisposable>();
 
-			lock (this.channelForwarders)
+			lock (DisposablesLock)
 			{
-				disposables.AddRange(this.channelForwarders);
-				this.channelForwarders.Clear();
-			}
+				if (this.disposed) return;
+				this.disposed = true;
 
-			lock (this.localForwarders)
-			{
+				disposables.AddRange(this.streamForwarders);
+				this.streamForwarders.Clear();
+
 				disposables.AddRange(this.localForwarders.Values);
 				this.localForwarders.Clear();
-			}
 
-			lock (this.remoteConnectors)
-			{
 				disposables.AddRange(this.remoteConnectors.Values);
 				this.remoteConnectors.Clear();
 			}

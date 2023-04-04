@@ -17,4 +17,15 @@ internal static class SocketExtensions
 
 		socket.Close(timeout: 0);
 	}
+
+	/// <summary>
+	/// Closes the network stream socket in a way that simulates an aborted connection, causing
+	/// the other end to receive a "connection reset" error.
+	/// </summary>
+	public static void Abort(this NetworkStream stream)
+	{
+		if (stream == null) throw new ArgumentNullException(nameof(stream));
+
+		stream.Close(timeout: 0);
+	}
 }

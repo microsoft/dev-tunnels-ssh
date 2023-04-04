@@ -73,7 +73,9 @@ public class SshChannel : IDisposable
 		uint channelId,
 		uint remoteChannelId,
 		uint remoteMaxWindowSize,
-		uint remoteMaxPacketSize)
+		uint remoteMaxPacketSize,
+		ChannelOpenMessage openMessage,
+		ChannelOpenConfirmationMessage openConfirmationMessage)
 	{
 		if (connectionService == null) throw new ArgumentNullException(nameof(connectionService));
 		if (channelType == null) throw new ArgumentNullException(channelType);
@@ -88,6 +90,8 @@ public class SshChannel : IDisposable
 		this.maxWindowSize = DefaultMaxWindowSize;
 		this.windowSize = this.maxWindowSize;
 		MaxPacketSize = Math.Min(remoteMaxPacketSize, DefaultMaxPacketSize);
+		OpenMessage = openMessage;
+		OpenConfirmationMessage = openConfirmationMessage;
 	}
 
 	/// <summary>
@@ -107,13 +111,23 @@ public class SshChannel : IDisposable
 	/// value for a nonstandard channel type. (A session may carry multiple channels of the
 	/// same type.)
 	/// </summary>
-	public string ChannelType { get; private set; }
+	public string ChannelType { get; }
 
-	public uint ChannelId { get; private set; }
+	public uint ChannelId { get; }
 
 	public uint RemoteChannelId { get; private set; }
 
 	public bool IsClosed => this.localClosed || this.remoteClosed;
+
+	/// <summary>
+	/// Gets the message that requested opening the channel.
+	/// </summary>
+	public ChannelOpenMessage OpenMessage { get; }
+
+	/// <summary>
+	/// Gets the message that confirmed opening the channel.
+	/// </summary>
+	public ChannelOpenConfirmationMessage OpenConfirmationMessage { get; internal set; }
 
 	/// <summary>
 	/// Event raised when a request message is received on the channel.

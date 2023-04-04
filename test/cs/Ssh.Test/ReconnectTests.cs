@@ -129,7 +129,7 @@ public class ReconnectTests : IDisposable
 		var newServerSession = new SshServerSession(
 			SshSessionConfiguration.DefaultWithReconnect,
 			this.reconnectableSessions,
-			this.sessionPair.Trace);
+			this.sessionPair.ServerTrace);
 		newServerSession.Credentials = new[] { this.sessionPair.ServerKey };
 
 		bool serverDisconnected = false;
@@ -500,7 +500,7 @@ public class ReconnectTests : IDisposable
 		var newServerSession = new SshServerSession(
 			SshSessionConfiguration.DefaultWithReconnect,
 			this.reconnectableSessions,
-			this.sessionPair.Trace);
+			this.sessionPair.ServerTrace);
 		newServerSession.Credentials = new[] { this.sessionPair.ServerKey };
 
 		bool serverDisconnected = false;
@@ -537,7 +537,7 @@ public class ReconnectTests : IDisposable
 		var newServerSession = new SshServerSession(
 			SshSessionConfiguration.DefaultWithReconnect,
 			this.reconnectableSessions,
-			this.sessionPair.Trace);
+			this.sessionPair.ServerTrace);
 		newServerSession.Credentials = new[] { this.sessionPair.ServerKey };
 
 		var (newServerStream, newClientStream) = FullDuplexStream.CreatePair();
@@ -569,7 +569,7 @@ public class ReconnectTests : IDisposable
 		var newServerSession = new SshServerSession(
 			SshSessionConfiguration.DefaultWithReconnect,
 			this.reconnectableSessions,
-			this.sessionPair.Trace);
+			this.sessionPair.ServerTrace);
 		newServerSession.Credentials = new[] { this.sessionPair.ServerKey };
 
 		var (newServerStream, newClientStream) = FullDuplexStream.CreatePair();
@@ -594,7 +594,7 @@ public class ReconnectTests : IDisposable
 		newServerSession = new SshServerSession(
 			SshSessionConfiguration.DefaultWithReconnect,
 			this.reconnectableSessions,
-			this.sessionPair.Trace);
+			this.sessionPair.ServerTrace);
 		newServerSession.Credentials = new[] { this.sessionPair.ServerKey };
 
 		var (newServerStream2, newClientStream2) = FullDuplexStream.CreatePair();
@@ -626,7 +626,7 @@ public class ReconnectTests : IDisposable
 		var newServerSession = new SshServerSession(
 			SshSessionConfiguration.DefaultWithReconnect,
 			this.reconnectableSessions,
-			this.sessionPair.Trace);
+			this.sessionPair.ServerTrace);
 		newServerSession.Credentials = new[] { this.sessionPair.ServerKey };
 
 		// Change the ID of the reconnectable server session to invalidate the reconnect attempt.
@@ -667,7 +667,7 @@ public class ReconnectTests : IDisposable
 		var newServerSession = new SshServerSession(
 			SshSessionConfiguration.DefaultWithReconnect,
 			this.reconnectableSessions,
-			this.sessionPair.Trace);
+			this.sessionPair.ServerTrace);
 
 		// Change the host key of the server session to invalidate the reconnect attempt.
 		newServerSession.Credentials = new[]

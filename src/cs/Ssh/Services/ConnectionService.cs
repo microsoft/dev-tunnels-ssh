@@ -299,13 +299,21 @@ internal class ConnectionService : SshService
 			return;
 		}
 
+		// Save a copy of the message because its buffer will be overwitten by the next receive.
+		message = message.ConvertTo<ChannelOpenMessage>(copy: true);
+
+		// The confirmation message may be reassigned if the opening task returns a custom message.
+		var confirmationMessage = new ChannelOpenConfirmationMessage();
+
 		var channel = new SshChannel(
 			this,
-			message.ChannelType,
+			message.ChannelType!,
 			channelId: channelId,
 			remoteChannelId: senderChannel,
 			remoteMaxWindowSize: message.MaxWindowSize,
-			remoteMaxPacketSize: message.MaxPacketSize);
+			remoteMaxPacketSize: message.MaxPacketSize,
+			message,
+			confirmationMessage);
 
 		ChannelMessage responseMessage;
 		var e = new SshChannelOpeningEventArgs(message, channel, isRemoteRequest: true);
@@ -326,7 +334,7 @@ internal class ConnectionService : SshService
 			}
 			else
 			{
-				responseMessage = new ChannelOpenConfirmationMessage();
+				responseMessage = confirmationMessage;
 			}
 		}
 		catch (ArgumentException aex)
@@ -374,11 +382,14 @@ internal class ConnectionService : SshService
 			return;
 		}
 
-		var confirmationMessage = (ChannelOpenConfirmationMessage)responseMessage;
+		confirmationMessage = (ChannelOpenConfirmationMessage)responseMessage;
 		confirmationMessage.RecipientChannel = channel.RemoteChannelId;
 		confirmationMessage.SenderChannel = channel.ChannelId;
 		confirmationMessage.MaxWindowSize = channel.MaxWindowSize;
 		confirmationMessage.MaxPacketSize = channel.MaxPacketSize;
+		confirmationMessage.Rewrite();
+
+		channel.OpenConfirmationMessage = confirmationMessage;
 		await Session.SendMessageAsync(confirmationMessage, cancellation).ConfigureAwait(false);
 
 		lock (this.lockObject)
@@ -413,70 +424,44 @@ internal class ConnectionService : SshService
 	private async Task HandleMessageAsync(
 		ChannelRequestMessage message, CancellationToken cancellation)
 	{
-		var channel = TryFindChannelById(message.RecipientChannel);
-		if (channel == null)
+		var channel = TryGetChannelForMessage(message);
+		if (channel != null)
 		{
-			Session.Trace.TraceEvent(
-				TraceEventType.Warning,
-				SshTraceEventIds.ChannelRequestFailed,
-				$"Invalid channel ID in {message}");
-			return;
+			await channel.HandleRequestAsync(message, cancellation).ConfigureAwait(false);
 		}
-
-		await channel.HandleRequestAsync(message, cancellation).ConfigureAwait(false);
 	}
 
 	private Task HandleMessageAsync(ChannelSuccessMessage message, CancellationToken cancellation)
 	{
 		cancellation.ThrowIfCancellationRequested();
-		var channel = TryFindChannelById(message.RecipientChannel);
-		if (channel == null)
-		{
-			Session.Trace.TraceEvent(
-				TraceEventType.Warning,
-				SshTraceEventIds.ChannelRequestFailed,
-				$"Invalid channel ID in {message}");
-			return Task.CompletedTask;
-		}
-
-		channel.HandleResponse(true);
+		var channel = TryGetChannelForMessage(message);
+		channel?.HandleResponse(true);
 		return Task.CompletedTask;
 	}
 
 	private Task HandleMessageAsync(ChannelFailureMessage message, CancellationToken cancellation)
 	{
 		cancellation.ThrowIfCancellationRequested();
-		var channel = TryFindChannelById(message.RecipientChannel);
-		if (channel == null)
-		{
-			Session.Trace.TraceEvent(
-				TraceEventType.Warning,
-				SshTraceEventIds.ChannelRequestFailed,
-				$"Invalid channel ID in {message}");
-			return Task.CompletedTask;
-		}
-
-		channel.HandleResponse(false);
+		var channel = TryGetChannelForMessage(message);
+		channel?.HandleResponse(false);
 		return Task.CompletedTask;
 	}
 
 	private async Task HandleMessageAsync(
 		ChannelDataMessage message, CancellationToken cancellation)
 	{
-		var channel = TryFindChannelById(message.RecipientChannel);
-		if (channel == null)
+		var channel = TryGetChannelForMessage(message);
+		if (channel != null)
 		{
-			return;
+			await channel.HandleDataReceivedAsync(message.Data, cancellation).ConfigureAwait(false);
 		}
-
-		await channel.HandleDataReceivedAsync(message.Data, cancellation).ConfigureAwait(false);
 	}
 
 	private Task HandleMessageAsync(
 		ChannelWindowAdjustMessage message, CancellationToken cancellation)
 	{
 		cancellation.ThrowIfCancellationRequested();
-		var channel = TryFindChannelById(message.RecipientChannel);
+		var channel = TryGetChannelForMessage(message);
 		channel?.AdjustRemoteWindow(message.BytesToAdd);
 		return Task.CompletedTask;
 	}
@@ -484,7 +469,7 @@ internal class ConnectionService : SshService
 	private Task HandleMessageAsync(ChannelEofMessage message, CancellationToken cancellation)
 	{
 		cancellation.ThrowIfCancellationRequested();
-		var channel = TryFindChannelById(message.RecipientChannel);
+		var channel = TryGetChannelForMessage(message);
 		channel?.OnEof();
 		return Task.CompletedTask;
 	}
@@ -492,7 +477,7 @@ internal class ConnectionService : SshService
 	private Task HandleMessageAsync(ChannelCloseMessage message, CancellationToken cancellation)
 	{
 		cancellation.ThrowIfCancellationRequested();
-		var channel = TryFindChannelById(message.RecipientChannel);
+		var channel = TryGetChannelForMessage(message);
 		channel?.Close();
 		return Task.CompletedTask;
 	}
@@ -526,13 +511,18 @@ internal class ConnectionService : SshService
 					"Channel confirmation was not requested.", SshDisconnectReason.ProtocolError);
 			}
 
+			// Save a copy of the message because its buffer will be overwitten by the next receive.
+			message = message.ConvertTo<ChannelOpenConfirmationMessage>(copy: true);
+
 			channel = new SshChannel(
 				this,
 				openMessage.ChannelType ?? SshChannel.SessionChannelType,
 				channelId: message.RecipientChannel,
 				remoteChannelId: message.SenderChannel,
 				remoteMaxWindowSize: message.MaxWindowSize,
-				remoteMaxPacketSize: message.MaxPacketSize);
+				remoteMaxPacketSize: message.MaxPacketSize,
+				openMessage,
+				message);
 
 			// Set the channel max window size property to match the value sent in the open message,
 			// and lock it to prevent any further changes.
@@ -614,6 +604,22 @@ internal class ConnectionService : SshService
 				SshTraceEventIds.ChannelOpenFailed,
 				$"{Session} {nameof(OnChannelOpenCompleted)}({channelId} failed)");
 		}
+	}
+
+	private SshChannel? TryGetChannelForMessage(ChannelMessage channelMessage)
+	{
+		var channel = TryFindChannelById(channelMessage.RecipientChannel);
+		if (channel == null)
+		{
+			string messageString = (channelMessage is ChannelDataMessage) ?
+				nameof(ChannelDataMessage) : channelMessage.ToString();
+			Trace.TraceEvent(
+				TraceEventType.Warning,
+				SshTraceEventIds.ChannelRequestFailed,
+				$"Invalid channel ID {channelMessage.RecipientChannel} in {messageString}");
+		}
+
+		return channel;
 	}
 
 	private SshChannel? TryFindChannelById(uint id)

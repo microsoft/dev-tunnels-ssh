@@ -52,6 +52,7 @@ public class RemotePortForwarder : RemotePortConnector
 			request,
 			LocalHost,
 			LocalPort,
+			RemotePort,
 			Session.Trace,
 			cancellation).ConfigureAwait(false);
 	}
@@ -59,18 +60,32 @@ public class RemotePortForwarder : RemotePortConnector
 	internal static async Task ForwardChannelAsync(
 		PortForwardingService pfs,
 		SshChannelOpeningEventArgs request,
-		string host,
-		int port,
+		string localHost,
+		int localPort,
+		int? remotePort,
 		TraceSource trace,
 		CancellationToken cancellation)
 	{
 		var channel = request.Channel;
 
 		// The ChannelForwarder takes ownership of the TcpClient; it will be disposed
-		// when the PortForwardingService is diposed.
+		// when the PortForwardingService is diposed. And the channel will be disposed when the
+		// connection ends, so the SshStream does not need to be disposed separately.
 #pragma warning disable CA2000 // Dispose objects before losing scope
 		var tcpClient = new TcpClient();
+
+		// The event handler may return a transformed channel stream.
+		var forwardedStream = await pfs.OnForwardedPortConnectingAsync(
+			remotePort ?? localPort, isIncoming: true, new SshStream(channel), cancellation)
+			.ConfigureAwait(false);
 #pragma warning restore CA2000 // Dispose objects before losing scope
+
+		if (forwardedStream == null)
+		{
+			// The event handler rejected the connection.
+			request.FailureReason = SshChannelOpenFailureReason.ConnectFailed;
+			return;
+		}
 
 		using var cancellationRegistration = cancellation.CanBeCanceled ?
 			cancellation.Register(tcpClient.Dispose) : default;
@@ -78,9 +93,9 @@ public class RemotePortForwarder : RemotePortConnector
 		try
 		{
 #if NET5_0 || NET6_0
-			await tcpClient.ConnectAsync(host, port, cancellation)
+			await tcpClient.ConnectAsync(localHost, localPort, cancellation)
 #else
-			await tcpClient.ConnectAsync(host, port)
+			await tcpClient.ConnectAsync(localHost, localPort)
 #endif
 					.ConfigureAwait(false);
 		}
@@ -94,7 +109,7 @@ public class RemotePortForwarder : RemotePortConnector
 		catch (SocketException sockex)
 		{
 			var traceErrorMessage = $"{nameof(PortForwardingService)} forwarded channel " +
-				$"#{channel.ChannelId} connection to {host}:{port} failed: {sockex.Message}";
+				$"#{channel.ChannelId} connection to {localHost}:{localPort} failed: {sockex.Message}";
 			trace.TraceEvent(
 				TraceEventType.Warning,
 				SshTraceEventIds.PortForwardConnectionFailed,
@@ -107,13 +122,14 @@ public class RemotePortForwarder : RemotePortConnector
 
 		tcpClient.Client.ConfigureSocketOptionsForSsh();
 
-		ChannelForwarder channelForwarder;
+		StreamForwarder streamForwarder;
 		try
 		{
 			// The PortForwardingService takes ownership of the ChannelForwarder; it will be disposed
 			// when the PortForwardingService is diposed.
 #pragma warning disable CA2000 // Dispose objects before losing scope
-			channelForwarder = new ChannelForwarder(pfs, channel, tcpClient);
+			streamForwarder = new StreamForwarder(
+				tcpClient.GetStream(), forwardedStream, channel.Trace);
 #pragma warning restore CA2000 // Dispose objects before losing scope
 		}
 		catch (ObjectDisposedException ex)
@@ -126,11 +142,11 @@ public class RemotePortForwarder : RemotePortConnector
 		}
 
 		var traceMessage = $"{nameof(PortForwardingService)} forwarded channel " +
-			$"#{channel.ChannelId} connection to {host}:{port}.";
+			$"#{channel.ChannelId} connection to {localHost}:{localPort}.";
 		trace.TraceEvent(
 			TraceEventType.Information,
 			SshTraceEventIds.PortForwardConnectionOpened,
 			traceMessage);
-		pfs.AddChannelForwarder(channelForwarder);
+		pfs.AddStreamForwarder(streamForwarder);
 	}
 }

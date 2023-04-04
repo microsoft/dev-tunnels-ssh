@@ -1,7 +1,6 @@
 ﻿// Copyright (c) Microsoft. All rights reserved.
 
 using System;
-using System.Collections.Generic;
 using System.Diagnostics;
 using System.Net;
 using System.Net.Sockets;
@@ -207,11 +206,28 @@ public class LocalPortForwarder : SshService
 					break;
 				}
 
-				// The PortForwardingService takes ownership of the ChannelForwarder.
+				// The channel will be disposed when the connection ends.
+				// The SshStream does not need to be disposed separately.
+				// The event handler may return a transformed stream.
 #pragma warning disable CA2000 // Dispose objects before losing scope
-				var channelForwarder = new ChannelForwarder(this.pfs, channel, tcpClient);
+				var forwardedStream = await this.pfs.OnForwardedPortConnectingAsync(
+					RemotePort ?? LocalPort, isIncoming: false, new SshStream(channel), cancellation)
+					.ConfigureAwait(false);
+#pragma warning restore CA2000
+
+				if (forwardedStream == null)
+				{
+					// The event handler rejected the connection.
+					tcpClient.Client.Abort();
+					continue;
+				}
+
+				// The PortForwardingService takes ownership of the StreamForwarder.
+#pragma warning disable CA2000 // Dispose objects before losing scope
+				var streamForwarder = new StreamForwarder(
+					tcpClient.GetStream(), forwardedStream, channel.Trace);
 #pragma warning restore CA2000 // Dispose objects before losing scope
-				this.pfs.AddChannelForwarder(channelForwarder);
+				this.pfs.AddStreamForwarder(streamForwarder);
 			}
 		}
 		catch (Exception ex)

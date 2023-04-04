@@ -259,20 +259,9 @@ public class PortForwardingTests : IDisposable
 			var localClient = await acceptTask.WithTimeout(Timeout);
 			var localStream = localClient.GetStream();
 
-			var writeBuffer = new byte[] { 1, 2, 3 };
-			await remoteStream.WriteAsync(writeBuffer, 0, writeBuffer.Length);
-			await localStream.WriteAsync(writeBuffer, 0, writeBuffer.Length);
-
-			var readBuffer = new byte[10];
-			int count = await localStream.ReadAsync(readBuffer, 0, readBuffer.Length)
-				.WithTimeout(Timeout);
-			Assert.Equal(writeBuffer.Length, count);
-			Assert.True(writeBuffer.SequenceEqual(readBuffer.Take(count)));
-
-			count = await remoteStream.ReadAsync(readBuffer, 0, readBuffer.Length)
-				.WithTimeout(Timeout);
-			Assert.Equal(writeBuffer.Length, count);
-			Assert.True(writeBuffer.SequenceEqual(readBuffer.Take(count)));
+			await Task.WhenAll(
+				WriteAndReadAsync(localStream, remoteStream, 100),
+				WriteAndReadAsync(remoteStream, localStream, 100));
 		}
 		finally
 		{
@@ -623,25 +612,47 @@ public class PortForwardingTests : IDisposable
 
 			Assert.NotNull(forwardingChannel);
 
-			var writeBuffer = new byte[] { 1, 2, 3 };
-			await remoteStream.WriteAsync(writeBuffer, 0, writeBuffer.Length);
-			await localStream.WriteAsync(writeBuffer, 0, writeBuffer.Length);
-
-			var readBuffer = new byte[10];
-			int count = await localStream.ReadAsync(readBuffer, 0, readBuffer.Length)
-				.WithTimeout(Timeout);
-			Assert.Equal(writeBuffer.Length, count);
-			Assert.True(writeBuffer.SequenceEqual(readBuffer.Take(count)));
-
-			count = await remoteStream.ReadAsync(readBuffer, 0, readBuffer.Length)
-				.WithTimeout(Timeout);
-			Assert.Equal(writeBuffer.Length, count);
-			Assert.True(writeBuffer.SequenceEqual(readBuffer.Take(count)));
+			await Task.WhenAll(
+				WriteAndReadAsync(localStream, remoteStream, 100),
+				WriteAndReadAsync(remoteStream, localStream, 100));
 		}
 		finally
 		{
 			remoteServer.Stop();
 		}
+	}
+
+	private static async Task WriteAndReadAsync(Stream writeStream, Stream readStream, int count)
+	{
+		var writeBuffer = new byte[count];
+		for (int i = 0; i < count; i++) writeBuffer[i] = (byte)(i % 256);
+		await writeStream.WriteAsync(writeBuffer, 0, writeBuffer.Length);
+
+#if NET4
+		if (writeStream is System.IO.Compression.DeflateStream)
+		{
+			// .NET Framework DeflateStream doesn't write to the underlying stream until it is closed.
+			writeStream.Close();
+		}
+		else
+#endif
+		{
+			await writeStream.FlushAsync();
+		}
+
+		var readBuffer = new byte[count + 10];
+		int totalReadCount = 0;
+		while (totalReadCount < count)
+		{
+			int readCount = await readStream.ReadAsync(
+				readBuffer, totalReadCount, readBuffer.Length - totalReadCount)
+				.WithTimeout(Timeout);
+			if (readCount == 0) break;
+			totalReadCount += readCount;
+		}
+
+		Assert.Equal(count, totalReadCount);
+		Assert.True(writeBuffer.SequenceEqual(readBuffer.Take(count)));
 	}
 
 	[Theory]
@@ -991,6 +1002,61 @@ public class PortForwardingTests : IDisposable
 	}
 
 	[Fact]
+	public async Task ConnectToForwardedPortWithTransform()
+	{
+		this.sessionPair.ServerSession.Config.TraceChannelData = true;
+		this.sessionPair.ClientSession.Config.TraceChannelData = true;
+
+		this.sessionPair.ServerSession.Request += (_, e) => e.IsAuthorized = true;
+
+		await this.sessionPair.ConnectAsync();
+		var clientPfs = this.sessionPair.ClientSession.ActivateService<PortForwardingService>();
+		var serverPfs = this.sessionPair.ServerSession.ActivateService<PortForwardingService>();
+		serverPfs.AcceptLocalConnectionsForForwardedPorts = false;
+
+		var localServer = new TcpListener(IPAddress.Loopback, TestPort1);
+		localServer.Start();
+		try
+		{
+			var acceptTask = localServer.AcceptTcpClientAsync();
+
+			var waitTask = this.sessionPair.ServerSession.WaitForForwardedPortAsync(TestPort1)
+				.WithTimeout(Timeout);
+			var forwardTask = this.sessionPair.ClientSession.ForwardFromRemotePortAsync(
+				IPAddress.Loopback, TestPort1).WithTimeout(Timeout);
+			await waitTask;
+
+			// For testing, insert compression and decompression transform streams.
+			serverPfs.ForwardedPortConnecting += (_, e) =>
+			{
+				e.TransformTask = Task.FromResult<Stream>(
+					new System.IO.Compression.DeflateStream(
+						e.Stream, System.IO.Compression.CompressionMode.Compress, leaveOpen: true));
+			};
+			clientPfs.ForwardedPortConnecting += (_, e) =>
+			{
+				e.TransformTask = Task.FromResult<Stream>(
+					new System.IO.Compression.DeflateStream(
+						e.Stream, System.IO.Compression.CompressionMode.Decompress));
+			};
+
+			var remoteStream = await this.sessionPair.ServerSession
+					.ConnectToForwardedPortAsync(TestPort1).WithTimeout(Timeout);
+			Assert.IsType<System.IO.Compression.DeflateStream>(remoteStream);
+			var localClient = await acceptTask.WithTimeout(Timeout);
+			var localStream = localClient.GetStream();
+
+			await WriteAndReadAsync(remoteStream, localStream, 10_000);
+
+			await forwardTask;
+		}
+		finally
+		{
+			localServer.Stop();
+		}
+	}
+
+	[Fact]
 	public async Task ConnectToForwardedPortWithoutForwardingConnectionToLocalPort()
 	{
 		this.sessionPair.ServerSession.Request += (_, e) => e.IsAuthorized = true;
@@ -1114,6 +1180,11 @@ public class PortForwardingTests : IDisposable
 		ForwardedPortChannelEventArgs serverRemoteChannelRemovedEvent = null;
 		serverPfs.RemoteForwardedPorts.PortChannelRemoved += (_, e) => serverRemoteChannelRemovedEvent = e;
 
+		ForwardedPortConnectingEventArgs serverConnectingEvent = null;
+		serverPfs.ForwardedPortConnecting += (_, e) => serverConnectingEvent = e;
+		ForwardedPortConnectingEventArgs clientConnectingEvent = null;
+		clientPfs.ForwardedPortConnecting += (_, e) => clientConnectingEvent = e;
+
 		// This causes the server to choose a different port than the one that was requested.
 		serverPfs.TcpListenerFactory = new TestTcpListenerFactory(TestPort2);
 
@@ -1148,6 +1219,9 @@ public class PortForwardingTests : IDisposable
 		Assert.Null(serverLocalChannelAddedEvent);
 		Assert.Null(serverRemoteChannelAddedEvent);
 
+		Assert.Null(serverConnectingEvent);
+		Assert.Null(clientConnectingEvent);
+
 		var localServer = new TcpListener(IPAddress.Loopback, TestPort1);
 		localServer.Start();
 		try
@@ -1181,6 +1255,16 @@ public class PortForwardingTests : IDisposable
 			Assert.Null(clientRemoteChannelRemovedEvent);
 			Assert.Null(serverLocalChannelRemovedEvent);
 			Assert.Null(serverRemoteChannelRemovedEvent);
+
+			Assert.NotNull(serverConnectingEvent);
+			Assert.Equal(TestPort1, serverConnectingEvent.Port);
+			Assert.False(serverConnectingEvent.IsIncoming);
+			Assert.NotNull(serverConnectingEvent.Stream);
+
+			Assert.NotNull(clientConnectingEvent);
+			Assert.Equal(TestPort1, clientConnectingEvent.Port);
+			Assert.True(clientConnectingEvent.IsIncoming);
+			Assert.NotNull(clientConnectingEvent.Stream);
 
 			remoteStream.Close();
 		}
