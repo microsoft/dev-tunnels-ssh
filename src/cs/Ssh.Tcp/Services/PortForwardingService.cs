@@ -989,23 +989,14 @@ public class PortForwardingService : SshService
 				if (this.disposed) return;
 				this.disposed = true;
 
-				lock (this.streamForwarders)
-				{
-					disposables.AddRange(this.streamForwarders);
-					this.streamForwarders.Clear();
-				}
+				disposables.AddRange(this.streamForwarders);
+				this.streamForwarders.Clear();
 
-				lock (this.localForwarders)
-				{
-					disposables.AddRange(this.localForwarders.Values);
-					this.localForwarders.Clear();
-				}
+				disposables.AddRange(this.localForwarders.Values);
+				this.localForwarders.Clear();
 
-				lock (this.remoteConnectors)
-				{
-					disposables.AddRange(this.remoteConnectors.Values);
-					this.remoteConnectors.Clear();
-				}
+				disposables.AddRange(this.remoteConnectors.Values);
+				this.remoteConnectors.Clear();
 			}
 
 			foreach (var disposable in disposables)
