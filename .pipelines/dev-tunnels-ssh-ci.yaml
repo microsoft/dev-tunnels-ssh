@@ -69,6 +69,12 @@ jobs:
         displayName: Use Node 18.x
         inputs:
           versionSpec: 18.x
+      
+      # Simple test to validate executing script as part of PR pipeline
+      - task: CmdLine@2
+        displayName: Echo something
+        inputs:
+          script: echo Something
 
       - task: Npm@1
         displayName: Restore npm packages

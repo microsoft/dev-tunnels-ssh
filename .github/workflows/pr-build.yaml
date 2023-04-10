@@ -48,6 +48,9 @@ jobs:
         with:
           node-version: '18.x'
 
+      - name: Echo something
+        run: echo Something
+
       - name: Restore npm packages
         run: npm install
 
