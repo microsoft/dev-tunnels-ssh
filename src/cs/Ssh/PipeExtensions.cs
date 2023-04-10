@@ -25,6 +25,7 @@ public static class PipeExtensions
 	/// or any channels opened from the local side, will not be piped.
 	///
 	/// When either of the two sessions is closed, the other session will be closed 
+	/// Comment added for testing
 	/// </remarks>
 	public static async Task PipeAsync(this SshSession session, SshSession toSession)
 	{
