@@ -74,7 +74,7 @@ jobs:
       - task: CmdLine@2
         displayName: Echo something
         inputs:
-          script: echo Something
+          script: echo Something else
 
       - task: Npm@1
         displayName: Restore npm packages
