@@ -22,4 +22,5 @@ export { ForwardedPortsCollection } from './events/forwardedPortsCollection';
 export {
 	ForwardedPortEventArgs,
 	ForwardedPortChannelEventArgs,
+	ForwardedPortConnectingEventArgs,
 } from './events/forwardedPortEventArgs';

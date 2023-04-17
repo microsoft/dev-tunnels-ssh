@@ -12,8 +12,9 @@ import {
 	SshTraceEventIds,
 	Trace,
 	TraceLevel,
+	SshStream,
 } from '@microsoft/dev-tunnels-ssh';
-import { ChannelForwarder } from './channelForwarder';
+import { StreamForwarder } from './streamForwarder';
 import { PortForwardingService } from './portForwardingService';
 import { RemotePortConnector } from './remotePortConnector';
 
@@ -57,6 +58,7 @@ export class RemotePortForwarder extends RemotePortConnector {
 			request,
 			this.localHost,
 			this.localPort,
+			this.remotePort,
 			this.trace,
 			cancellation,
 		);
@@ -66,16 +68,30 @@ export class RemotePortForwarder extends RemotePortConnector {
 	public static async forwardChannel(
 		pfs: PortForwardingService,
 		request: SshChannelOpeningEventArgs,
-		host: string,
-		port: number,
+		localHost: string,
+		localPort: number,
+		remotePort: number | undefined,
 		trace: Trace,
 		cancellation?: CancellationToken,
 	): Promise<void> {
 		const channel = request.channel;
 
+		const forwardedStream = await pfs.forwardedPortConnecting(
+			remotePort ?? localPort,
+			true,
+			new SshStream(channel),
+			cancellation,
+		);
+
+		if (!forwardedStream) {
+			// The event handler rejected the connection.
+			request.failureReason = SshChannelOpenFailureReason.connectFailed;
+			return;
+		}
+
 		const socket = net.createConnection({
-			host: host,
-			port: port,
+			host: localHost,
+			port: localPort,
 		});
 
 		const connectCompletion = new PromiseCompletionSource<void>();
@@ -99,7 +115,7 @@ export class RemotePortForwarder extends RemotePortConnector {
 				TraceLevel.Error,
 				SshTraceEventIds.portForwardConnectionFailed,
 				`${channel.session} PortForwardingService forwarded channel #${channel.channelId} ` +
-					`connection to ${host}:${port} failed: ${e.message}`,
+					`connection to ${localHost}:${localPort} failed: ${e.message}`,
 				e,
 			);
 			request.failureReason = SshChannelOpenFailureReason.connectFailed;
@@ -110,12 +126,13 @@ export class RemotePortForwarder extends RemotePortConnector {
 
 		// TODO: Set socket options?
 
-		const channelForwarder = new ChannelForwarder(pfs, channel, socket);
+		const streamForwarder = new StreamForwarder(socket, forwardedStream, channel.session.trace);
 		trace(
 			TraceLevel.Info,
 			SshTraceEventIds.portForwardConnectionOpened,
-			`${channel.session} PortForwardingService forwarded channel #${channel.channelId} connection to ${host}:${port}.`,
+			`${channel.session} PortForwardingService forwarded channel ` +
+				`#${channel.channelId} connection to ${localHost}:${localPort}.`,
 		);
-		pfs.channelForwarders.push(channelForwarder);
+		pfs.streamForwarders.push(streamForwarder);
 	}
 }

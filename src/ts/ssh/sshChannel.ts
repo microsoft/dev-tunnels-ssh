@@ -17,6 +17,7 @@ import {
 	ChannelSuccessMessage,
 	ChannelFailureMessage,
 	ChannelOpenMessage,
+	ChannelOpenConfirmationMessage,
 } from './messages/connectionMessages';
 import { SshDisconnectReason } from './messages/transportMessages';
 import { ChannelMetrics } from './metrics/channelMetrics';
@@ -95,8 +96,8 @@ export class SshChannel implements Disposable {
 	public readonly onClosed: Event<SshChannelClosedEventArgs> = this.closedEmitter.event;
 
 	private readonly requestEmitter = new Emitter<SshRequestEventArgs<ChannelRequestMessage>>();
-	public readonly onRequest: Event<SshRequestEventArgs<ChannelRequestMessage>> = this
-		.requestEmitter.event;
+	public readonly onRequest: Event<SshRequestEventArgs<ChannelRequestMessage>> =
+		this.requestEmitter.event;
 
 	/* @internal */
 	public constructor(
@@ -106,6 +107,8 @@ export class SshChannel implements Disposable {
 		public readonly remoteChannelId: number,
 		remoteMaxWindowSize: number,
 		remoteMaxPacketSize: number,
+		public readonly openMessage: ChannelOpenMessage,
+		public openConfirmationMessage: ChannelOpenConfirmationMessage,
 	) {
 		this.remoteWindowSize = remoteMaxWindowSize;
 		this.maxWindowSizeValue = SshChannel.defaultMaxWindowSize;

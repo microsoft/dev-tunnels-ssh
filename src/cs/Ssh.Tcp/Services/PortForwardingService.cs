@@ -526,7 +526,7 @@ public class PortForwardingService : SshService
 		{
 			channel.Dispose();
 			throw new SshChannelException(
-				$"The connection to forwarded port was rejected by the connecting event-handler.");
+				"The connection to the forwarded port was rejected by the connecting event-handler.");
 		}
 
 		return forwardedStream;

@@ -226,6 +226,12 @@ export class ConnectionService extends SshService {
 			return;
 		}
 
+		// Save a copy of the message because its buffer will be overwitten by the next receive.
+		message = message.convertTo(new ChannelOpenMessage(), true);
+
+		// The confirmation message may be reassigned if the opening task returns a custom message.
+		let confirmationMessage = new ChannelOpenConfirmationMessage();
+
 		const channelId = ++this.channelCounter;
 		const channel = new SshChannel(
 			this,
@@ -234,6 +240,8 @@ export class ConnectionService extends SshService {
 			senderChannel!,
 			message.maxWindowSize!,
 			message.maxPacketSize!,
+			message,
+			confirmationMessage,
 		);
 
 		let responseMessage: ChannelMessage;
@@ -248,7 +256,7 @@ export class ConnectionService extends SshService {
 				failureMessage.description = args.failureDescription ?? undefined;
 				responseMessage = failureMessage;
 			} else {
-				responseMessage = new ChannelOpenConfirmationMessage();
+				responseMessage = confirmationMessage;
 			}
 		} catch (e) {
 			channel.dispose();
@@ -277,11 +285,14 @@ export class ConnectionService extends SshService {
 
 		this.channelMap.set(channel.channelId, channel);
 
-		const confirmationMessage = <ChannelOpenConfirmationMessage>responseMessage;
+		confirmationMessage = <ChannelOpenConfirmationMessage>responseMessage;
 		confirmationMessage.recipientChannel = channel.remoteChannelId;
 		confirmationMessage.senderChannel = channel.channelId;
 		confirmationMessage.maxWindowSize = channel.maxWindowSize;
 		confirmationMessage.maxPacketSize = channel.maxPacketSize;
+		confirmationMessage.rewrite();
+
+		channel.openConfirmationMessage = confirmationMessage;
 		await this.session.sendMessage(confirmationMessage, cancellation);
 
 		// Check if there are any accept operations waiting on this channel type.
@@ -303,7 +314,7 @@ export class ConnectionService extends SshService {
 	}
 
 	private handleCloseMessage(message: ChannelCloseMessage): void {
-		const channel = this.findChannelById(message.recipientChannel!);
+		const channel = this.tryGetChannelForMessage(message);
 		if (channel) {
 			channel.handleClose();
 		}
@@ -330,6 +341,9 @@ export class ConnectionService extends SshService {
 			throw new Error('Channel confirmation was not requested.');
 		}
 
+		// Save a copy of the message because its buffer will be overwitten by the next receive.
+		message = message.convertTo(new ChannelOpenConfirmationMessage(), true);
+
 		const channel = new SshChannel(
 			this,
 			openMessage.channelType || SshChannel.sessionChannelType,
@@ -337,6 +351,8 @@ export class ConnectionService extends SshService {
 			message.senderChannel!,
 			message.maxWindowSize!,
 			message.maxPacketSize!,
+			openMessage,
+			message,
 		);
 
 		// Set the channel max window size property to match the value sent in the open message,
@@ -398,66 +414,35 @@ export class ConnectionService extends SshService {
 		message: ChannelRequestMessage,
 		cancellation?: CancellationToken,
 	): Promise<void> {
-		const channel = this.findChannelById(message.recipientChannel!);
-		if (!channel) {
-			this.trace(
-				TraceLevel.Warning,
-				SshTraceEventIds.channelRequestFailed,
-				`Invalid channel ID ${message.recipientChannel} in channel request message.`,
-			);
-			return;
-		}
+		const channel = this.tryGetChannelForMessage(message);
+		if (!channel) return;
 
 		await channel.handleRequest(message, cancellation);
 	}
 
 	private handleSuccessMessage(message: ChannelSuccessMessage) {
-		const channel = this.findChannelById(message.recipientChannel!);
-		if (!channel) {
-			this.trace(
-				TraceLevel.Warning,
-				SshTraceEventIds.channelRequestFailed,
-				`Invalid channel ID ${message.recipientChannel} in channel success message.`,
-			);
-			return;
-		}
-
-		channel.handleResponse(true);
+		const channel = this.tryGetChannelForMessage(message);
+		channel?.handleResponse(true);
 	}
 
 	private handleFailureMessage(message: ChannelFailureMessage) {
-		const channel = this.findChannelById(message.recipientChannel!);
-		if (!channel) {
-			this.trace(
-				TraceLevel.Warning,
-				SshTraceEventIds.channelRequestFailed,
-				`Invalid channel ID ${message.recipientChannel} in channel failure message.`,
-			);
-			return;
-		}
-
-		channel.handleResponse(false);
+		const channel = this.tryGetChannelForMessage(message);
+		channel?.handleResponse(false);
 	}
 
 	private handleDataMessage(message: ChannelDataMessage): void {
-		const channel = this.findChannelById(message.recipientChannel!);
-		if (channel) {
-			return channel.handleDataReceived(message.data!);
-		}
+		const channel = this.tryGetChannelForMessage(message);
+		channel?.handleDataReceived(message.data!);
 	}
 
 	private handleAdjustWindowMessage(message: ChannelWindowAdjustMessage): void {
-		const channel = this.findChannelById(message.recipientChannel!);
-		if (channel) {
-			channel.adjustRemoteWindow(message.bytesToAdd!);
-		}
+		const channel = this.tryGetChannelForMessage(message);
+		channel?.adjustRemoteWindow(message.bytesToAdd!);
 	}
 
 	private handleEofMessage(message: ChannelEofMessage): void {
-		const channel = this.findChannelById(message.recipientChannel!);
-		if (channel) {
-			channel.handleEof();
-		}
+		const channel = this.tryGetChannelForMessage(message);
+		channel?.handleEof();
 	}
 
 	private onChannelOpenCompleted(channelId: number, channel: SshChannel | null) {
@@ -474,6 +459,22 @@ export class ConnectionService extends SshService {
 				`${this.session} ChannelOpenCompleted(${channelId} failed)`,
 			);
 		}
+	}
+
+	private tryGetChannelForMessage(channelMessage: ChannelMessage): SshChannel | null {
+		const channel = this.findChannelById(channelMessage.recipientChannel!);
+		if (!channel) {
+			const messageString =
+				channelMessage instanceof ChannelDataMessage
+					? 'channel data message'
+					: channelMessage.toString();
+			this.trace(
+				TraceLevel.Warning,
+				SshTraceEventIds.channelRequestFailed,
+				`Invalid channel ID ${channelMessage.recipientChannel} in {messageString}.`,
+			);
+		}
+		return channel;
 	}
 
 	private findChannelById(id: number): SshChannel | null {
