@@ -1549,7 +1549,7 @@ public class SshSession : IDisposable
 					Trace.TraceEvent(
 						TraceEventType.Error,
 						SshTraceEventIds.SessionRequestFailed,
-						$"OnSessionRequest failed with exception ${ex.ToString()}.");
+						$"OnSessionRequest failed with exception ${ex}.");
 
 					// Send failure message in case of exception
 					result.SetResult(new SessionRequestFailureMessage());
@@ -1569,9 +1569,9 @@ public class SshSession : IDisposable
 					catch (Exception ex)
 					{
 						Trace.TraceEvent(
-									TraceEventType.Error,
-									SshTraceEventIds.SessionRequestFailed,
-									$"Session request response task failed with exception ${ex.ToString()}.");
+							TraceEventType.Error,
+							SshTraceEventIds.SessionRequestFailed,
+							$"Session request response task failed with exception ${ex}.");
 						result.SetResult(new SessionRequestFailureMessage());
 					}
 				}),
@@ -1607,7 +1607,7 @@ public class SshSession : IDisposable
 				Trace.TraceEvent(
 					TraceEventType.Error,
 					SshTraceEventIds.SessionRequestFailed,
-					$"OnSessionRequest send response failed with exception ${ex?.ToString()}.");
+					$"OnSessionRequest send response failed with exception ${ex}.");
 			},
 			cancellation).ConfigureAwait(false);
 	}

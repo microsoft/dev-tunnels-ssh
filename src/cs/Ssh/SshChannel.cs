@@ -621,73 +621,45 @@ public class SshChannel : IDisposable
 			return;
 		}
 
-		var tcs = new TaskCompletionSource<bool>();
+		if (!this.remoteClosed && !this.localClosed)
+		{
+			this.remoteClosed = true;
 
-		await taskChain.RunInSequence(
-			async () =>
+			bool acquiredSemaphore = false;
+			try
 			{
-				if (!this.remoteClosed && !this.localClosed)
-				{
-					this.remoteClosed = true;
+				// Wait for any messages to complete before sending the close message.
+				await this.sendSemaphore.WaitAsync(cancellation).ConfigureAwait(false);
+				acquiredSemaphore = true;
 
-					bool acquiredSemaphore = false;
-					try
+				await Session.SendMessageAsync(
+					new ChannelCloseMessage
 					{
-						// Wait for any messages to complete before sending the close message.
-						await this.sendSemaphore.WaitAsync(cancellation).ConfigureAwait(false);
-						acquiredSemaphore = true;
-
-						await Session.SendMessageAsync(
-							new ChannelCloseMessage
-							{
-								RecipientChannel = RemoteChannelId,
-							},
-							cancellation).ConfigureAwait(false);
-					}
-					catch (ObjectDisposedException)
-					{
-						// The session was already closed.
-					}
-					catch (OperationCanceledException)
-					{
-						tcs.TrySetCanceled();
-					}
-					finally
-					{
-						if (acquiredSemaphore)
-						{
-							this.sendSemaphore.TryRelease();
-						}
-					}
-				}
-
-				if (!this.localClosed)
-				{
-					this.localClosed = true;
-					var closedMessage = RaiseClosedEvent();
-					CancelPendingRequests();
-				}
-
-				DisposeInternal();
-				tcs.TrySetResult(true);
-			},
-			(ex) =>
+						RecipientChannel = RemoteChannelId,
+					},
+					cancellation).ConfigureAwait(false);
+			}
+			catch (ObjectDisposedException)
 			{
-				Trace.TraceEvent(
-					TraceEventType.Error,
-					SshTraceEventIds.ChannelCloseFailed,
-					$"Channel close failed with exception {ex}.");
-				DisposeInternal();
-				if (ex is ObjectDisposedException)
+				// The session was already closed.
+			}
+			finally
+			{
+				if (acquiredSemaphore)
 				{
-					tcs.TrySetResult(false);
+					this.sendSemaphore.TryRelease();
 				}
-				else
-				{
-					tcs.TrySetException(ex);
-				}
-			}, CancellationToken.None).ConfigureAwait(false);
-		await tcs.Task.ConfigureAwait(false);
+			}
+		}
+
+		if (!this.localClosed)
+		{
+			this.localClosed = true;
+			RaiseClosedEvent();
+			CancelPendingRequests();
+		}
+
+		DisposeInternal();
 	}
 
 	/// <summary>
@@ -747,14 +719,14 @@ public class SshChannel : IDisposable
 		if (!this.localClosed)
 		{
 			this.localClosed = true;
-			var closedMessage = RaiseClosedEvent(closedByRemote: true);
+			RaiseClosedEvent(closedByRemote: true);
 			CancelPendingRequests();
 		}
 
 		DisposeInternal();
 	}
 
-	private string RaiseClosedEvent(bool closedByRemote = false)
+	private void RaiseClosedEvent(bool closedByRemote = false)
 	{
 		var metricsMessage = $" (S: {Metrics.BytesSent}, R: {Metrics.BytesReceived})";
 		var originMessage = closedByRemote ? "remotely" : "locally";
@@ -782,7 +754,6 @@ public class SshChannel : IDisposable
 			SshTraceEventIds.ChannelClosed,
 			closedMessage + metricsMessage);
 		ClosedEventHandler?.Invoke(this, args);
-		return closedMessage;
 	}
 
 	internal void Close(Exception ex)

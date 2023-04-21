@@ -484,13 +484,32 @@ public class SessionTests : IDisposable
 	}
 
 	[Fact]
-	public async Task SendMultipleMessages()
+	public async Task OverlappingSessionRequests()
 	{
 		await this.sessionPair.ConnectAsync(authenticate: false).WithTimeout(Timeout);
-		var testRequest = new Messages.SessionRequestMessage { RequestType = "test" };
-		await this.clientSession.RequestAsync(testRequest).WithTimeout(Timeout);
-	}
+		Assert.True(await this.clientSession.AuthenticateAsync((TestUsername, TestPassword)));
 
+		async Task<SshMessage> AsyncResponse(TimeSpan delay, bool success)
+		{
+			await Task.Delay(delay);
+			return success ? new SessionRequestSuccessMessage() : new SessionRequestFailureMessage();
+		}
+
+		this.serverSession.Request += (_, e) =>
+		{
+			// Use a longer delay for the first message, so it completes after the second one.
+			var delay = TimeSpan.FromSeconds(2 - int.Parse(e.RequestType));
+			e.ResponseTask = AsyncResponse(delay, success: e.RequestType != "1");
+		};
+
+		var testRequest1 = new SessionRequestMessage { RequestType = "1", WantReply = true };
+		var testRequest2 = new SessionRequestMessage { RequestType = "2", WantReply = true };
+		var request1Task = this.clientSession.RequestAsync(testRequest1).WithTimeout(Timeout);
+		var request2Task = this.clientSession.RequestAsync(testRequest2).WithTimeout(Timeout);
+
+		Assert.False(await request1Task);
+		Assert.True(await request2Task);
+	}
 
 	[Fact]
 	public async Task SessionRequestUnauthenticated()
@@ -509,7 +528,6 @@ public class SessionTests : IDisposable
 		Assert.False(result);
 		Assert.Null(requestArgs);
 	}
-
 
 	[Fact]
 	public async Task OpenSessionWithMultipleRequests()
@@ -544,11 +562,6 @@ public class SessionTests : IDisposable
 		Task.WaitAll(firstTask, secondTask);
 		Assert.True(await secondMessageCompletion.Task);
 		Assert.True(await firstMessageCompletion.Task);
-	}
-
-	private void ServerSession_Request(object sender, SshRequestEventArgs<Messages.SessionRequestMessage> e)
-	{
-		throw new NotImplementedException();
 	}
 
 	private static T GetAlgorithmByName<T>(Type algorithmClass, string name)

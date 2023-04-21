@@ -64,7 +64,7 @@ internal class TaskChain : IDisposable
 
 			if (runInSequenceTask == null)
 			{
-				runInSequenceTask = Task.Factory.StartNew(
+				runInSequenceTask = Task.Run(
 					async () =>
 					{
 						try
@@ -77,14 +77,12 @@ internal class TaskChain : IDisposable
 							onError(ex);
 						}
 					},
-					cancellation,
-					TaskCreationOptions.None,
-					TaskScheduler.Default);
+					cancellation);
 			}
 			else
 			{
 				runInSequenceTask = runInSequenceTask.ContinueWith(
-					async _ =>
+					async (_) =>
 					{
 						try
 						{
