@@ -114,7 +114,16 @@ export class PipeExtensions {
 		toSession: SshSession,
 		cancellation?: CancellationToken,
 	): Promise<SshMessage> {
-		return await toSession.requestResponse(
+		// `toSession.requestResponse` always set `wantReply` to `true` internally and awaits for response
+		// but `SessionRequestMessage` has an internal cache when piped so it will send original message with `false`,
+		// use `toSession.request` instead so it returns immeadiately
+		if (!e.request.wantReply) {
+			return toSession.request(
+				e.request,
+				cancellation,
+			).then(() => new SessionRequestSuccessMessage());
+		}
+		return toSession.requestResponse(
 			e.request,
 			SessionRequestSuccessMessage,
 			SessionRequestFailureMessage,
@@ -168,8 +177,12 @@ export class PipeExtensions {
 		toChannel: SshChannel,
 		data: Buffer,
 	): Promise<void> {
-		await toChannel.send(data, CancellationToken.None);
-		channel.adjustWindow(data.length);
+		// Seems that somehow data gets corrupted/disposed? so do a copy first thing
+		const buffer = Buffer.alloc(data.length);
+		data.copy(buffer);
+		const promise = toChannel.send(buffer, CancellationToken.None);
+		channel.adjustWindow(buffer.length);
+		return promise;
 	}
 
 	private static async forwardChannelClose(
