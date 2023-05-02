@@ -3,7 +3,7 @@
 //
 
 import { CancellationToken, Disposable, Emitter } from 'vscode-jsonrpc';
-import { Stream } from './streams';
+import { NodeStream, Stream } from './streams';
 import { SshChannel } from './sshChannel';
 import { SshStream } from './sshStream';
 import { SshSession } from './sshSession';
@@ -11,7 +11,6 @@ import { SshSessionConfiguration } from './sshSessionConfiguration';
 import { SshDisconnectReason } from './messages/transportMessages';
 import { SshSessionClosedEventArgs } from './events/sshSessionClosedEventArgs';
 import { Trace, TraceLevel, SshTraceEventIds } from './trace';
-import { ChannelOpenMessage } from './messages/connectionMessages';
 import { SshClientCredentials, SshServerCredentials } from './sshCredentials';
 import { SshClientSession } from './sshClientSession';
 import { SshServerSession } from './sshServerSession';
@@ -46,7 +45,7 @@ export class SecureStream extends Duplex implements Disposable {
 	 * @param transportStream Stream that is used to multiplex all the channels.
 	 */
 	public constructor(
-		private readonly transportStream: Stream,
+		private readonly transportStream: Stream | Duplex,
 		credentials: SshClientCredentials | SshServerCredentials,
 	) {
 		super({
@@ -144,7 +143,12 @@ export class SecureStream extends Duplex implements Disposable {
 				serverSession.credentials = this.serverCredentials;
 			}
 
-			await this.session.connect(this.transportStream, cancellation);
+			let stream = this.transportStream;
+			if (stream instanceof Duplex) {
+				stream = new NodeStream(stream);
+			}
+
+			await this.session.connect(stream, cancellation);
 
 			let channel: SshChannel | null = null;
 			if (this.clientCredentials) {
@@ -200,15 +204,21 @@ export class SecureStream extends Duplex implements Disposable {
 			this.unsubscribe();
 
 			try {
-				if (this.transportStream)
-					this.transportStream.close().catch((e) => {
-						this.trace(
-							TraceLevel.Error,
-							SshTraceEventIds.streamCloseError,
-							`Error closing transport stream: ${e.message}`,
-							e,
-						);
-					});
+				if (this.transportStream) {
+					if (this.transportStream instanceof Duplex) {
+						this.transportStream.end();
+						this.transportStream.destroy();
+					} else {
+						this.transportStream.close().catch((e) => {
+							this.trace(
+								TraceLevel.Error,
+								SshTraceEventIds.streamCloseError,
+								`Error closing transport stream: ${e.message}`,
+								e,
+							);
+						});
+					}
+				}
 			} catch (e) {
 				if (!(e instanceof Error)) throw e;
 				this.trace(
@@ -229,7 +239,13 @@ export class SecureStream extends Duplex implements Disposable {
 			this.session.dispose();
 			this.unsubscribe();
 
-			await this.transportStream.close();
+			if (this.transportStream instanceof Duplex) {
+				await new Promise((resolve) => {
+					(<Duplex>this.transportStream).end(resolve);
+				});
+			} else {
+				await this.transportStream.close();
+			}
 		}
 	}
 
