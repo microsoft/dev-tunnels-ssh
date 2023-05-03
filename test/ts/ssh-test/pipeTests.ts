@@ -365,6 +365,37 @@ export class PipeTests {
 	}
 
 	@test
+	public async pipeExtensibleSessionMultipleRequestNoReply() {
+		await this.createSessions();
+		await connectSessionPair(this.clientSession1, this.serverSession1);
+		await connectSessionPair(this.clientSession2, this.serverSession2);
+		const pipePromise = this.serverSession1.pipe(this.clientSession2);
+
+		for (let i = 0; i < 3; i++) {
+			const requestCompletion = new PromiseCompletionSource<SessionRequestMessage>();
+			const toDispose = this.clientSession1.onRequest((e) => {
+				requestCompletion.resolve(e.request);
+				e.isAuthorized = true;
+			});
+
+			const request = new TestSessionRequestMessage();
+			request.requestType = 'test';
+			const requestTask = this.serverSession2.request(
+				request
+			);
+
+			const testRequest = await withTimeout(requestCompletion.promise, timeoutMs);
+			assert.equal('test', testRequest.requestType);
+			testRequest.convertTo(new TestSessionRequestMessage());
+
+			const testResponse = await requestTask;
+			assert(testResponse);
+
+			toDispose.dispose();
+		}
+	}
+
+	@test
 	public async pipeExtensibleChannelOpen() {
 		await this.createSessions();
 		await connectSessionPair(this.clientSession1, this.serverSession1);

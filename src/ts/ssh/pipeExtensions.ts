@@ -114,7 +114,17 @@ export class PipeExtensions {
 		toSession: SshSession,
 		cancellation?: CancellationToken,
 	): Promise<SshMessage> {
-		return await toSession.requestResponse(
+		// `SshSession.requestResponse()` always set `wantReply` to `true` internally and waits for a
+		// response, but since the message buffer is cached the updated `wantReply` value is not sent.
+		// Anyway, it's better to forward a no-reply message as another no-reply message, using
+		// `SshSession.request()` instead.
+		if (!e.request.wantReply) {
+			return toSession.request(
+				e.request,
+				cancellation,
+			).then(() => new SessionRequestSuccessMessage());
+		}
+		return toSession.requestResponse(
 			e.request,
 			SessionRequestSuccessMessage,
 			SessionRequestFailureMessage,
@@ -168,8 +178,14 @@ export class PipeExtensions {
 		toChannel: SshChannel,
 		data: Buffer,
 	): Promise<void> {
-		await toChannel.send(data, CancellationToken.None);
-		channel.adjustWindow(data.length);
+		// Make a copy of the buffer before sending because SshChannel.send() is an async operation
+		// (it may need to wait for the window to open), while the buffer will be re-used for the
+		// next message as sson as this task yields.
+		const buffer = Buffer.alloc(data.length);
+		data.copy(buffer);
+		const promise = toChannel.send(buffer, CancellationToken.None);
+		channel.adjustWindow(buffer.length);
+		return promise;
 	}
 
 	private static async forwardChannelClose(
