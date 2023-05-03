@@ -114,9 +114,10 @@ export class PipeExtensions {
 		toSession: SshSession,
 		cancellation?: CancellationToken,
 	): Promise<SshMessage> {
-		// `toSession.requestResponse` always set `wantReply` to `true` internally and awaits for response
-		// but `SessionRequestMessage` has an internal cache when piped so it will send original message with `false`,
-		// use `toSession.request` instead so it returns immeadiately
+		// `SshSession.requestResponse()` always set `wantReply` to `true` internally and waits for a
+		// response, but since the message buffer is cached the updated `wantReply` value is not sent.
+		// Anyway, it's better to forward a no-reply message as another no-reply message, using
+		// `SshSession.request()` instead.
 		if (!e.request.wantReply) {
 			return toSession.request(
 				e.request,
@@ -177,7 +178,9 @@ export class PipeExtensions {
 		toChannel: SshChannel,
 		data: Buffer,
 	): Promise<void> {
-		// Seems that somehow data gets corrupted/disposed? so do a copy first thing
+		// Make a copy of the buffer before sending because SshChannel.send() is an async operation
+		// (it may need to wait for the window to open), while the buffer will be re-used for the
+		// next message as sson as this task yields.
 		const buffer = Buffer.alloc(data.length);
 		data.copy(buffer);
 		const promise = toChannel.send(buffer, CancellationToken.None);
