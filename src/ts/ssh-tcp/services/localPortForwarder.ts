@@ -12,8 +12,9 @@ import {
 	TraceLevel,
 	PromiseCompletionSource,
 	SshProtocolExtensionNames,
+	SshStream,
 } from '@microsoft/dev-tunnels-ssh';
-import { ChannelForwarder } from './channelForwarder';
+import { StreamForwarder } from './streamForwarder';
 import { PortForwardingService } from './portForwardingService';
 
 /**
@@ -176,8 +177,20 @@ export class LocalPortForwarder extends SshService {
 			return;
 		}
 
-		const forwarder = new ChannelForwarder(this.pfs, channel, socket);
-		this.pfs.channelForwarders.push(forwarder);
+		// The event handler may return a transformed stream.
+		const forwardedStream = await this.pfs.forwardedPortConnecting(
+			this.remotePort ?? this.localPort,
+			false,
+			new SshStream(channel),
+		);
+
+		if (!forwardedStream) {
+			// The event handler rejected the connection.
+			return;
+		}
+
+		const forwarder = new StreamForwarder(socket, forwardedStream, channel.session.trace);
+		this.pfs.streamForwarders.push(forwarder);
 	}
 
 	public dispose() {

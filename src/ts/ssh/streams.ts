@@ -255,6 +255,7 @@ export class NodeStream extends BaseStream {
 
 // The adapter only requires a few basic websocket members.
 interface WebSocketLike {
+	readonly protocol?: string;
 	onmessage: ((e: { data: ArrayBuffer }) => void) | null;
 	onclose: ((e: { code: number; reason: string; wasClean: boolean }) => void) | null;
 	send(data: ArrayBuffer): void;
@@ -300,6 +301,10 @@ export class WebSocketStream extends BaseStream {
 				this.onError(error);
 			}
 		};
+	}
+
+	public get protocol(): string | undefined {
+		return this.websocket.protocol;
 	}
 
 	public async write(data: Buffer, cancellation?: CancellationToken): Promise<void> {

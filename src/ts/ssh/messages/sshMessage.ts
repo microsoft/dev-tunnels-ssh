@@ -47,6 +47,20 @@ export abstract class SshMessage {
 		}
 	}
 
+	/**
+	 * Rewrites the message to its buffer to ensure the buffer has the correct values.
+	 * This should be called after modifying properties of a message that was (potentially)
+	 * received, before re-sending it.
+	 */
+	public rewrite(): void {
+		if (this.rawBytes) {
+			const writer = new SshDataWriter(Buffer.alloc(16));
+			writer.writeByte(this.messageType);
+			this.onWrite(writer);
+			this.rawBytes = writer.toBuffer();
+		}
+	}
+
 	protected onRead(reader: SshDataReader): void {
 		throw new Error('Not supported.');
 	}

@@ -21,8 +21,10 @@ import {
 	ObjectDisposedError,
 	CancellationError,
 	CancellationToken,
+	SshChannelError,
 } from '@microsoft/dev-tunnels-ssh';
-import { Disposable } from 'vscode-jsonrpc';
+import { Duplex } from 'stream';
+import { Disposable, Emitter } from 'vscode-jsonrpc';
 import { ForwardedPort } from '../events/forwardedPort';
 import { ForwardedPortsCollection } from '../events/forwardedPortsCollection';
 import { IPAddressConversions } from '../ipAddressConversions';
@@ -34,11 +36,12 @@ import {
 	PortForwardMessageFactory,
 	DefaultPortForwardMessageFactory,
 } from '../portForwardMessageFactory';
-import { ChannelForwarder } from './channelForwarder';
+import { StreamForwarder } from './streamForwarder';
 import { LocalPortForwarder } from './localPortForwarder';
 import { RemotePortConnector } from './remotePortConnector';
 import { RemotePortForwarder } from './remotePortForwarder';
 import { RemotePortStreamer } from './remotePortStreamer';
+import { ForwardedPortConnectingEventArgs } from '../events/forwardedPortEventArgs';
 
 /**
  * Implements the standard SSH port-forwarding protocol.
@@ -86,7 +89,7 @@ export class PortForwardingService extends SshService {
 	private readonly remoteConnectors = new Map<number, RemotePortConnector>();
 
 	/* @internal */
-	public readonly channelForwarders: ChannelForwarder[] = [];
+	public readonly streamForwarders: StreamForwarder[] = [];
 
 	/* @internal */
 	public constructor(session: SshSession) {
@@ -187,6 +190,42 @@ export class PortForwardingService extends SshService {
 	 * message subclasses that may include additional properties.
 	 */
 	public messageFactory: PortForwardMessageFactory = new DefaultPortForwardMessageFactory();
+
+	private readonly forwardedPortConnectingEmitter =
+		new Emitter<ForwardedPortConnectingEventArgs>();
+
+	/**
+	 * Event raised when an incoming or outgoing connection to a forwarded port is
+	 * about to be established.
+	 */
+	public readonly onForwardedPortConnecting = this.forwardedPortConnectingEmitter.event;
+
+	/* @internal */
+	public async forwardedPortConnecting(
+		port: number,
+		isIncoming: boolean,
+		stream: SshStream,
+		cancellation?: CancellationToken,
+	): Promise<Duplex | null> {
+		try {
+			const args = new ForwardedPortConnectingEventArgs(port, isIncoming, stream, cancellation);
+			this.forwardedPortConnectingEmitter.fire(args);
+
+			if (args.transformPromise) {
+				return await args.transformPromise;
+			}
+		} catch (e) {
+			if (!(e instanceof Error)) throw e;
+			this.trace(
+				TraceLevel.Warning,
+				SshTraceEventIds.portForwardConnectionFailed,
+				`Forwarded port connecting event-handler failed: ${e.message}`,
+			);
+			return null;
+		}
+
+		return stream;
+	}
 
 	/**
 	 * Sends a request to the remote side to listen on a port and forward incoming connections
@@ -492,7 +531,7 @@ export class PortForwardingService extends SshService {
 	public async connectToForwardedPort(
 		forwardedPort: number,
 		cancellation?: CancellationToken,
-	): Promise<SshStream> {
+	): Promise<Duplex> {
 		if (!Number.isInteger(forwardedPort) || forwardedPort <= 0) {
 			throw new TypeError('Forwarded port must be a positive integer.');
 		}
@@ -507,7 +546,20 @@ export class PortForwardingService extends SshService {
 			cancellation,
 		);
 
-		return new SshStream(channel);
+		const forwardedStream = await this.forwardedPortConnecting(
+			forwardedPort,
+			false,
+			new SshStream(channel),
+			cancellation,
+		);
+		if (!forwardedStream) {
+			channel.close().catch((e) => {});
+			throw new SshChannelError(
+				'The connection to the forwarded port was rejected by the connecting event-handler.',
+			);
+		}
+
+		return forwardedStream;
 	}
 
 	/**
@@ -767,7 +819,8 @@ export class PortForwardingService extends SshService {
 		request.failureDescription = portForwardRequest.failureDescription;
 		request.openingPromise = portForwardRequest.openingPromise;
 
-		if (request.failureReason === SshChannelOpenFailureReason.none &&
+		if (
+			request.failureReason === SshChannelOpenFailureReason.none &&
 			request.isRemoteRequest &&
 			this.forwardConnectionsToLocalPorts
 		) {
@@ -789,6 +842,7 @@ export class PortForwardingService extends SshService {
 					this,
 					request,
 					portForwardMessage.host,
+					portForwardMessage.port,
 					portForwardMessage.port,
 					this.trace,
 					cancellation,
@@ -854,12 +908,12 @@ export class PortForwardingService extends SshService {
 
 	public dispose(): void {
 		const disposables: Disposable[] = [
-			...this.channelForwarders,
+			...this.streamForwarders,
 			...this.localForwarders.values(),
 			...this.remoteConnectors.values(),
 		];
 
-		this.channelForwarders.splice(0, this.channelForwarders.length);
+		this.streamForwarders.splice(0, this.streamForwarders.length);
 		this.localForwarders.clear();
 		this.remoteConnectors.clear();
 

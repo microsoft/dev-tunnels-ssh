@@ -12,7 +12,7 @@ using System.Threading.Tasks;
 
 namespace Microsoft.DevTunnels.Ssh.Tcp;
 
-public class StreamForwarder : IDisposable
+internal class StreamForwarder : IDisposable
 {
 	private const int BufferSize = 8192;
 
