@@ -29,7 +29,7 @@ import { ChannelOpenMessage } from './messages/connectionMessages';
  * same transport stream, as long as the other side does the complementary action.
  */
 export class MultiChannelStream implements Disposable {
-	private readonly session: SshSession;
+	protected readonly session: SshSession;
 	private disposed: boolean = false;
 	private disposables: Disposable[] = [];
 
@@ -37,7 +37,7 @@ export class MultiChannelStream implements Disposable {
 	 * Creates a new multi-channel stream over an underlying transport stream.
 	 * @param transportStream Stream that is used to multiplex all the channels.
 	 */
-	public constructor(private readonly transportStream: Stream) {
+	public constructor(protected readonly transportStream: Stream) {
 		if (!transportStream) throw new TypeError('transportStream is required.');
 
 		const noSecurityConfig = new SshSessionConfiguration(false);

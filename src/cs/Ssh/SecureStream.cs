@@ -24,13 +24,6 @@ namespace Microsoft.DevTunnels.Ssh;
 /// </remarks>
 public class SecureStream : Stream
 {
-	private readonly Stream transportStream;
-	private readonly SshSession session;
-	private readonly SshClientCredentials? clientCredentials;
-	private readonly SshServerCredentials? serverCredentials;
-	private SshStream? stream;
-	private readonly TaskCompletionSource<bool> connectCompletion = new ();
-
 	/// <summary>
 	/// Creates a secure stream over an underlying transport stream, using client credentials
 	/// to authenticate.
@@ -43,16 +36,16 @@ public class SecureStream : Stream
 		SshClientCredentials clientCredentials,
 		TraceSource? trace = null)
 	{
-		this.transportStream = transportStream ??
+		this.TransportStream = transportStream ??
 			throw new ArgumentNullException(nameof(transportStream));
-		this.session = new SshClientSession(
+		this.Session = new SshClientSession(
 			SshSessionConfiguration.Default,
 			trace ?? new TraceSource(nameof(SecureStream)));
 
-		this.session.Authenticating += OnSessionAuthenticating;
-		this.session.Closed += OnSessionClosed;
+		this.Session.Authenticating += OnSessionAuthenticating;
+		this.Session.Closed += OnSessionClosed;
 
-		this.clientCredentials = clientCredentials ??
+		this.ClientCredentials = clientCredentials ??
 			throw new ArgumentNullException(nameof(clientCredentials));
 	}
 
@@ -68,39 +61,71 @@ public class SecureStream : Stream
 		SshServerCredentials serverCredentials,
 		TraceSource? trace = null)
 	{
-		this.transportStream = transportStream ??
+		this.TransportStream = transportStream ??
 			throw new ArgumentNullException(nameof(transportStream));
-		this.session = new SshServerSession(
+		this.Session = new SshServerSession(
 			SshSessionConfiguration.Default,
 			trace ?? new TraceSource(nameof(SecureStream)));
 
-		this.session.Authenticating += OnSessionAuthenticating;
-		this.session.Closed += OnSessionClosed;
+		this.Session.Authenticating += OnSessionAuthenticating;
+		this.Session.Closed += OnSessionClosed;
 
-		this.serverCredentials = serverCredentials ??
+		this.ServerCredentials = serverCredentials ??
 			throw new ArgumentNullException(nameof(serverCredentials));
 	}
 
+	/// <summary>
+	/// Gets the underlying transport stream for the secure stream.
+	/// </summary>
+	protected Stream TransportStream { get; }
+
+	/// <summary>
+	/// Gets the SSH session that implements the secure protocol.
+	/// </summary>
+	protected SshSession Session { get; }
+
+	/// <summary>
+	/// Gets the client credentials, or null if this is the server side.
+	/// </summary>
+	protected SshClientCredentials? ClientCredentials { get; }
+
+	/// <summary>
+	/// Gets the server credentials, or null if this is the client side.
+	/// </summary>
+	protected SshServerCredentials? ServerCredentials { get; }
+
+	/// <summary>
+	/// Gets the secured stream established by this instance.
+	/// </summary>
+	protected SshStream? Stream { get; set; }
+
+	/// <summary>
+	/// Gets a completion source that completes when the stream is fully connected.
+	/// </summary>
+	/// <remarks>
+	/// Stream async read/write operations use this to wait for the connection.
+	/// </remarks>
+	protected TaskCompletionSource<bool> ConnectCompletion { get; } = new ();
+
+	/// <summary>
+	/// Event raised when the secure stream is authenticating the client or server.
+	/// </summary>
 	public event EventHandler<SshAuthenticatingEventArgs>? Authenticating;
 
 	/// <summary>
 	/// Gets a value indicating whether the session is closed.
 	/// </summary>
 	public bool IsClosed =>
-		this.session.IsClosed;
+		this.Session.IsClosed;
 
 	/// <summary>
-	/// Event that is rised when underlying ssh session is closed.
+	/// Event that is raised when underlying ssh session is closed.
 	/// </summary>
 	/// <remarks>
-	/// The event is rised before the session stream is closed.
+	/// The event is raised before the session stream is closed.
 	/// The stream will be closed after the event handler.
 	/// </remarks>
-	public EventHandler<SshSessionClosedEventArgs>? Closed
-	{
-		get;
-		set;
-	}
+	public event EventHandler<SshSessionClosedEventArgs>? Closed;
 
 	/// <summary>
 	/// Limits the amount of time that ConnectAsync() may wait for the initial
@@ -108,8 +133,8 @@ public class SecureStream : Stream
 	/// </summary>
 	public TimeSpan? ConnectTimeout
 	{
-		get => this.session.ConnectTimeout;
-		set => this.session.ConnectTimeout = value;
+		get => this.Session.ConnectTimeout;
+		set => this.Session.ConnectTimeout = value;
 	}
 
 	/// <summary>
@@ -131,18 +156,18 @@ public class SecureStream : Stream
 
 		try
 		{
-			if (this.serverCredentials != null)
+			if (this.ServerCredentials != null)
 			{
-				var serverSession = (SshServerSession)this.session;
-				serverSession.Credentials = this.serverCredentials;
+				var serverSession = (SshServerSession)this.Session;
+				serverSession.Credentials = this.ServerCredentials;
 			}
 
-			await this.session.ConnectAsync(this.transportStream, cancellation).ConfigureAwait(false);
+			await this.Session.ConnectAsync(this.TransportStream, cancellation).ConfigureAwait(false);
 
 			SshChannel? channel = null;
-			if (this.clientCredentials != null)
+			if (this.ClientCredentials != null)
 			{
-				var clientSession = (SshClientSession)this.session;
+				var clientSession = (SshClientSession)this.Session;
 				if (!(await clientSession.AuthenticateServerAsync(cancellation).ConfigureAwait(false)))
 				{
 					throw new SshConnectionException(
@@ -150,20 +175,20 @@ public class SecureStream : Stream
 				}
 
 				if (!(await clientSession.AuthenticateClientAsync(
-					this.clientCredentials, cancellation).ConfigureAwait(false)))
+					this.ClientCredentials, cancellation).ConfigureAwait(false)))
 				{
 					throw new SshConnectionException(
 						"Client authentication failed.", SshDisconnectReason.NoMoreAuthMethodsAvailable);
 				}
 
-				channel = await this.session.OpenChannelAsync(cancellation).ConfigureAwait(false);
+				channel = await this.Session.OpenChannelAsync(cancellation).ConfigureAwait(false);
 			}
 			else
 			{
-				channel = await this.session.AcceptChannelAsync(cancellation).ConfigureAwait(false);
+				channel = await this.Session.AcceptChannelAsync(cancellation).ConfigureAwait(false);
 			}
 
-			this.stream = CreateStream(channel);
+			this.Stream = CreateStream(channel);
 			channel.Closed += (_, _) =>
 			{
 				this.Dispose();
@@ -173,12 +198,12 @@ public class SecureStream : Stream
 		{
 			var disconnectReason = (ex as SshConnectionException)?.DisconnectReason ??
 				SshDisconnectReason.ProtocolError;
-			await this.session.CloseAsync(disconnectReason, ex).ConfigureAwait(false);
-			this.connectCompletion.TrySetException(ex);
+			await this.Session.CloseAsync(disconnectReason, ex).ConfigureAwait(false);
+			this.ConnectCompletion.TrySetException(ex);
 			throw;
 		}
 
-		this.connectCompletion.TrySetResult(true);
+		this.ConnectCompletion.TrySetResult(true);
 	}
 
 	/// <summary>
@@ -194,12 +219,12 @@ public class SecureStream : Stream
 	{
 		if (disposing)
 		{
-			this.stream?.Dispose();
-			this.session.Dispose();
+			this.Stream?.Dispose();
+			this.Session.Dispose();
 
 			// If the session has not connected yet, it doesn't know about the stream and won't dispose it.
 			// So we dispose it explicitly here.
-			this.transportStream.Dispose();
+			this.TransportStream.Dispose();
 		}
 
 		base.Dispose(disposing);
@@ -211,14 +236,14 @@ public class SecureStream : Stream
 	public async Task CloseAsync()
 	{
 		// Diposing the session closes the channel, which causes this SecureStream to be disposed.
-		await this.session.CloseAsync(
-			SshDisconnectReason.None, this.session.GetType().Name + " disposed").ConfigureAwait(false);
-		this.session.Dispose();
+		await this.Session.CloseAsync(
+			SshDisconnectReason.None, this.Session.GetType().Name + " disposed").ConfigureAwait(false);
+		this.Session.Dispose();
 
 #if !NETSTANDARD2_0 && !NET4
-		await this.transportStream.DisposeAsync().ConfigureAwait(false);
+		await this.TransportStream.DisposeAsync().ConfigureAwait(false);
 #else
-		this.transportStream.Dispose();
+		this.TransportStream.Dispose();
 #endif
 	}
 
@@ -226,7 +251,7 @@ public class SecureStream : Stream
 	/// The SSH software name and version of the remote client,
 	/// parsed when a connection is made to the server
 	/// </summary>
-	public SshVersionInfo? RemoteVersion => this.session.RemoteVersion;
+	public SshVersionInfo? RemoteVersion => this.Session.RemoteVersion;
 
 	private void OnSessionAuthenticating(object? sender, SshAuthenticatingEventArgs e)
 	{
@@ -235,7 +260,7 @@ public class SecureStream : Stream
 
 	private void OnSessionClosed(object? sender, SshSessionClosedEventArgs e)
 	{
-		this.session.Closed -= OnSessionClosed;
+		this.Session.Closed -= OnSessionClosed;
 		Closed?.Invoke(this, e);
 	}
 
@@ -245,11 +270,11 @@ public class SecureStream : Stream
 
 	public override void Flush()
 	{
-		this.stream?.Flush();
+		this.Stream?.Flush();
 	}
 
 	private SshStream ConnectedStream
-		=> this.stream ?? throw new InvalidOperationException("Stream is not connected.");
+		=> this.Stream ?? throw new InvalidOperationException("Stream is not connected.");
 
 	public override int Read(byte[] buffer, int offset, int count)
 	{
@@ -266,7 +291,7 @@ public class SecureStream : Stream
 	public override async Task<int> ReadAsync(
 		byte[] buffer, int offset, int count, CancellationToken cancellation)
 	{
-		await this.connectCompletion.Task.ConfigureAwait(false);
+		await this.ConnectCompletion.Task.ConfigureAwait(false);
 		return await ConnectedStream.ReadAsync(buffer, offset, count, cancellation)
 			.ConfigureAwait(false);
 	}
@@ -274,7 +299,7 @@ public class SecureStream : Stream
 	public override async Task WriteAsync(
 		byte[] buffer, int offset, int count, CancellationToken cancellation)
 	{
-		await this.connectCompletion.Task.ConfigureAwait(false);
+		await this.ConnectCompletion.Task.ConfigureAwait(false);
 		await ConnectedStream.WriteAsync(buffer, offset, count, cancellation)
 			.ConfigureAwait(false);
 	}
