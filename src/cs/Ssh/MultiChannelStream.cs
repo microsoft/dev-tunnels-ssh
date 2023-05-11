@@ -39,9 +39,6 @@ namespace Microsoft.DevTunnels.Ssh;
 /// </example>
 public class MultiChannelStream : IDisposable
 {
-	private readonly Stream transportStream;
-	private readonly SshSession session;
-
 	/// <summary>
 	/// Creates a new multi-channel stream over an underlying transport stream.
 	/// </summary>
@@ -49,20 +46,30 @@ public class MultiChannelStream : IDisposable
 	/// <param name="trace">Optional trace source for SSH protocol tracing.</param>
 	public MultiChannelStream(Stream transportStream, TraceSource? trace = null)
 	{
-		this.transportStream = transportStream ?? throw new ArgumentNullException(nameof(transportStream));
-		this.session = new SshSession(
+		this.TransportStream = transportStream ?? throw new ArgumentNullException(nameof(transportStream));
+		this.Session = new SshSession(
 			SshSessionConfiguration.NoSecurity,
 			trace ?? new TraceSource(nameof(MultiChannelStream)));
 
-		this.session.Closed += OnSessionClosed;
-		this.session.ChannelOpening += OnChannelOpening;
+		this.Session.Closed += OnSessionClosed;
+		this.Session.ChannelOpening += OnChannelOpening;
 	}
+
+	/// <summary>
+	/// Gets the underlying transport stream for the multi-channel stream.
+	/// </summary>
+	protected Stream TransportStream { get; }
+
+	/// <summary>
+	/// Gets the SSH session that implements the multi-channel protocol.
+	/// </summary>
+	protected SshSession Session { get; }
 
 	/// <summary>
 	/// Gets a value indicating whether the session is closed.
 	/// </summary>
 	public bool IsClosed =>
-		this.session.IsClosed;
+		this.Session.IsClosed;
 
 	/// <summary>
 	/// Gets or sets the maximum window size for channels within the multi-channel stream.
@@ -83,17 +90,13 @@ public class MultiChannelStream : IDisposable
 	public event EventHandler<SshChannelOpeningEventArgs>? ChannelOpening;
 
 	/// <summary>
-	/// Event that is rised when underlying ssh session is closed.
+	/// Event that is raised when underlying ssh session is closed.
 	/// </summary>
 	/// <remarks>
-	/// The event is rised before the session stream is closed.
+	/// The event is raised before the session stream is closed.
 	/// The stream will be closed after the event handler.
 	/// </remarks>
-	public EventHandler<SshSessionClosedEventArgs>? Closed
-	{
-		get;
-		set;
-	}
+	public event EventHandler<SshSessionClosedEventArgs>? Closed;
 
 	/// <summary>
 	/// Limits the amount of time that ConnectAsync() may wait for the initial
@@ -101,8 +104,8 @@ public class MultiChannelStream : IDisposable
 	/// </summary>
 	public TimeSpan? ConnectTimeout
 	{
-		get => this.session.ConnectTimeout;
-		set => this.session.ConnectTimeout = value;
+		get => this.Session.ConnectTimeout;
+		set => this.Session.ConnectTimeout = value;
 	}
 
 	/// <summary>
@@ -114,14 +117,14 @@ public class MultiChannelStream : IDisposable
 	/// error.</exception>
 	/// <exception cref="TimeoutException">The ConnectTimeout property is set and the initial
 	/// version exchange could not be completed within the timeout.</exception>
-	public Task ConnectAsync(CancellationToken cancellation = default)
+	public virtual Task ConnectAsync(CancellationToken cancellation = default)
 	{
 		// Activate the connection service (support for opening channels) before connecting.
 		// This ensures that a channel request immediately after connection can be handled.
 		// In a normal session this would be activated after key-exchange and authentication.
-		this.session.ActivateService<ConnectionService>();
+		this.Session.ActivateService<ConnectionService>();
 
-		return this.session.ConnectAsync(this.transportStream, cancellation);
+		return this.Session.ConnectAsync(this.TransportStream, cancellation);
 	}
 
 	/// <summary>
@@ -139,7 +142,7 @@ public class MultiChannelStream : IDisposable
 			TaskCreationOptions.RunContinuationsAsynchronously);
 		void OnSessionClosed(object? sender, SshSessionClosedEventArgs e) => tcs.TrySetResult(e.Reason);
 
-		this.session.Closed += OnSessionClosed;
+		this.Session.Closed += OnSessionClosed;
 
 		try
 		{
@@ -163,12 +166,12 @@ public class MultiChannelStream : IDisposable
 		{
 			var reason = exception is SshConnectionException connectionException ?
 				connectionException.DisconnectReason : SshDisconnectReason.ConnectionLost;
-			await this.session.CloseAsync(reason, exception).ConfigureAwait(false);
+			await this.Session.CloseAsync(reason, exception).ConfigureAwait(false);
 			throw;
 		}
 		finally
 		{
-			this.session.Closed -= OnSessionClosed;
+			this.Session.Closed -= OnSessionClosed;
 			await CloseAsync().ConfigureAwait(false);
 		}
 	}
@@ -218,7 +221,7 @@ public class MultiChannelStream : IDisposable
 		CancellationToken cancellation = default)
 	{
 		await ConnectAsync(cancellation).ConfigureAwait(false);
-		var channel = await this.session.AcceptChannelAsync(channelType, cancellation)
+		var channel = await this.Session.AcceptChannelAsync(channelType, cancellation)
 			.ConfigureAwait(false);
 		return channel;
 	}
@@ -267,18 +270,18 @@ public class MultiChannelStream : IDisposable
 	/// channel with the given type.</param>
 	/// <param name="cancellation">Optional cancellation token.</param>
 	/// <returns>The opened channel.</returns>
-	public async Task<SshChannel> OpenChannelAsync(
+	public virtual async Task<SshChannel> OpenChannelAsync(
 		string? channelType,
 		CancellationToken cancellation = default)
 	{
-		await this.session.ConnectAsync(this.transportStream, cancellation).ConfigureAwait(false);
+		await this.Session.ConnectAsync(this.TransportStream, cancellation).ConfigureAwait(false);
 
 		var openMessage = new ChannelOpenMessage
 		{
 			ChannelType = channelType,
 			MaxWindowSize = ChannelMaxWindowSize,
 		};
-		var channel = await this.session.OpenChannelAsync(openMessage, null, cancellation)
+		var channel = await this.Session.OpenChannelAsync(openMessage, null, cancellation)
 			.ConfigureAwait(false);
 		return channel;
 	}
@@ -305,26 +308,26 @@ public class MultiChannelStream : IDisposable
 	{
 		if (disposing)
 		{
-			this.session.Dispose();
+			this.Session.Dispose();
 
 			// If the session has not connected yet, it doesn't know about the stream and won't dispose it.
 			// So we dispose it explicitly here.
-			this.transportStream.Dispose();
+			this.TransportStream.Dispose();
 		}
 	}
 
 	/// <summary>
 	/// Close the SSH session with <see cref="SshDisconnectReason.None"/> reason and dispose the underlying transport stream.
 	/// </summary>
-	public async Task CloseAsync()
+	public virtual async Task CloseAsync()
 	{
-		await this.session.CloseAsync(SshDisconnectReason.None, this.session.GetType().Name + " disposed").ConfigureAwait(false);
-		this.session.Dispose();
+		await this.Session.CloseAsync(SshDisconnectReason.None, this.Session.GetType().Name + " disposed").ConfigureAwait(false);
+		this.Session.Dispose();
 
 #if !NETSTANDARD2_0 && !NET4
-		await this.transportStream.DisposeAsync().ConfigureAwait(false);
+		await this.TransportStream.DisposeAsync().ConfigureAwait(false);
 #else
-		this.transportStream.Dispose();
+		this.TransportStream.Dispose();
 #endif
 	}
 
@@ -332,7 +335,7 @@ public class MultiChannelStream : IDisposable
 	/// The SSH software name and version of the remote client,
 	/// parsed when a connection is made to the server
 	/// </summary>
-	public SshVersionInfo? RemoteVersion => this.session.RemoteVersion;
+	public SshVersionInfo? RemoteVersion => this.Session.RemoteVersion;
 
 	private void OnChannelOpening(object? sender, SshChannelOpeningEventArgs e)
 	{
@@ -346,8 +349,8 @@ public class MultiChannelStream : IDisposable
 
 	private void OnSessionClosed(object? sender, SshSessionClosedEventArgs e)
 	{
-		this.session.Closed -= OnSessionClosed;
-		this.session.ChannelOpening -= OnChannelOpening;
+		this.Session.Closed -= OnSessionClosed;
+		this.Session.ChannelOpening -= OnChannelOpening;
 		Closed?.Invoke(this, e);
 	}
 }

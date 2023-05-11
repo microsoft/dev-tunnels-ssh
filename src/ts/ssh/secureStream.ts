@@ -32,13 +32,13 @@ import { PromiseCompletionSource } from './util/promiseCompletionSource';
  * before beginning to send and receive data.
  */
 export class SecureStream extends Duplex implements Disposable {
-	private readonly session: SshSession;
-	private readonly clientCredentials: SshClientCredentials | null = null;
-	private readonly serverCredentials: SshServerCredentials | null = null;
-	private readonly connectCompletion = new PromiseCompletionSource<SshStream>();
-	private stream?: SshStream;
+	protected readonly session: SshSession;
+	protected readonly clientCredentials: SshClientCredentials | null = null;
+	protected readonly serverCredentials: SshServerCredentials | null = null;
+	protected readonly connectCompletion = new PromiseCompletionSource<SshStream>();
+	protected stream?: SshStream;
 	private disposed: boolean = false;
-	private disposables: Disposable[] = [];
+	protected disposables: Disposable[] = [];
 
 	/**
 	 * Creates a new multi-channel stream over an underlying transport stream.
