@@ -749,20 +749,20 @@ export class PortForwardingService extends SshService {
 		forwardedPort: number,
 		cancellation?: CancellationToken,
 	): Promise<boolean> {
-		if (this.acceptLocalConnectionsForForwardedPorts) {
-			const forwarder = this.localForwarders.get(forwardedPort);
-			if (!forwarder) {
-				return false;
-			}
-
+		const forwarder = this.localForwarders.get(forwardedPort);
+		if (forwarder) {
 			this.localForwarders.delete(forwardedPort);
 			forwarder.dispose();
 			return true;
-		} else {
-			const port = new ForwardedPort(forwardedPort, forwardedPort, true);
+		}
+
+		const port = new ForwardedPort(forwardedPort, forwardedPort, true);
+		if (this.remoteForwardedPorts.has(port)) {
 			this.remoteForwardedPorts.removePort(port);
 			return true;
 		}
+
+		return false;
 	}
 
 	protected async onChannelOpening(
