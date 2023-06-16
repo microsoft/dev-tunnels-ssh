@@ -784,9 +784,8 @@ public class PortForwardingService : SshService
 		}
 
 		var port = new ForwardedPort(forwardedPort, forwardedPort, isRemote: true);
-		if (RemoteForwardedPorts.Contains(port))
+		if (RemoteForwardedPorts.RemovePort(port))
 		{
-			RemoteForwardedPorts.RemovePort(port);
 			return Task.FromResult(true);
 		}
 
