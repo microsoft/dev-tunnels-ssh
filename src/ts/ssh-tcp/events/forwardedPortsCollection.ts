@@ -120,13 +120,14 @@ export class ForwardedPortsCollection implements ReadonlySet<ForwardedPort> {
 	}
 
 	/* @internal */
-	public removePort(port: ForwardedPort): void {
+	public removePort(port: ForwardedPort): boolean {
 		if (!this.has(port)) {
-			throw new Error(`Port ${port} is not in the collection.`);
+			return false;
 		}
 
 		this.portChannelMap.delete(port.toString());
 		this.portRemovedEmitter.fire(new ForwardedPortEventArgs(port));
+		return true;
 	}
 
 	/* @internal */

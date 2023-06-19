@@ -1414,4 +1414,41 @@ public class PortForwardingTests : IDisposable
 			localServer.Stop();
 		}
 	}
+
+	[Fact]
+	public async Task ReforwardingTheSamePortWhenNotAcceptLocalConnectionsForForwardedPorts()
+	{
+		await this.sessionPair.ConnectAsync();
+
+		this.sessionPair.ServerSession.Request += (_, e) => e.IsAuthorized = true;
+
+		var clientPfs = this.sessionPair.ClientSession.ActivateService<PortForwardingService>();
+		var serverPfs = this.sessionPair.ServerSession.ActivateService<PortForwardingService>();
+		serverPfs.AcceptLocalConnectionsForForwardedPorts = false;
+
+		var forwarder1 = await this.sessionPair.ClientSession.ForwardFromRemotePortAsync(IPAddress.Loopback, TestPort1);
+		Assert.NotNull(forwarder1);
+
+		forwarder1.Dispose();
+
+		// Wait until a connection failure indicates forwarding was successfully cancelled.
+		await TaskExtensions.WaitUntil(async () =>
+		{
+			var remoteClient = new TcpClient();
+			try
+			{
+				await remoteClient.ConnectAsync(IPAddress.Loopback, TestPort1);
+			}
+			catch (SocketException)
+			{
+				return true;
+			}
+
+			remoteClient.Close();
+			return false;
+		}).WithTimeout(Timeout);
+
+		var forwarder2 = await this.sessionPair.ClientSession.ForwardFromRemotePortAsync(IPAddress.Loopback, TestPort1);
+		Assert.NotNull(forwarder2);
+	}
 }

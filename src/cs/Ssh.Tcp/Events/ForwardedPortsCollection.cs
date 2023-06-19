@@ -83,14 +83,15 @@ public class ForwardedPortsCollection : IReadOnlyCollection<ForwardedPort>
 		PortAdded?.Invoke(this, new ForwardedPortEventArgs(port));
 	}
 
-	internal void RemovePort(ForwardedPort port)
+	internal bool RemovePort(ForwardedPort port)
 	{
 		if (!this.portChannelMap.TryRemove(port, out _))
 		{
-			throw new InvalidOperationException($"Port {port} is not in the collection.");
+			return false;
 		}
 
 		PortRemoved?.Invoke(this, new ForwardedPortEventArgs(port));
+		return true;
 	}
 
 	internal void AddChannel(ForwardedPort port, SshChannel channel)

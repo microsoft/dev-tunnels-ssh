@@ -553,7 +553,7 @@ export class PortForwardingService extends SshService {
 			cancellation,
 		);
 		if (!forwardedStream) {
-			channel.close().catch((e) => {});
+			channel.close().catch((e) => { });
 			throw new SshChannelError(
 				'The connection to the forwarded port was rejected by the connecting event-handler.',
 			);
@@ -750,14 +750,18 @@ export class PortForwardingService extends SshService {
 		cancellation?: CancellationToken,
 	): Promise<boolean> {
 		const forwarder = this.localForwarders.get(forwardedPort);
-		if (!forwarder) {
-			return false;
+		if (forwarder) {
+			this.localForwarders.delete(forwardedPort);
+			forwarder.dispose();
+			return true;
 		}
 
-		this.localForwarders.delete(forwardedPort);
-		forwarder.dispose();
+		const port = new ForwardedPort(forwardedPort, forwardedPort, true);
+		if (this.remoteForwardedPorts.removePort(port)) {
+			return true;
+		}
 
-		return true;
+		return false;
 	}
 
 	protected async onChannelOpening(
@@ -790,7 +794,7 @@ export class PortForwardingService extends SshService {
 						TraceLevel.Error,
 						SshTraceEventIds.portForwardRequestInvalid,
 						'PortForwardingService received forwarding channel ' +
-							`for ${remoteEndPoint} that was not requested.`,
+						`for ${remoteEndPoint} that was not requested.`,
 					);
 					request.failureReason = SshChannelOpenFailureReason.connectFailed;
 					request.failureDescription = 'Forwarding channel was not requested.';

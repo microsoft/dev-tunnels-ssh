@@ -772,19 +772,24 @@ public class PortForwardingService : SshService
 	{
 		cancellation.ThrowIfCancellationRequested();
 
-		LocalPortForwarder? forwarder;
 		lock (DisposablesLock)
 		{
-			if (!this.localForwarders.TryGetValue(forwardedPort, out forwarder))
+			LocalPortForwarder? forwarder;
+			if (this.localForwarders.TryGetValue(forwardedPort, out forwarder))
 			{
-				return Task.FromResult(false);
+				localForwarders.Remove(forwardedPort);
+				forwarder.Dispose();
+				return Task.FromResult(true);
 			}
-
-			localForwarders.Remove(forwardedPort);
 		}
 
-		forwarder.Dispose();
-		return Task.FromResult(true);
+		var port = new ForwardedPort(forwardedPort, forwardedPort, isRemote: true);
+		if (RemoteForwardedPorts.RemovePort(port))
+		{
+			return Task.FromResult(true);
+		}
+
+		return Task.FromResult(false);
 	}
 
 	protected override async Task OnChannelOpeningAsync(
