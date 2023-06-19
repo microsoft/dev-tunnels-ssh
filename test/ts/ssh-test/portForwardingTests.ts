@@ -18,6 +18,7 @@ import {
 	SshStream,
 } from '@microsoft/dev-tunnels-ssh';
 import {
+	ForwardedPort,
 	ForwardedPortChannelEventArgs,
 	ForwardedPortEventArgs,
 	PortForwardChannelOpenMessage,
@@ -49,7 +50,7 @@ const nodeMajorVersion = parseInt(process.versions.node.split('.')[0]);
 const loopback = nodeMajorVersion > 16 ? loopbackV6 : loopbackV4;
 
 class TestTcpListenerFactory implements TcpListenerFactory {
-	public constructor(public readonly localPortOverride: number) {}
+	public constructor(public readonly localPortOverride: number) { }
 
 	public async createTcpListener(
 		localIPAddress: string,
@@ -135,7 +136,7 @@ export class PortForwardingTests {
 		assert.equal(requestMessage?.requestType, 'tcpip-forward');
 		assert(
 			requestMessage instanceof
-				(isRegistered ? PortForwardRequestMessage : SessionRequestMessage),
+			(isRegistered ? PortForwardRequestMessage : SessionRequestMessage),
 		);
 		if (isRegistered) {
 			assert.equal((<PortForwardRequestMessage>requestMessage).port, testPort);
@@ -1029,7 +1030,7 @@ export class PortForwardingTests {
 		let localStream;
 		clientSession.onChannelOpening((e) => {
 			localStream = new SshStream(e.channel);
-        });
+		});
 
 		const serverPfs = serverSession.activateService(PortForwardingService);
 		serverPfs.acceptLocalConnectionsForForwardedPorts = false;
@@ -1300,5 +1301,39 @@ export class PortForwardingTests {
 		assert.equal(serverPfs.localForwardedPorts.size, 0);
 		assert(!clientRemotePortRemovedEvent);
 		assert(!serverLocalPortRemovedEvent);
+	}
+
+	@test
+	public async reforwardingTheSamePortWhenNotAcceptLocalConnectionsForForwardedPorts(): Promise<void> {
+		const testPort = await getAvailablePort();
+		const [clientSession, serverSession] = await this.createSessions();
+
+		await connectSessionPair(clientSession, serverSession);
+		serverSession.onRequest((e) => e.isAuthorized = true);
+
+		const clientPfs = clientSession.activateService(PortForwardingService);
+		const serverPfs = serverSession.activateService(PortForwardingService);
+		serverPfs.acceptLocalConnectionsForForwardedPorts = false;
+
+		const forwarder1 = await clientPfs.forwardFromRemotePort(loopbackV4, testPort);
+		assert(forwarder1);
+
+		forwarder1.dispose();
+
+		// Wait until a connection failure indicates forwarding was successfully cancelled.
+		await until(async () => {
+			let remoteClient: net.Socket;
+			try {
+				remoteClient = await connectSocket(loopbackV4, forwarder1!.remotePort);
+			} catch (e) {
+				return true;
+			}
+
+			await endSocket(remoteClient);
+			return false;
+		}, timeoutMs);
+
+		const forwarder2 = await clientPfs.forwardFromRemotePort(loopbackV4, testPort);
+		assert(forwarder2);
 	}
 }
