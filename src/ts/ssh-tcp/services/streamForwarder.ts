@@ -38,7 +38,7 @@ export class StreamForwarder implements Disposable {
 			}
 
 			this.trace(
-				TraceLevel.Info,
+				TraceLevel.Verbose,
 				SshTraceEventIds.portForwardChannelClosed,
 				`Stream forwarder ${abort ? 'aborted' : 'closed'} connection.`,
 			);

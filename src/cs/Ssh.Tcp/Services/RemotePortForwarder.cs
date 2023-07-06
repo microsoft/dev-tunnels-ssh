@@ -144,7 +144,7 @@ public class RemotePortForwarder : RemotePortConnector
 		var traceMessage = $"{nameof(PortForwardingService)} forwarded channel " +
 			$"#{channel.ChannelId} connection to {localHost}:{localPort}.";
 		trace.TraceEvent(
-			TraceEventType.Information,
+			TraceEventType.Verbose,
 			SshTraceEventIds.PortForwardConnectionOpened,
 			traceMessage);
 		pfs.AddStreamForwarder(streamForwarder);
