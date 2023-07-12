@@ -89,6 +89,9 @@ export class ForwardedPortsCollection implements ReadonlySet<ForwardedPort> {
 	private readonly portAddedEmitter = new Emitter<ForwardedPortEventArgs>();
 	public readonly onPortAdded = this.portAddedEmitter.event;
 
+	private readonly portUpdatedEmitter = new Emitter<ForwardedPortEventArgs>();
+	public readonly onPortUpdated = this.portUpdatedEmitter.event;
+
 	private readonly portRemovedEmitter = new Emitter<ForwardedPortEventArgs>();
 	public readonly onPortRemoved = this.portRemovedEmitter.event;
 
@@ -110,9 +113,9 @@ export class ForwardedPortsCollection implements ReadonlySet<ForwardedPort> {
 	}
 
 	/* @internal */
-	public addPort(port: ForwardedPort): void {
+	public addOrUpdatePort(port: ForwardedPort): void {
 		if (this.has(port)) {
-			throw new Error(`Port ${port} is already in the collection.`);
+			this.portUpdatedEmitter.fire(new ForwardedPortEventArgs(port));
 		}
 
 		this.portChannelMap.set(port.toString(), [port, []]);

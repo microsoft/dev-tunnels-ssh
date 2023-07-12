@@ -64,6 +64,9 @@ public class ForwardedPortsCollection : IReadOnlyCollection<ForwardedPort>
 	/// <summary>Event raised when a port is added to the collection.</summary>
 	public event EventHandler<ForwardedPortEventArgs>? PortAdded;
 
+	/// <summary>Event raised when a port in the collection is updated.</summary>
+	public event EventHandler<ForwardedPortEventArgs>? PortUpdated;
+
 	/// <summary>Event raised when a port is removed from the collection.</summary>
 	public event EventHandler<ForwardedPortEventArgs>? PortRemoved;
 
@@ -73,14 +76,16 @@ public class ForwardedPortsCollection : IReadOnlyCollection<ForwardedPort>
 	/// <summary>Event raised when a channel is removed from the collection.</summary>
 	public event EventHandler<ForwardedPortChannelEventArgs>? PortChannelRemoved;
 
-	internal void AddPort(ForwardedPort port)
+	internal void AddOrUpdatePort(ForwardedPort port)
 	{
-		if (!this.portChannelMap.TryAdd(port, new ConcurrentDictionary<uint, SshChannel>()))
+		if (this.portChannelMap.TryAdd(port, new ConcurrentDictionary<uint, SshChannel>()))
 		{
-			throw new InvalidOperationException($"Port {port} is already in the collection.");
+			PortAdded?.Invoke(this, new ForwardedPortEventArgs(port));
 		}
-
-		PortAdded?.Invoke(this, new ForwardedPortEventArgs(port));
+		else
+		{
+			PortUpdated?.Invoke(this, new ForwardedPortEventArgs(port));
+		}
 	}
 
 	internal void RemovePort(ForwardedPort port)

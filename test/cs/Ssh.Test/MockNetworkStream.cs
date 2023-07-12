@@ -80,8 +80,8 @@ class MockNetworkStream : Stream
 
 		// Retry the read when getting a zero-length result.
 		// This accounts for a bug in the pipe stream pair used for unit-testing.
-		// These streams return a zero-lengh result when there is no available data,
-		// whereas a network stream would not return a zero-length result until graefully closed.
+		// These streams return a zero-length result when there is no available data,
+		// whereas a network stream would not return a zero-length result until gracefully closed.
 		int result = 0;
 		for (int i = 0; result == 0 && i < 2; i++)
 		{

@@ -299,7 +299,7 @@ public class PortForwardingService : SshService
 		}
 
 		var forwardedPort = new ForwardedPort(localPort, remotePort, isRemote: false);
-		LocalForwardedPorts.AddPort(forwardedPort);
+		LocalForwardedPorts.AddOrUpdatePort(forwardedPort);
 		forwarder.Disposed += (_, _) =>
 		{
 			LocalForwardedPorts.RemovePort(forwardedPort);
@@ -436,7 +436,7 @@ public class PortForwardingService : SshService
 		}
 
 		var forwardedPort = new ForwardedPort(localPort: null, remotePort, isRemote: false);
-		LocalForwardedPorts.AddPort(forwardedPort);
+		LocalForwardedPorts.AddOrUpdatePort(forwardedPort);
 		streamer.Disposed += (_, _) =>
 		{
 			LocalForwardedPorts.RemovePort(forwardedPort);
@@ -626,10 +626,12 @@ public class PortForwardingService : SshService
 		else if (request.RequestType == PortForwardRequestType && portForwardRequest.Port != 0 &&
 			this.localForwarders.ContainsKey((int)portForwardRequest.Port))
 		{
-			string message = $"{nameof(PortForwardingService)} blocking attempt to re-forward " +
-				$"already-forwarded port {portForwardRequest.Port}.";
+			// This may happen when re-connecting, so that the forwarded port status gets updated
+			// or refreshed. The RemoteForwardedPorts collection will raise a PortUpdated event below.
+			string message = $"{nameof(PortForwardingService)} port {portForwardRequest.Port} " +
+				"is already forwarded.";
 			Session.Trace.TraceEvent(
-				TraceEventType.Warning,
+				TraceEventType.Verbose,
 				SshTraceEventIds.PortForwardRequestInvalid,
 				message);
 		}
@@ -691,7 +693,7 @@ public class PortForwardingService : SshService
 					localPort: localPort ?? (int)portForwardResponse.Port,
 					remotePort: (int)portForwardResponse.Port,
 					isRemote: true);
-				RemoteForwardedPorts.AddPort(forwardedPort);
+				RemoteForwardedPorts.AddOrUpdatePort(forwardedPort);
 
 				return Task.CompletedTask;
 			};
@@ -989,7 +991,9 @@ public class PortForwardingService : SshService
 				if (this.disposed) return;
 				this.disposed = true;
 
-				disposables.AddRange(this.streamForwarders);
+				// Do not dispose StreamForwarder objects here, since they may be transferred to
+				// other sessions when reconnecting. The StreamForwarders will self-dispose when
+				// their underlying transport streams are closed.
 				this.streamForwarders.Clear();
 
 				disposables.AddRange(this.localForwarders.Values);

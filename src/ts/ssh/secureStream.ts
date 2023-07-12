@@ -7,7 +7,7 @@ import { NodeStream, Stream } from './streams';
 import { SshChannel } from './sshChannel';
 import { SshStream } from './sshStream';
 import { SshSession } from './sshSession';
-import { SshSessionConfiguration } from './sshSessionConfiguration';
+import { SshProtocolExtensionNames, SshSessionConfiguration } from './sshSessionConfiguration';
 import { SshDisconnectReason } from './messages/transportMessages';
 import { SshSessionClosedEventArgs } from './events/sshSessionClosedEventArgs';
 import { Trace, TraceLevel, SshTraceEventIds } from './trace';
@@ -15,7 +15,7 @@ import { SshClientCredentials, SshServerCredentials } from './sshCredentials';
 import { SshClientSession } from './sshClientSession';
 import { SshServerSession } from './sshServerSession';
 import { SshAuthenticatingEventArgs } from './events/sshAuthenticatingEventArgs';
-import { SshConnectionError } from './errors';
+import { ObjectDisposedError, SshConnectionError } from './errors';
 import { Duplex } from 'stream';
 import { PromiseCompletionSource } from './util/promiseCompletionSource';
 
@@ -35,18 +35,23 @@ export class SecureStream extends Duplex implements Disposable {
 	protected readonly session: SshSession;
 	protected readonly clientCredentials: SshClientCredentials | null = null;
 	protected readonly serverCredentials: SshServerCredentials | null = null;
-	protected readonly connectCompletion = new PromiseCompletionSource<SshStream>();
+	protected readonly connectCompletion = new PromiseCompletionSource<SshStream | null>();
 	protected stream?: SshStream;
 	private disposed: boolean = false;
 	protected disposables: Disposable[] = [];
 
 	/**
-	 * Creates a new multi-channel stream over an underlying transport stream.
+	 * Creates a new encrypted and authenticated stream over an underlying transport stream.
 	 * @param transportStream Stream that is used to multiplex all the channels.
+	 * @param credentials Client or server credentials for authenticating the secure connection.
+	 * @param reconnectableSessions Optional parameter that enables the stream to be reconnected
+	 * with a new transport stream after a temporary disconnection. For a stream client it is
+	 * a boolean value; for a stream server it must be an array.
 	 */
 	public constructor(
-		private readonly transportStream: Stream | Duplex,
+		private transportStream: Stream | Duplex,
 		credentials: SshClientCredentials | SshServerCredentials,
+		reconnectableSessions?: SshServerSession[] | boolean,
 	) {
 		super({
 			write(
@@ -56,6 +61,7 @@ export class SecureStream extends Duplex implements Disposable {
 				cb: (error?: Error | null) => void,
 			): void {
 				this.connectCompletion.promise.then((stream) => {
+					if (!stream) throw new ObjectDisposedError('SecureStream');
 					// eslint-disable-next-line no-underscore-dangle
 					stream._write(chunk, encoding, cb);
 				}, cb);
@@ -66,12 +72,14 @@ export class SecureStream extends Duplex implements Disposable {
 				cb: (error?: Error | null) => void,
 			): void {
 				this.connectCompletion.promise.then((stream) => {
+					if (!stream) throw new ObjectDisposedError('SecureStream');
 					// eslint-disable-next-line no-underscore-dangle
 					stream._writev!(chunks, cb);
 				}, cb);
 			},
 			final(this: SecureStream, cb: (err?: Error | null) => void): void {
 				this.connectCompletion.promise.then((stream) => {
+					if (!stream) throw new ObjectDisposedError('SecureStream');
 					// eslint-disable-next-line no-underscore-dangle
 					stream._final(cb);
 				}, cb);
@@ -79,8 +87,12 @@ export class SecureStream extends Duplex implements Disposable {
 			read(this: SecureStream, size: number): void {
 				this.connectCompletion.promise.then(
 					(stream) => {
-						// eslint-disable-next-line no-underscore-dangle
-						stream._read(size);
+						if (!stream) {
+							this.push(null); // EOF
+						} else {
+							// eslint-disable-next-line no-underscore-dangle
+							stream._read(size);
+						}
 					},
 					(e) => {
 						// The error will be thrown from the connect() method.
@@ -93,17 +105,35 @@ export class SecureStream extends Duplex implements Disposable {
 		if (!credentials) throw new TypeError('Client or server credentials are required.');
 
 		const sessionConfig = new SshSessionConfiguration(true);
+		if (reconnectableSessions) {
+			sessionConfig.protocolExtensions.push(SshProtocolExtensionNames.sessionReconnect);
+		}
 
 		if ('username' in credentials) {
+			if (
+				typeof reconnectableSessions !== 'undefined' &&
+				typeof reconnectableSessions !== 'boolean'
+			) {
+				throw new TypeError('SecureStream client reconnectable sessions must be a boolean.');
+			}
+
 			this.clientCredentials = credentials;
 			this.session = new SshClientSession(sessionConfig);
 		} else if (credentials.publicKeys) {
+			if (
+				typeof reconnectableSessions !== 'undefined' &&
+				!Array.isArray(reconnectableSessions)
+			) {
+				throw new TypeError('SecureStream server reconnectable sessions must be an array.');
+			}
+
 			this.serverCredentials = <SshServerCredentials>credentials;
-			this.session = new SshServerSession(sessionConfig);
+			this.session = new SshServerSession(sessionConfig, reconnectableSessions);
 		} else {
 			throw new TypeError('Client or server credentials are required.');
 		}
 
+		this.session.onDisconnected(this.onSessionDisconnected, this, this.disposables);
 		this.session.onClosed(this.onSessionClosed, this, this.disposables);
 	}
 
@@ -118,6 +148,9 @@ export class SecureStream extends Duplex implements Disposable {
 	public get isClosed(): boolean {
 		return this.disposed || this.session.isClosed;
 	}
+
+	private readonly disconnectedEmitter = new Emitter<void>();
+	public readonly onDisconnected = this.disconnectedEmitter.event;
 
 	private readonly closedEmitter = new Emitter<SshSessionClosedEventArgs>();
 	public readonly onClosed = this.closedEmitter.event;
@@ -137,6 +170,7 @@ export class SecureStream extends Duplex implements Disposable {
 	 * @param cancellation optional cancellation token.
 	 */
 	public async connect(cancellation?: CancellationToken) {
+		let sessionConnected = false;
 		try {
 			if (this.serverCredentials) {
 				const serverSession = <SshServerSession>this.session;
@@ -149,6 +183,7 @@ export class SecureStream extends Duplex implements Disposable {
 			}
 
 			await this.session.connect(stream, cancellation);
+			sessionConnected = true;
 
 			let channel: SshChannel | null = null;
 			if (this.clientCredentials) {
@@ -182,12 +217,41 @@ export class SecureStream extends Duplex implements Disposable {
 			this.connectCompletion.resolve(this.stream);
 		} catch (e) {
 			if (!(e instanceof Error)) throw e;
-			let disconnectReason = e instanceof SshConnectionError ? e.reason : undefined;
-			disconnectReason ??= SshDisconnectReason.protocolError;
-			await this.session.close(disconnectReason, e.message, e);
-			this.connectCompletion.reject(e);
-			throw e;
+			if (e instanceof ObjectDisposedError && this.session.isClosed) {
+				// The session was closed while waiting for the channel.
+				// This can happen in reconnect scenarios.
+				this.connectCompletion.resolve(null);
+			} else {
+				let disconnectReason = e instanceof SshConnectionError ? e.reason : undefined;
+				disconnectReason ??= SshDisconnectReason.protocolError;
+				await this.session.close(disconnectReason, e.message, e);
+				this.connectCompletion.reject(e);
+				throw e;
+			}
 		}
+	}
+
+	/**
+	 * Re-initiates the SSH session over a NEW transport stream by exchanging initial messages
+	 * with the remote server. Waits for the secure reconnect handshake to complete. Additional
+	 * message processing is kicked off as a background task chain.
+	 *
+	 * Applies only to a secure stream client. (The secure stream server handles reconnections
+	 * automatically during the session handshake.)
+	 */
+	public async reconnect(transportStream: Stream | Duplex, cancellation?: CancellationToken) {
+		if (!(this.session instanceof SshClientSession)) {
+			throw new Error('Cannot reconnect SecureStream server.');
+		}
+
+		if (!transportStream) throw new TypeError('A transport stream is required.');
+		this.transportStream = transportStream;
+
+		let stream = this.transportStream;
+		if (stream instanceof Duplex) {
+			stream = new NodeStream(stream);
+		}
+		await this.session.reconnect(stream, cancellation);
 	}
 
 	/**
@@ -199,12 +263,16 @@ export class SecureStream extends Duplex implements Disposable {
 
 	public dispose() {
 		if (!this.disposed) {
+			const sessionWasConnected = this.session.isConnected || this.session.isClosed;
+
 			this.disposed = true;
 			this.session.dispose();
 			this.unsubscribe();
 
 			try {
-				if (this.transportStream) {
+				// If the session did not connect yet, it doesn't know about the stream and
+				// won't dispose it. So dispose it here.
+				if (!sessionWasConnected && this.transportStream) {
 					if (this.transportStream instanceof Duplex) {
 						this.transportStream.end();
 						this.transportStream.destroy();
@@ -247,6 +315,10 @@ export class SecureStream extends Duplex implements Disposable {
 				await this.transportStream.close();
 			}
 		}
+	}
+
+	private onSessionDisconnected() {
+		this.disconnectedEmitter.fire();
 	}
 
 	private onSessionClosed(e: SshSessionClosedEventArgs) {

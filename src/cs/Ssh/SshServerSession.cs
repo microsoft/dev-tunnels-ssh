@@ -308,7 +308,7 @@ public class SshServerSession : SshSession
 		Trace.TraceEvent(
 			TraceEventType.Information,
 			SshTraceEventIds.ServerSessionReconnecting,
-			$"{reconnectSession} reconnected. Re-sent {messagesToResend.Count} dropped messages.");
+			$"{this} reconnected {reconnectSession}. Re-sent {messagesToResend.Count} dropped messages.");
 
 		// Notify event listeners about the successful reconnection.
 		reconnectSession.Reconnected?.Invoke(reconnectSession, EventArgs.Empty);

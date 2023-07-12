@@ -119,6 +119,14 @@ internal class StreamForwarder : IDisposable
 			{
 				break;
 			}
+			catch (IOException) when (this.disposed)
+			{
+				return false;
+			}
+			catch (ObjectDisposedException) when (this.disposed)
+			{
+				return false;
+			}
 			catch (IOException ex)
 			{
 				readException = ex;
@@ -149,7 +157,7 @@ internal class StreamForwarder : IDisposable
 			}
 			else if (readException == null)
 			{
-				string message = "Channel forwarder reached end of stream.";
+				string message = $"Stream forwarder reached end of stream.";
 				Trace.TraceEvent(
 					TraceEventType.Verbose, SshTraceEventIds.ChannelClosed, message);
 				await destination.FlushAsync(CancellationToken.None).ConfigureAwait(false);
@@ -157,15 +165,22 @@ internal class StreamForwarder : IDisposable
 			}
 			else
 			{
-				string message = $"Channel forwarder stream read error: {readException.Message}";
+				string message = $"Stream forwarder stream read error: {readException.Message}";
 				Trace.TraceEvent(TraceEventType.Verbose, SshTraceEventIds.ChannelClosed, message);
+				Trace.TraceEvent(TraceEventType.Verbose, SshTraceEventIds.ChannelClosed, readException.ToString());
 				await destination.FlushAsync(CancellationToken.None).ConfigureAwait(false);
 				destination.Close();
 				return false;
 			}
 		}
 
-		destination.Close();
+		if (!this.disposed)
+		{
+			this.disposed = true;
+			destination.Close();
+			Closed?.Invoke(this, EventArgs.Empty);
+		}
+
 		return true;
 	}
 
@@ -194,21 +209,21 @@ internal class StreamForwarder : IDisposable
 			Trace.TraceEvent(
 				TraceEventType.Information,
 				SshTraceEventIds.PortForwardChannelClosed,
-				$"Channel forwarder {(abort ? "aborted" : "closed")} connection.");
+				$"Stream forwarder {(abort ? "aborted" : "closed")} connection.");
 		}
 		catch (Exception ex)
 		{
 			Trace.TraceEvent(
 				TraceEventType.Warning,
 				SshTraceEventIds.UnknownError,
-				$"{nameof(PortForwardingService)} unexpected error clising connection: {ex}");
+				$"{nameof(PortForwardingService)} unexpected error closing connection: {ex}");
 		}
 
 		Closed?.Invoke(this, EventArgs.Empty);
 	}
 
 	/// <summary>
-	/// Diposes the service; called when the session is disposing.
+	/// Disposes the service; called when the session is disposing.
 	/// </summary>
 	public void Dispose()
 	{

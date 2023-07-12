@@ -27,6 +27,7 @@ import {
 import { PromiseCompletionSource } from './util/promiseCompletionSource';
 import { SshMessage } from './messages/sshMessage';
 import { SshChannelError } from './errors';
+import { SshTraceEventIds, TraceLevel } from './trace';
 
 /**
  * Extension methods for piping sessions and channels.
@@ -95,13 +96,13 @@ export class PipeExtensions {
 		channel.onClosed((e) => {
 			if (!closed) {
 				closed = true;
-				endCompletion.resolve(PipeExtensions.forwardChannelClose(toChannel, e));
+				endCompletion.resolve(PipeExtensions.forwardChannelClose(channel, toChannel, e));
 			}
 		});
 		toChannel.onClosed((e) => {
 			if (!closed) {
 				closed = true;
-				endCompletion.resolve(PipeExtensions.forwardChannelClose(channel, e));
+				endCompletion.resolve(PipeExtensions.forwardChannelClose(toChannel, channel, e));
 			}
 		});
 
@@ -119,10 +120,9 @@ export class PipeExtensions {
 		// Anyway, it's better to forward a no-reply message as another no-reply message, using
 		// `SshSession.request()` instead.
 		if (!e.request.wantReply) {
-			return toSession.request(
-				e.request,
-				cancellation,
-			).then(() => new SessionRequestSuccessMessage());
+			return toSession
+				.request(e.request, cancellation)
+				.then(() => new SessionRequestSuccessMessage());
 		}
 		return toSession.requestResponse(
 			e.request,
@@ -189,18 +189,25 @@ export class PipeExtensions {
 	}
 
 	private static async forwardChannelClose(
-		channel: SshChannel,
+		fromChannel: SshChannel,
+		toChannel: SshChannel,
 		e: SshChannelClosedEventArgs,
 	): Promise<void> {
+		const message =
+			`Piping channel closure.\n` +
+			`Source: ${fromChannel.session} ${fromChannel}\n` +
+			`Destination: ${toChannel.session} ${toChannel}\n`;
+		toChannel.session.trace(TraceLevel.Verbose, SshTraceEventIds.channelClosed, message);
+
 		if (e.error) {
-			channel.close(e.error);
+			toChannel.close(e.error);
 			return Promise.resolve();
 		} else if (e.exitSignal) {
-			return channel.close(e.exitSignal, e.errorMessage);
+			return toChannel.close(e.exitSignal, e.errorMessage);
 		} else if (typeof e.exitStatus === 'number') {
-			return channel.close(e.exitStatus);
+			return toChannel.close(e.exitStatus);
 		} else {
-			return channel.close();
+			return toChannel.close();
 		}
 	}
 }

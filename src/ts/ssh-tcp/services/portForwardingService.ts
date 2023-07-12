@@ -327,7 +327,7 @@ export class PortForwardingService extends SshService {
 		this.remoteConnectors.set(remotePort, forwarder);
 
 		const forwardedPort = new ForwardedPort(localPort, remotePort, false);
-		this.localForwardedPorts.addPort(forwardedPort);
+		this.localForwardedPorts.addOrUpdatePort(forwardedPort);
 		forwarder.onDisposed(() => {
 			this.localForwardedPorts.removePort(forwardedPort);
 			this.remoteConnectors.delete(remotePort);
@@ -466,7 +466,7 @@ export class PortForwardingService extends SshService {
 		this.remoteConnectors.set(remotePort, streamer);
 
 		const forwardedPort = new ForwardedPort(null, remotePort, false);
-		this.localForwardedPorts.addPort(forwardedPort);
+		this.localForwardedPorts.addOrUpdatePort(forwardedPort);
 		streamer.onDisposed(() => {
 			this.localForwardedPorts.removePort(forwardedPort);
 			this.remoteConnectors.delete(remotePort);
@@ -630,11 +630,11 @@ export class PortForwardingService extends SshService {
 			portForwardRequest.port !== 0 &&
 			this.localForwarders.has(portForwardRequest.port)
 		) {
-			const message =
-				'PortForwardingService blocking attempt to re-forward ' +
-				`already-forwarded port ${portForwardRequest.port}.`;
+			// This may happen when re-connecting, so that the forwarded port status gets updated
+			// or refreshed. The remoteForwardedPorts collection will raise a portUpdated event below.
+			const message = `PortForwardingService port ${portForwardRequest.port} is already forwarded.`;
 			this.session.trace(
-				TraceLevel.Warning,
+				TraceLevel.Verbose,
 				SshTraceEventIds.portForwardRequestInvalid,
 				message,
 			);
@@ -687,7 +687,7 @@ export class PortForwardingService extends SshService {
 		// to ensure event-handlers can immediately open a channel.
 		if (response instanceof PortForwardSuccessMessage) {
 			const forwardedPort = new ForwardedPort(localPort ?? response.port, response.port, true);
-			this.remoteForwardedPorts.addPort(forwardedPort);
+			this.remoteForwardedPorts.addOrUpdatePort(forwardedPort);
 		}
 	}
 
@@ -907,8 +907,10 @@ export class PortForwardingService extends SshService {
 	}
 
 	public dispose(): void {
+		// Do not dispose StreamForwarder objects here, since they may be transferred to
+		// other sessions when reconnecting. The StreamForwarders will self-dispose when
+		// their underlying transport streams are closed.
 		const disposables: Disposable[] = [
-			...this.streamForwarders,
 			...this.localForwarders.values(),
 			...this.remoteConnectors.values(),
 		];

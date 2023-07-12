@@ -19,6 +19,7 @@ import {
 	SshConnectionError,
 	SshReconnectError,
 	SshReconnectFailureReason,
+	ObjectDisposedError,
 } from '@microsoft/dev-tunnels-ssh';
 
 import { DuplexStream } from './duplexStream';
@@ -591,7 +592,7 @@ export class ReconnectTests {
 		const acceptChannelPromise = assert.rejects(async () => {
 			await newServerSession.connect(serverStream);
 			await newServerSession.acceptChannel();
-		}, SshConnectionError);
+		}, ObjectDisposedError);
 
 		await Promise.all([reconnectPromise, acceptChannelPromise]);
 		await reconnectPromise;

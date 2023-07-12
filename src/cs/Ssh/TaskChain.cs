@@ -142,7 +142,7 @@ internal class TaskChain : IDisposable
 					trace.TraceEvent(
 						TraceEventType.Error,
 						SshTraceEventIds.TaskChainError,
-						$"Waiting for task chain failed with exception ${ex?.ToString()}.");
+						$"Waiting for task chain failed with exception {ex?.ToString()}.");
 				},
 				cancellationToken).ConfigureAwait(false);
 			await semaphore.WaitAsync(cancellationToken).ConfigureAwait(false);
