@@ -428,7 +428,7 @@ public class SshChannel : IDisposable
 					Trace.TraceEvent(
 						TraceEventType.Error,
 						SshTraceEventIds.ChannelRequestFailed,
-						$"Channel request failed with exception {ex.ToString()}.");
+						$"Channel request failed with exception {ex}.");
 
 					// Send a failure response on exception
 					args.ResponseTask = null;
@@ -452,7 +452,7 @@ public class SshChannel : IDisposable
 					Trace.TraceEvent(
 						 TraceEventType.Error,
 						 SshTraceEventIds.ChannelRequestFailed,
-						 $"Channel request response task failed with exception {ex.ToString()}.");
+						 $"Channel request response task failed with exception {ex}.");
 					response = new ChannelFailureMessage();
 					sshRequestArgs.IsAuthorized = false;
 				}
@@ -492,7 +492,7 @@ public class SshChannel : IDisposable
 				Trace.TraceEvent(
 					TraceEventType.Error,
 					SshTraceEventIds.ChannelRequestFailed,
-					$"Channel request run in sequence failed with exception {ex?.ToString()}.");
+					$"Channel request run in sequence failed with exception {ex}.");
 			},
 			() => requestTask(serviceType, serviceConfig),
 			cancellation).ConfigureAwait(false);

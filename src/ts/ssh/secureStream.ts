@@ -61,9 +61,12 @@ export class SecureStream extends Duplex implements Disposable {
 				cb: (error?: Error | null) => void,
 			): void {
 				this.connectCompletion.promise.then((stream) => {
-					if (!stream) throw new ObjectDisposedError('SecureStream');
-					// eslint-disable-next-line no-underscore-dangle
-					stream._write(chunk, encoding, cb);
+					if (!stream) {
+						cb(new ObjectDisposedError('SecureStream'));
+					} else {
+						// eslint-disable-next-line no-underscore-dangle
+						stream._write(chunk, encoding, cb);
+					}
 				}, cb);
 			},
 			writev(
@@ -72,16 +75,22 @@ export class SecureStream extends Duplex implements Disposable {
 				cb: (error?: Error | null) => void,
 			): void {
 				this.connectCompletion.promise.then((stream) => {
-					if (!stream) throw new ObjectDisposedError('SecureStream');
-					// eslint-disable-next-line no-underscore-dangle
-					stream._writev!(chunks, cb);
+					if (!stream) {
+						cb(new ObjectDisposedError('SecureStream'));
+					} else {
+						// eslint-disable-next-line no-underscore-dangle
+						stream._writev!(chunks, cb);
+					}
 				}, cb);
 			},
 			final(this: SecureStream, cb: (err?: Error | null) => void): void {
 				this.connectCompletion.promise.then((stream) => {
-					if (!stream) throw new ObjectDisposedError('SecureStream');
-					// eslint-disable-next-line no-underscore-dangle
-					stream._final(cb);
+					if (!stream) {
+						cb(new ObjectDisposedError('SecureStream'));
+					} else {
+						// eslint-disable-next-line no-underscore-dangle
+						stream._final(cb);
+					}
 				}, cb);
 			},
 			read(this: SecureStream, size: number): void {
