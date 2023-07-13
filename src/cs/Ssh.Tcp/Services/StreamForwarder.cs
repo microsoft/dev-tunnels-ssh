@@ -192,7 +192,7 @@ internal class StreamForwarder : IDisposable
 			}
 
 			Trace.TraceEvent(
-				TraceEventType.Information,
+				TraceEventType.Verbose,
 				SshTraceEventIds.PortForwardChannelClosed,
 				$"Channel forwarder {(abort ? "aborted" : "closed")} connection.");
 		}
