@@ -471,7 +471,7 @@ export class ConnectionService extends SshService {
 			this.trace(
 				TraceLevel.Warning,
 				SshTraceEventIds.channelRequestFailed,
-				`Invalid channel ID ${channelMessage.recipientChannel} in {messageString}.`,
+				`Invalid channel ID ${channelMessage.recipientChannel} in ${messageString}.`,
 			);
 		}
 		return channel;
