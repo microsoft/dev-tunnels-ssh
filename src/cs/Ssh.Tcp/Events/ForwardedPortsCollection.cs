@@ -64,7 +64,11 @@ public class ForwardedPortsCollection : IReadOnlyCollection<ForwardedPort>
 	/// <summary>Event raised when a port is added to the collection.</summary>
 	public event EventHandler<ForwardedPortEventArgs>? PortAdded;
 
-	/// <summary>Event raised when a port in the collection is updated.</summary>
+	/// <summary>
+	/// Event raised when a port in the collection is updated. "Updating" a port doesn't
+	/// change anything at the SSH protocol level, but the application may use this event
+	/// as a signal to update or refresh its state for the forwarded port.
+	/// </summary>
 	public event EventHandler<ForwardedPortEventArgs>? PortUpdated;
 
 	/// <summary>Event raised when a port is removed from the collection.</summary>
