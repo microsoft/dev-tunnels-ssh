@@ -628,7 +628,9 @@ public class SshSession : IDisposable
 			Protocol?.Disconnect();
 
 			this.Trace.TraceEvent(
-				TraceEventType.Information, SshTraceEventIds.SessionDisconnected, "Disconnected.");
+				TraceEventType.Information,
+				SshTraceEventIds.SessionDisconnected,
+				$"{this} Disconnected.");
 			this.Disconnected?.Invoke(this, EventArgs.Empty);
 			return;
 		}
@@ -1549,7 +1551,7 @@ public class SshSession : IDisposable
 					Trace.TraceEvent(
 						TraceEventType.Error,
 						SshTraceEventIds.SessionRequestFailed,
-						$"OnSessionRequest failed with exception ${ex}.");
+						$"OnSessionRequest failed with exception {ex}.");
 
 					// Send failure message in case of exception
 					result.SetResult(new SessionRequestFailureMessage());
@@ -1571,7 +1573,7 @@ public class SshSession : IDisposable
 						Trace.TraceEvent(
 							TraceEventType.Error,
 							SshTraceEventIds.SessionRequestFailed,
-							$"Session request response task failed with exception ${ex}.");
+							$"Session request response task failed with exception {ex}.");
 						result.SetResult(new SessionRequestFailureMessage());
 					}
 				}),
@@ -1607,7 +1609,7 @@ public class SshSession : IDisposable
 				Trace.TraceEvent(
 					TraceEventType.Error,
 					SshTraceEventIds.SessionRequestFailed,
-					$"OnSessionRequest send response failed with exception ${ex}.");
+					$"OnSessionRequest send response failed with exception {ex}.");
 			},
 			cancellation).ConfigureAwait(false);
 	}
@@ -1708,7 +1710,9 @@ public class SshSession : IDisposable
 		var verifier = Algorithms?.Verifier;
 		if (verifier == null)
 		{
-			return false;
+			throw new InvalidOperationException(
+				"HMAC algorithm not available when verifying reconnection. " +
+				"The connection may have been lost before the initial key-exchange completed.");
 		}
 
 		var result = verifier.Verify(writer.ToBuffer(), reconnectToken);

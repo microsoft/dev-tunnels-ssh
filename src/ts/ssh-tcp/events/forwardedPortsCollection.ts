@@ -87,15 +87,32 @@ export class ForwardedPortsCollection implements ReadonlySet<ForwardedPort> {
 	}
 
 	private readonly portAddedEmitter = new Emitter<ForwardedPortEventArgs>();
+
+	/** Event raised when a port is added to the collection. */
 	public readonly onPortAdded = this.portAddedEmitter.event;
 
+	private readonly portUpdatedEmitter = new Emitter<ForwardedPortEventArgs>();
+
+	/**
+	 * Event raised when a port in the collection is updated. "Updating" a port doesn't
+	 * change anything at the SSH protocol level, but the application may use this event
+	 * as a signal to update or refresh its state for the forwarded port.
+	 */
+	public readonly onPortUpdated = this.portUpdatedEmitter.event;
+
 	private readonly portRemovedEmitter = new Emitter<ForwardedPortEventArgs>();
+
+	/** Event raised when a port is removed from the collection. */
 	public readonly onPortRemoved = this.portRemovedEmitter.event;
 
 	private readonly portChannelAddedEmitter = new Emitter<ForwardedPortChannelEventArgs>();
+
+	/** Event raised when a channel is added to the collection. */
 	public readonly onPortChannelAdded = this.portChannelAddedEmitter.event;
 
 	private readonly portChannelRemovedEmitter = new Emitter<ForwardedPortChannelEventArgs>();
+
+	/** Event raised when a channel is removed from the collection. */
 	public readonly onPortChannelRemoved = this.portChannelRemovedEmitter.event;
 
 	/** Finds the first port in the collection that matches a predicate. */
@@ -110,9 +127,9 @@ export class ForwardedPortsCollection implements ReadonlySet<ForwardedPort> {
 	}
 
 	/* @internal */
-	public addPort(port: ForwardedPort): void {
+	public addOrUpdatePort(port: ForwardedPort): void {
 		if (this.has(port)) {
-			throw new Error(`Port ${port} is already in the collection.`);
+			this.portUpdatedEmitter.fire(new ForwardedPortEventArgs(port));
 		}
 
 		this.portChannelMap.set(port.toString(), [port, []]);

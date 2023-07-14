@@ -299,7 +299,7 @@ internal class ConnectionService : SshService
 			return;
 		}
 
-		// Save a copy of the message because its buffer will be overwitten by the next receive.
+		// Save a copy of the message because its buffer will be overwritten by the next receive.
 		message = message.ConvertTo<ChannelOpenMessage>(copy: true);
 
 		// The confirmation message may be reassigned if the opening task returns a custom message.
@@ -511,7 +511,7 @@ internal class ConnectionService : SshService
 					"Channel confirmation was not requested.", SshDisconnectReason.ProtocolError);
 			}
 
-			// Save a copy of the message because its buffer will be overwitten by the next receive.
+			// Save a copy of the message because its buffer will be overwritten by the next receive.
 			message = message.ConvertTo<ChannelOpenConfirmationMessage>(copy: true);
 
 			channel = new SshChannel(
@@ -616,7 +616,7 @@ internal class ConnectionService : SshService
 			Trace.TraceEvent(
 				TraceEventType.Warning,
 				SshTraceEventIds.ChannelRequestFailed,
-				$"Invalid channel ID {channelMessage.RecipientChannel} in {messageString}");
+				$"{Session}: Invalid channel ID {channelMessage.RecipientChannel} in {messageString}");
 		}
 
 		return channel;

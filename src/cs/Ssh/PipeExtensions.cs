@@ -1,6 +1,7 @@
 ﻿// Copyright (c) Microsoft. All rights reserved.
 
 using System;
+using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.DevTunnels.Ssh.Events;
@@ -24,7 +25,7 @@ public static class PipeExtensions
 	/// new channel in the other session. Any channels opened before connecting the session pipe,
 	/// or any channels opened from the local side, will not be piped.
 	///
-	/// When either of the two sessions is closed, the other session will be closed 
+	/// When either of the two sessions is closed, the other session will be closed.
 	/// </remarks>
 	public static async Task PipeAsync(this SshSession session, SshSession toSession)
 	{
@@ -77,7 +78,7 @@ public static class PipeExtensions
 	/// <param name="toChannel">Second channel to be connected via the pipe.</param>
 	/// <returns>A task that completes when the channels are closed.</returns>
 	/// <remarks>
-	/// When either of the two channels is closed, the other channel will be closed 
+	/// When either of the two channels is closed, the other channel will be closed.
 	/// </remarks>
 	public static async Task PipeAsync(this SshChannel channel, SshChannel toChannel)
 	{
@@ -110,7 +111,7 @@ public static class PipeExtensions
 			if (!closed)
 			{
 				closed = true;
-				endCompletion.TrySetResult(ForwardChannelCloseAsync(toChannel, e));
+				endCompletion.TrySetResult(ForwardChannelCloseAsync(channel, toChannel, e));
 			}
 		};
 		toChannel.Closed += (sender, e) =>
@@ -118,7 +119,7 @@ public static class PipeExtensions
 			if (!closed)
 			{
 				closed = true;
-				endCompletion.TrySetResult(ForwardChannelCloseAsync(channel, e));
+				endCompletion.TrySetResult(ForwardChannelCloseAsync(toChannel, channel, e));
 			}
 		};
 
@@ -193,24 +194,30 @@ public static class PipeExtensions
 		channel.AdjustWindow((uint)data.Count);
 	}
 
-	private static Task ForwardChannelCloseAsync(SshChannel channel, SshChannelClosedEventArgs e)
+	private static Task ForwardChannelCloseAsync(
+		SshChannel fromChannel,
+		SshChannel toChannel,
+		SshChannelClosedEventArgs e)
 	{
-		if (e.Exception != null)
+		var message = "Piping channel closure.\n" +
+			$"  Source: {fromChannel.Session} {fromChannel}\n" +
+			$"  Destination: {toChannel.Session} {toChannel}";
+		toChannel.Trace.TraceEvent(TraceEventType.Verbose, SshTraceEventIds.ChannelClosed, message);
+
+		if (e.ExitSignal != null)
 		{
-			channel.Close(e.Exception);
-			return Task.CompletedTask;
-		}
-		else if (e.ExitSignal != null)
-		{
-			return channel.CloseAsync(e.ExitSignal, e.ErrorMessage);
+			return toChannel.CloseAsync(e.ExitSignal, e.ErrorMessage);
 		}
 		else if (e.ExitStatus.HasValue)
 		{
-			return channel.CloseAsync(e.ExitStatus.Value);
+			return toChannel.CloseAsync(e.ExitStatus.Value);
 		}
 		else
 		{
-			return channel.CloseAsync();
+			// The fromChannel may have been closed normally, or due to an exception. An exception
+			// cannot be forwarded to toChannel because there is no SSH protocol for doing that.
+			// So toChannel is just closed normally regardless.
+			return toChannel.CloseAsync();
 		}
 	}
 }

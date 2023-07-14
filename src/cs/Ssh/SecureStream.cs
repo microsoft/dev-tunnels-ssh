@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft. All rights reserved.
 
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Threading;
@@ -30,19 +31,23 @@ public class SecureStream : Stream
 	/// </summary>
 	/// <param name="transportStream">Underlying (insecure) transport stream.</param>
 	/// <param name="clientCredentials">Client authentication credentials.</param>
+	/// <param name="enableReconnect">True to enable SSH reconnection; default is false.</param>
 	/// <param name="trace">Optional trace source for SSH protocol tracing.</param>
 	public SecureStream(
 		Stream transportStream,
 		SshClientCredentials clientCredentials,
+		bool enableReconnect = false,
 		TraceSource? trace = null)
 	{
 		this.TransportStream = transportStream ??
 			throw new ArgumentNullException(nameof(transportStream));
 		this.Session = new SshClientSession(
-			SshSessionConfiguration.Default,
+			enableReconnect ?
+				SshSessionConfiguration.DefaultWithReconnect : SshSessionConfiguration.Default,
 			trace ?? new TraceSource(nameof(SecureStream)));
 
 		this.Session.Authenticating += OnSessionAuthenticating;
+		this.Session.Disconnected += OnSessionDisconnected;
 		this.Session.Closed += OnSessionClosed;
 
 		this.ClientCredentials = clientCredentials ??
@@ -55,19 +60,25 @@ public class SecureStream : Stream
 	/// </summary>
 	/// <param name="transportStream">Underlying (insecure) transport stream.</param>
 	/// <param name="serverCredentials">Server authentication credentials.</param>
+	/// <param name="reconnectableSessions">Optional collection that tracks secure-stream
+	/// server sessions available for reconnection; if null then reconnection is disabled.</param>
 	/// <param name="trace">Optional trace source for SSH protocol tracing.</param>
 	public SecureStream(
 		Stream transportStream,
 		SshServerCredentials serverCredentials,
+		ICollection<SshServerSession>? reconnectableSessions = null,
 		TraceSource? trace = null)
 	{
 		this.TransportStream = transportStream ??
 			throw new ArgumentNullException(nameof(transportStream));
 		this.Session = new SshServerSession(
-			SshSessionConfiguration.Default,
+			reconnectableSessions != null ?
+				SshSessionConfiguration.DefaultWithReconnect : SshSessionConfiguration.Default,
+			reconnectableSessions,
 			trace ?? new TraceSource(nameof(SecureStream)));
 
 		this.Session.Authenticating += OnSessionAuthenticating;
+		this.Session.Disconnected += OnSessionDisconnected;
 		this.Session.Closed += OnSessionClosed;
 
 		this.ServerCredentials = serverCredentials ??
@@ -77,12 +88,12 @@ public class SecureStream : Stream
 	/// <summary>
 	/// Gets the underlying transport stream for the secure stream.
 	/// </summary>
-	protected Stream TransportStream { get; }
+	protected Stream TransportStream { get; private set; }
 
 	/// <summary>
 	/// Gets the SSH session that implements the secure protocol.
 	/// </summary>
-	protected SshSession Session { get; }
+	protected SshSession Session { get; private set; }
 
 	/// <summary>
 	/// Gets the client credentials, or null if this is the server side.
@@ -111,6 +122,16 @@ public class SecureStream : Stream
 	/// Event raised when the secure stream is authenticating the client or server.
 	/// </summary>
 	public event EventHandler<SshAuthenticatingEventArgs>? Authenticating;
+
+	/// <summary>
+	/// Event raised when the secure stream is disconnected while reconnection is enabled.
+	/// </summary>
+	/// <remarks>
+	/// After this is raised, a secure stream client application should call
+	/// <see cref="ReconnectAsync" />  with a new stream. (The secure stream server handles
+	/// reconnections automatically during the session handshake.)
+	/// </remarks>
+	public event EventHandler<EventArgs>? Disconnected;
 
 	/// <summary>
 	/// Gets a value indicating whether the session is closed.
@@ -194,6 +215,13 @@ public class SecureStream : Stream
 				this.Dispose();
 			};
 		}
+		catch (ObjectDisposedException) when (this.Session.IsClosed)
+		{
+			// The session was closed while waiting for the channel.
+			// This can happen in reconnect scenarios.
+			this.Dispose();
+			this.ConnectCompletion.TrySetResult(false);
+		}
 		catch (Exception ex)
 		{
 			var disconnectReason = (ex as SshConnectionException)?.DisconnectReason ??
@@ -204,6 +232,33 @@ public class SecureStream : Stream
 		}
 
 		this.ConnectCompletion.TrySetResult(true);
+	}
+
+	/// <summary>
+	/// Re-initiates the SSH session over a NEW transport stream by exchanging initial messages
+	/// with the remote server. Waits for the secure reconnect handshake to complete. Additional
+	/// message processing is kicked off as a background task chain.
+	/// </summary>
+	/// <exception cref="SshConnectionException">The connection failed due to a protocol
+	/// error.</exception>
+	/// <exception cref="TimeoutException">The ConnectTimeout property is set and the initial
+	/// version exchange could not be completed within the timeout.</exception>
+	/// <remarks>
+	/// Applies only to a secure stream client. (The secure stream server handles reconnections
+	/// automatically during the session handshake.)
+	/// </remarks>
+	public async Task ReconnectAsync(
+		Stream transportStream,
+		CancellationToken cancellation = default)
+	{
+		if (!(this.Session is SshClientSession clientSession))
+		{
+			throw new InvalidOperationException("Cannot reconnect SecureStream server.");
+		}
+
+		this.TransportStream = transportStream ??
+			throw new ArgumentNullException(nameof(transportStream));
+		await clientSession.ReconnectAsync(this.TransportStream, cancellation).ConfigureAwait(false);
 	}
 
 	/// <summary>
@@ -219,12 +274,25 @@ public class SecureStream : Stream
 	{
 		if (disposing)
 		{
+			bool sessionWasConnected = this.Session.IsConnected || this.Session.IsClosed;
+
+			if (!this.Session.IsClosed)
+			{
+				this.Session.Trace.TraceEvent(
+					TraceEventType.Verbose,
+					SshTraceEventIds.ChannelClosed,
+					$"{nameof(SecureStream)} {this.Session} closing.");
+			}
+
 			this.Stream?.Dispose();
 			this.Session.Dispose();
 
-			// If the session has not connected yet, it doesn't know about the stream and won't dispose it.
-			// So we dispose it explicitly here.
-			this.TransportStream.Dispose();
+			if (!sessionWasConnected)
+			{
+				// If the session did not connect yet, it doesn't know about the stream and
+				// won't dispose it. So dispose it here.
+				this.TransportStream.Dispose();
+			}
 		}
 
 		base.Dispose(disposing);
@@ -235,7 +303,7 @@ public class SecureStream : Stream
 	/// </summary>
 	public async Task CloseAsync()
 	{
-		// Diposing the session closes the channel, which causes this SecureStream to be disposed.
+		// Disposing the session closes the channel, which causes this SecureStream to be disposed.
 		await this.Session.CloseAsync(
 			SshDisconnectReason.None, this.Session.GetType().Name + " disposed").ConfigureAwait(false);
 		this.Session.Dispose();
@@ -256,6 +324,11 @@ public class SecureStream : Stream
 	private void OnSessionAuthenticating(object? sender, SshAuthenticatingEventArgs e)
 	{
 		Authenticating?.Invoke(this, e);
+	}
+
+	private void OnSessionDisconnected(object? sender, EventArgs e)
+	{
+		Disconnected?.Invoke(this, e);
 	}
 
 	private void OnSessionClosed(object? sender, SshSessionClosedEventArgs e)
@@ -291,7 +364,11 @@ public class SecureStream : Stream
 	public override async Task<int> ReadAsync(
 		byte[] buffer, int offset, int count, CancellationToken cancellation)
 	{
-		await this.ConnectCompletion.Task.ConfigureAwait(false);
+		if (!(await this.ConnectCompletion.Task.ConfigureAwait(false)))
+		{
+			return 0;
+		}
+
 		return await ConnectedStream.ReadAsync(buffer, offset, count, cancellation)
 			.ConfigureAwait(false);
 	}
@@ -299,7 +376,11 @@ public class SecureStream : Stream
 	public override async Task WriteAsync(
 		byte[] buffer, int offset, int count, CancellationToken cancellation)
 	{
-		await this.ConnectCompletion.Task.ConfigureAwait(false);
+		if (!(await this.ConnectCompletion.Task.ConfigureAwait(false)))
+		{
+			throw new ObjectDisposedException(nameof(SecureStream));
+		}
+
 		await ConnectedStream.WriteAsync(buffer, offset, count, cancellation)
 			.ConfigureAwait(false);
 	}

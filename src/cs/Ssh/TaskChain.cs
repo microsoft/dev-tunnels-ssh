@@ -53,11 +53,11 @@ internal class TaskChain : IDisposable
 		try
 		{
 			await semaphore.WaitAsync(cancellation).ConfigureAwait(false);
-			
-			if (runInSequenceTask != null && 
+
+			if (runInSequenceTask != null &&
 				(runInSequenceTask.IsCanceled || runInSequenceTask.Exception != null))
 			{
-				// If one task in the sequence is cancelled we have to reset runInSequenceTask 
+				// If one task in the sequence is cancelled we have to reset runInSequenceTask
 				// so that all subsequent queueing will succeed.
 				runInSequenceTask = null;
 			}
@@ -142,7 +142,7 @@ internal class TaskChain : IDisposable
 					trace.TraceEvent(
 						TraceEventType.Error,
 						SshTraceEventIds.TaskChainError,
-						$"Waiting for task chain failed with exception ${ex?.ToString()}.");
+						$"Waiting for task chain failed with exception {ex}.");
 				},
 				cancellationToken).ConfigureAwait(false);
 			await semaphore.WaitAsync(cancellationToken).ConfigureAwait(false);

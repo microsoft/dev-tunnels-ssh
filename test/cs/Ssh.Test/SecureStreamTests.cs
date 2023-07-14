@@ -1,7 +1,7 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
-using System.Linq;
 using System.Security.Claims;
 using System.Text;
 using System.Threading;
@@ -23,8 +23,8 @@ public class SecureStreamTests
 	private readonly IKeyPair clientKey;
 	private readonly SshServerCredentials serverCredentials;
 	private readonly SshClientCredentials clientCredentials;
-	private readonly Stream clientStream;
-	private readonly Stream serverStream;
+	private Stream clientStream;
+	private Stream serverStream;
 
 	public SecureStreamTests()
 	{
@@ -139,12 +139,15 @@ public class SecureStreamTests
 		await client.CloseAsync();
 	}
 
-	private async Task<(SecureStream Server, SecureStream Client)> ConnectAsync()
+	private async Task<(SecureStream Server, SecureStream Client)> ConnectAsync(
+		ICollection<SshServerSession> reconnectableSessions = null)
 	{
-		var server = new SecureStream(this.serverStream, this.serverCredentials);
+		var server = new SecureStream(
+			this.serverStream, this.serverCredentials, reconnectableSessions);
 		server.Authenticating += (_, e) =>
 			e.AuthenticationTask = Task.FromResult(new ClaimsPrincipal());
-		var client = new SecureStream(this.clientStream, this.clientCredentials);
+		var client = new SecureStream(
+			this.clientStream, this.clientCredentials, enableReconnect: reconnectableSessions != null);
 		client.Authenticating += (_, e) =>
 			e.AuthenticationTask = Task.FromResult(new ClaimsPrincipal());
 
@@ -239,5 +242,45 @@ public class SecureStreamTests
 
 		Assert.True(server.IsClosed);
 		Assert.True(closedEventRaised);
+	}
+
+	[Fact]
+	public async Task ReconnectSecureStream()
+	{
+		var disconnectableServerStream = new MockNetworkStream(this.serverStream);
+		var disconnectableClientStream = new MockNetworkStream(this.clientStream);
+		this.serverStream = disconnectableServerStream;
+		this.clientStream = disconnectableClientStream;
+
+		List<SshServerSession> reconnectableSessions = new();
+		var (server, client) = await ConnectAsync(reconnectableSessions);
+
+		TaskCompletionSource<EventArgs> serverDisconnected = new();
+		server.Disconnected += (_, e) => serverDisconnected.TrySetResult(e);
+		TaskCompletionSource<EventArgs> clientDisconnected = new();
+		client.Disconnected += (_, e) => clientDisconnected.TrySetResult(e);
+
+		await ExchangeDataAsync(server, client);
+
+		disconnectableServerStream.MockDisconnect(new Exception("Mock disconnect."));
+		disconnectableClientStream.MockDisconnect(new Exception("Mock disconnect."));
+
+		await serverDisconnected.Task.WithTimeout(Timeout);
+		await clientDisconnected.Task.WithTimeout(Timeout);
+
+		var (serverStream2, clientStream2) = FullDuplexStream.CreatePair();
+		serverStream2 = new MockNetworkStream(serverStream2);
+		clientStream2 = new MockNetworkStream(clientStream2);
+
+		var server2 = new SecureStream(
+			serverStream2, this.serverCredentials, reconnectableSessions);
+		server2.Authenticating += (_, e) =>
+			e.AuthenticationTask = Task.FromResult(new ClaimsPrincipal());
+
+		await Task.WhenAll(
+			server2.ConnectAsync(TimeoutToken),
+			client.ReconnectAsync(clientStream2, TimeoutToken));
+
+		await ExchangeDataAsync(server, client);
 	}
 }

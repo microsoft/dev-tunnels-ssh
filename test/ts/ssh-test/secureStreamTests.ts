@@ -16,7 +16,10 @@ import {
 	SshConnectionError,
 	SshDisconnectReason,
 	SshServerCredentials,
+	SshServerSession,
+	Stream,
 } from '@microsoft/dev-tunnels-ssh';
+import { MockNetworkStream } from './mockNetworkStream';
 
 @suite
 @slow(3000)
@@ -239,12 +242,24 @@ export class SecureStreamTests {
 		await client.close();
 	}
 
-	private async connect(): Promise<[SecureStream, SecureStream]> {
-		const [serverStream, clientStream] = await DuplexStream.createStreams();
+	private async connect(
+		reconnectableSessions?: SshServerSession[],
+		streams?: [Stream, Stream],
+	): Promise<[SecureStream, SecureStream]> {
+		streams ??= await DuplexStream.createStreams();
+		const [serverStream, clientStream] = streams;
 
-		const server = new SecureStream(serverStream, SecureStreamTests.serverCredentials);
+		const server = new SecureStream(
+			serverStream,
+			SecureStreamTests.serverCredentials,
+			reconnectableSessions,
+		);
 		server.onAuthenticating((e) => (e.authenticationPromise = Promise.resolve({})));
-		const client = new SecureStream(clientStream, SecureStreamTests.clientCredentials);
+		const client = new SecureStream(
+			clientStream,
+			SecureStreamTests.clientCredentials,
+			!!reconnectableSessions,
+		);
 		client.onAuthenticating((e) => (e.authenticationPromise = Promise.resolve({})));
 
 		await Promise.all([server.connect(), client.connect()]);
@@ -266,6 +281,45 @@ export class SecureStreamTests {
 		await writeAsync(server, payload);
 		const result2 = await readAsync(client);
 		assert.equal(result2.toString('utf8'), payloadString);
+	}
+
+	@test
+	public async reconnectSecureStream() {
+		let [serverStream, clientStream] = await DuplexStream.createStreams();
+		serverStream = new MockNetworkStream(serverStream);
+		clientStream = new MockNetworkStream(clientStream);
+
+		const reconnectableSessions: SshServerSession[] = [];
+		const streams: [Stream, Stream] = [serverStream, clientStream];
+		const [server, client] = await this.connect(reconnectableSessions, streams);
+
+		const serverDisconnected = new PromiseCompletionSource<void>();
+		server.onDisconnected(() => serverDisconnected.resolve());
+		const clientDisconnected = new PromiseCompletionSource<void>();
+		client.onDisconnected(() => clientDisconnected.resolve());
+
+		await this.exchangeData(server, client);
+
+		(<MockNetworkStream>serverStream).mockDisconnect(new Error('Mock disconnect.'));
+		(<MockNetworkStream>clientStream).mockDisconnect(new Error('Mock disconnect.'));
+
+		await serverDisconnected.promise;
+		await clientDisconnected.promise;
+
+		let [serverStream2, clientStream2] = await DuplexStream.createStreams();
+		serverStream2 = new MockNetworkStream(serverStream2);
+		clientStream2 = new MockNetworkStream(clientStream2);
+
+		const server2 = new SecureStream(
+			serverStream2,
+			SecureStreamTests.serverCredentials,
+			reconnectableSessions,
+		);
+		server2.onAuthenticating((e) => (e.authenticationPromise = Promise.resolve({})));
+
+		await Promise.all([server2.connect(), client.reconnect(clientStream2)]);
+
+		await this.exchangeData(server, client);
 	}
 }
 

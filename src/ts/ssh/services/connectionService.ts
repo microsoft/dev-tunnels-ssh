@@ -23,7 +23,7 @@ import { CancellationToken, Disposable } from 'vscode-jsonrpc';
 import { PromiseCompletionSource } from '../util/promiseCompletionSource';
 import { SshChannel } from '../sshChannel';
 import { CancellationError } from '../util/cancellation';
-import { SshChannelError, SshConnectionError } from '../errors';
+import { ObjectDisposedError, SshChannelError, SshConnectionError } from '../errors';
 import { SshChannelOpeningEventArgs } from '../events/sshChannelOpeningEventArgs';
 import { serviceActivation } from './serviceActivation';
 import { TraceLevel, SshTraceEventIds } from '../trace';
@@ -88,7 +88,7 @@ export class ConnectionService extends SshService {
 		}
 
 		for (const channelCompletion of channelCompletions) {
-			channelCompletion.reject(new SshConnectionError('Session closed.'));
+			channelCompletion.reject(new ObjectDisposedError('Session closed.'));
 		}
 
 		super.dispose();
@@ -471,7 +471,7 @@ export class ConnectionService extends SshService {
 			this.trace(
 				TraceLevel.Warning,
 				SshTraceEventIds.channelRequestFailed,
-				`Invalid channel ID ${channelMessage.recipientChannel} in {messageString}.`,
+				`Invalid channel ID ${channelMessage.recipientChannel} in ${messageString}.`,
 			);
 		}
 		return channel;
