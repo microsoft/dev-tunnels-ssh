@@ -224,13 +224,12 @@ public class PortForwardingTests : IDisposable
 	[InlineData("0.0.0.0", "127.0.0.1", "localhost", "127.0.0.1")]
 	[InlineData("127.0.0.1", "127.0.0.1", "127.0.0.1", "127.0.0.1")]
 	[InlineData("127.0.0.1", "127.0.0.1", "localhost", "127.0.0.1")]
-#if !NETCOREAPP2_1 && !NET4
+	[InlineData("127.0.0.1", "127.0.0.1", "localhost", "::1")]
 	[InlineData("0.0.0.0", "::1", "::1", "::1")]
+	[InlineData("127.0.0.1", "::1", "::1", "::1")]
 	[InlineData("127.0.0.1", "::1", "localhost", "::1")]
-	[InlineData("::", "::1", "localhost", "::1")]
+	[InlineData("::", "::1", "::1", "::1")]
 	[InlineData("::1", "::1", "::1", "::1")]
-	[InlineData("::1", "::1", "localhost", "::1")]
-#endif
 	public async Task ForwardFromRemotePortReadWrite(
 		string remoteServerIPAddress,
 		string remoteClientIPAddress,
@@ -247,6 +246,11 @@ public class PortForwardingTests : IDisposable
 		Assert.NotNull(forwarder);
 
 		var localServer = new TcpListener(IPAddress.Parse(localServerIPAddress), TestPort2);
+		if (localServer.Server.AddressFamily == AddressFamily.InterNetworkV6)
+		{
+			localServer.Server.DualMode = false;
+		}
+
 		localServer.Start();
 		try
 		{
@@ -314,7 +318,7 @@ public class PortForwardingTests : IDisposable
 				readBuffer, 0, readBuffer.Length).WithTimeout(Timeout);
 			Assert.Equal(0, count);
 
-			// The channel will be closed asnynchronously.
+			// The channel will be closed asynchronously.
 			await TaskExtensions.WaitUntil(() => forwardingChannel.IsClosed).WithTimeout(Timeout);
 		}
 		finally
@@ -465,7 +469,7 @@ public class PortForwardingTests : IDisposable
 
 			await AssertSocketStreamClosedAsync(remoteEnd ? localStream : remoteStream);
 
-			// The channel will be closed asnynchronously.
+			// The channel will be closed asynchronously.
 			await TaskExtensions.WaitUntil(() => clientForwardingChannel.IsClosed)
 				.WithTimeout(Timeout);
 		}
@@ -562,7 +566,7 @@ public class PortForwardingTests : IDisposable
 		});
 		Assert.IsType<SocketException>(ioex.InnerException);
 
-		// The channel will be closed asnynchronously.
+		// The channel will be closed asynchronously.
 		await TaskExtensions.WaitUntil(() => forwardingChannel.IsClosed).WithTimeout(Timeout);
 	}
 
@@ -570,12 +574,12 @@ public class PortForwardingTests : IDisposable
 	[InlineData("0.0.0.0", "127.0.0.1", "localhost", "127.0.0.1")]
 	[InlineData("127.0.0.1", "127.0.0.1", "127.0.0.1", "127.0.0.1")]
 	[InlineData("127.0.0.1", "127.0.0.1", "localhost", "127.0.0.1")]
-#if !NETCOREAPP2_1 && !NET4
+	[InlineData("127.0.0.1", "127.0.0.1", "localhost", "::1")]
+	[InlineData("0.0.0.0", "::1", "::1", "::1")]
+	[InlineData("127.0.0.1", "::1", "::1", "::1")]
 	[InlineData("127.0.0.1", "::1", "localhost", "::1")]
+	[InlineData("::", "::1", "::1", "::1")]
 	[InlineData("::1", "::1", "::1", "::1")]
-	[InlineData("::1", "::1", "localhost", "::1")]
-	[InlineData("::", "::1", "localhost", "::1")]
-#endif
 	public async Task ForwardToRemotePortReadWrite(
 		string localServerIPAddress,
 		string localClientIPAddress,
@@ -598,6 +602,11 @@ public class PortForwardingTests : IDisposable
 		};
 
 		var remoteServer = new TcpListener(IPAddress.Parse(remoteServerIPAddress), TestPort2);
+		if (remoteServer.Server.AddressFamily == AddressFamily.InterNetworkV6)
+		{
+			remoteServer.Server.DualMode = false;
+		}
+
 		remoteServer.Start();
 		try
 		{
@@ -698,7 +707,7 @@ public class PortForwardingTests : IDisposable
 				readBuffer, 0, readBuffer.Length).WithTimeout(Timeout);
 			Assert.Equal(0, count);
 
-			// The channel will be closed asnynchronously.
+			// The channel will be closed asynchronously.
 			await TaskExtensions.WaitUntil(() => forwardingChannel.IsClosed).WithTimeout(Timeout);
 		}
 		finally
@@ -838,7 +847,7 @@ public class PortForwardingTests : IDisposable
 
 			await AssertSocketStreamClosedAsync(remoteEnd ? localStream : remoteStream);
 
-			// The channel will be closed asnynchronously.
+			// The channel will be closed asynchronously.
 			await TaskExtensions.WaitUntil(() => forwardingChannel.IsClosed).WithTimeout(Timeout);
 		}
 		finally

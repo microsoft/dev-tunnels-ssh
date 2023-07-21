@@ -269,10 +269,12 @@ public class LocalPortForwarder : SshService
 
 		var originatorEndPoint = tcpClient.Client.RemoteEndPoint as IPEndPoint;
 		var originatorAddress = originatorEndPoint?.Address?.ToString() ?? "<unknown>";
+		var message = $"{nameof(PortForwardingService)} accepted connection " +
+			$"from {originatorAddress} at {listener.LocalEndpoint}.";
 		Session.Trace.TraceEvent(
 			TraceEventType.Verbose,
 			SshTraceEventIds.PortForwardConnectionAccepted,
-			$"{nameof(PortForwardingService)} accepted connection from: {originatorAddress}");
+			message);
 		return tcpClient;
 	}
 

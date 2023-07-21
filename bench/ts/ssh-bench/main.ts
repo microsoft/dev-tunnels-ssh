@@ -6,6 +6,7 @@ import * as yargs from 'yargs';
 import { Benchmark } from './benchmark';
 import { SessionSetupBenchmark } from './sessionSetupBenchmark';
 import { ThroughputBenchmark } from './throughputBenchmark';
+import { PortForwardBenchmark } from './portForwardBenchmark';
 import 'source-map-support/register';
 
 main()
@@ -58,6 +59,13 @@ async function main(): Promise<number> {
 	benchmarks.set('unencrypted-200', () => new ThroughputBenchmark(t, 200, false));
 	benchmarks.set('unencrypted-50000', () => new ThroughputBenchmark(t, 50000, false));
 	benchmarks.set('unencrypted-1000000', () => new ThroughputBenchmark(t, 1000000, false));
+	benchmarks.set('portforward-ipv4', () => new PortForwardBenchmark('127.0.0.1', '127.0.0.1'));
+	benchmarks.set(
+		'portforward-ipv4-localhost',
+		() => new PortForwardBenchmark('127.0.0.1', 'localhost'),
+	);
+	benchmarks.set('portforward-ipv6', () => new PortForwardBenchmark('::1', '::1'));
+	benchmarks.set('portforward-ipv6-localhost', () => new PortForwardBenchmark('::1', 'localhost'));
 
 	for (let [benchmarkName, benchmarkFunc] of benchmarks.entries()) {
 		if (nameList && !nameList.includes(benchmarkName)) {
