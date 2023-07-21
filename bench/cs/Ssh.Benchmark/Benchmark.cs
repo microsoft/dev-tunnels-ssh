@@ -49,6 +49,10 @@ public abstract class Benchmark : IAsyncDisposable
 		benchmarks.Add("unencrypted-200", () => new ThroughputBenchmark(t, messageSize: 200, withEncryption: false));
 		benchmarks.Add("unencrypted-50000", () => new ThroughputBenchmark(t, messageSize: 50_000, withEncryption: false));
 		benchmarks.Add("unencrypted-1000000", () => new ThroughputBenchmark(t, messageSize: 1_000_000, withEncryption: false));
+		benchmarks.Add("portforward-ipv4", () => new PortForwardBenchmark(IPAddress.Loopback, IPAddress.Loopback.ToString()));
+		benchmarks.Add("portforward-ipv4-localhost", () => new PortForwardBenchmark(IPAddress.Loopback, "localhost"));
+		benchmarks.Add("portforward-ipv6", () => new PortForwardBenchmark(IPAddress.IPv6Loopback, IPAddress.IPv6Loopback.ToString()));
+		benchmarks.Add("portforward-ipv6-localhost", () => new PortForwardBenchmark(IPAddress.IPv6Loopback, "localhost"));
 
 		var stopwatch = new Stopwatch();
 
