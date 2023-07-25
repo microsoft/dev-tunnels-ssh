@@ -66,6 +66,7 @@ export class SshProtocol implements Disposable {
 		private readonly trace: Trace,
 	) {
 		this.stream = stream;
+		this.traceChannelData = config.traceChannelData;
 	}
 
 	/* @internal */

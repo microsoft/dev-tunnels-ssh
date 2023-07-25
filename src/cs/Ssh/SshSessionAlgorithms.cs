@@ -28,6 +28,12 @@ internal class SshSessionAlgorithms : IDisposable
 
 	public CompressionAlgorithm? Decompressor { get; set; }
 
+	/// <summary>
+	/// Flag from the initial key exchange indicating whether the other side supports and is
+	/// requesting protocol extension info.
+	/// </summary>
+	public bool IsExtensionInfoRequested { get; set; }
+
 	public void Dispose()
 	{
 		Dispose(true);

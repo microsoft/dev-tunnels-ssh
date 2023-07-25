@@ -7,6 +7,7 @@ using System.Threading.Tasks;
 using Microsoft.DevTunnels.Ssh.Messages;
 using Nerdbank.Streams;
 using Xunit;
+using Xunit.Abstractions;
 
 namespace Microsoft.DevTunnels.Ssh.Test;
 
@@ -31,9 +32,9 @@ public class ReconnectTests : IDisposable
 	private TaskCompletionSource<byte[]> serverReceivedCompletion;
 	private TaskCompletionSource<byte[]> clientReceivedCompletion;
 
-	public ReconnectTests()
+	public ReconnectTests(ITestOutputHelper testOutput)
 	{
-		InitializeSessionPair();
+		InitializeSessionPair(testOutput);
 		this.cancellation = new CancellationTokenSource(LongTimeout).Token;
 	}
 
@@ -49,13 +50,14 @@ public class ReconnectTests : IDisposable
 		keyRotationThresholdProperty.SetValue(session.Config, value);
 	}
 
-	private void InitializeSessionPair()
+	private void InitializeSessionPair(ITestOutputHelper testOutput)
 	{
 		var serverConfig = SshSessionConfiguration.DefaultWithReconnect;
 		var clientConfig = SshSessionConfiguration.DefaultWithReconnect;
 
 		this.reconnectableSessions = new List<SshServerSession>();
-		this.sessionPair = new SessionPair(serverConfig, clientConfig, this.reconnectableSessions);
+		this.sessionPair = new SessionPair(
+			testOutput, serverConfig, clientConfig, this.reconnectableSessions);
 		this.serverSession = this.sessionPair.ServerSession;
 		this.clientSession = this.sessionPair.ClientSession;
 
@@ -689,5 +691,93 @@ public class ReconnectTests : IDisposable
 			SshReconnectFailureReason.DifferentServerHostKey,
 			reconnectException.FailureReason);
 		await serverConnectTask.WithTimeout(Timeout);
+	}
+
+	[Fact]
+	public async Task ReconnectWhileStreaming()
+	{
+		this.sessionPair.ClientSession.Config.TraceChannelData = true;
+
+		await this.sessionPair.ConnectAsync().WithTimeout(Timeout);
+		await WaitUntilReconnectEnabled().WithTimeout(Timeout);
+		var (serverChannel, clientChannel) = await InitializeChannelPairAsync(withCompletions: false);
+
+		// Start continuously sending/receiving data with both client and server sessions.
+		Func<SshChannel, CancellationToken, Task<int>> sendAndReceiveUntilEnd =
+			async (channel, cancellation) =>
+		{
+			var stream = new SshStream(channel);
+			int receiveCount = 0;
+			var receiveBuffer = new byte[4];
+			string name = channel.Session is SshClientSession ? "Client" : "Server";
+			while (true)
+			{
+				bool sent = false;
+				var message = BitConverter.GetBytes(receiveCount);
+				try
+				{
+					channel.Session.Trace.TraceInformation($"{name} sending *{receiveCount:x2}");
+					await stream.WriteAsync(message, 0, message.Length, cancellation)
+						.WithTimeout(Timeout);
+					sent = true;
+					channel.Session.Trace.TraceInformation($"{name} receiving *{receiveCount:x2}");
+					await stream.ReadAsync(receiveBuffer, 0, receiveBuffer.Length, cancellation)
+						.WithTimeout(Timeout);
+					Assert.Equal(receiveCount, BitConverter.ToInt32(receiveBuffer, 0));
+					channel.Session.Trace.TraceInformation($"{name} verified *{receiveCount:x2}");
+				}
+				catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
+				{
+					break;
+				}
+				catch (Exception)
+				{
+					channel.Session.Trace.TraceInformation(
+						$"{name} failed to {(sent ? "receive" : "send")} *{receiveCount:x2}");
+
+					stream.Close();
+					throw;
+				}
+
+				receiveCount++;
+			}
+
+			return receiveCount;
+		};
+
+		var streamCancellationSource = new CancellationTokenSource();
+		var clientStreamTask = Task.Run(async () => await sendAndReceiveUntilEnd(
+			clientChannel, streamCancellationSource.Token));
+		var serverStreamTask = Task.Run(async () => await sendAndReceiveUntilEnd(
+			serverChannel, streamCancellationSource.Token));
+
+		// Wait for a few messages to be exchanged.
+		await Task.Delay(100);
+
+		// Disconnect and reconnect.
+		this.sessionPair.ServerStream.Dispose();
+		this.sessionPair.ClientStream.MockDisconnect(new Exception("Mock disconnect."), 36);
+
+		await TaskExtensions.WaitUntil(() =>
+			!this.clientSession.IsConnected &&
+			!this.serverSession.IsConnected).WithTimeout(Timeout);
+
+		long serverBytesReceivedBeforeReconnect = serverChannel.Metrics.BytesReceived;
+		long clientBytesReceivedBeforeReconnect = clientChannel.Metrics.BytesReceived;
+
+		await ReconnectAsync();
+
+		// Wait for a few more messages to be exchanged.
+		await Task.Delay(100);
+
+		// Verify some messages were received after reconnection.
+		Assert.True(serverChannel.Metrics.BytesReceived > serverBytesReceivedBeforeReconnect);
+		Assert.True(clientChannel.Metrics.BytesReceived > clientBytesReceivedBeforeReconnect);
+
+		streamCancellationSource.Cancel();
+		int clientPacketsReceived = await clientStreamTask;
+		int serverPacketsReceived = await serverStreamTask;
+		Assert.NotEqual(0, clientPacketsReceived);
+		Assert.NotEqual(0, serverPacketsReceived);
 	}
 }

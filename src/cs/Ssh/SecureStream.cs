@@ -305,7 +305,7 @@ public class SecureStream : Stream
 	{
 		// Disposing the session closes the channel, which causes this SecureStream to be disposed.
 		await this.Session.CloseAsync(
-			SshDisconnectReason.None, this.Session.GetType().Name + " disposed").ConfigureAwait(false);
+			SshDisconnectReason.None, this.Session.GetType().Name + " disposed.").ConfigureAwait(false);
 		this.Session.Dispose();
 
 #if !NETSTANDARD2_0 && !NET4

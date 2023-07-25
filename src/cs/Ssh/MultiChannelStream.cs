@@ -321,7 +321,8 @@ public class MultiChannelStream : IDisposable
 	/// </summary>
 	public virtual async Task CloseAsync()
 	{
-		await this.Session.CloseAsync(SshDisconnectReason.None, this.Session.GetType().Name + " disposed").ConfigureAwait(false);
+		await this.Session.CloseAsync(
+			SshDisconnectReason.None, this.Session.GetType().Name + " disposed.").ConfigureAwait(false);
 		this.Session.Dispose();
 
 #if !NETSTANDARD2_0 && !NET4

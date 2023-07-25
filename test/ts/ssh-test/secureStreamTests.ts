@@ -17,6 +17,7 @@ import {
 	SshDisconnectReason,
 	SshServerCredentials,
 	SshServerSession,
+	SshSessionClosedEventArgs,
 	Stream,
 } from '@microsoft/dev-tunnels-ssh';
 import { MockNetworkStream } from './mockNetworkStream';
@@ -207,11 +208,9 @@ export class SecureStreamTests {
 	}) {
 		const [server, client] = await this.connect();
 
-		let closedEventRaised = false;
+		let closedEvent: SshSessionClosedEventArgs = undefined!;
 		server.onClosed((e) => {
-			assert.equal(e.reason, SshDisconnectReason.none);
-			assert.equal(e.message, 'SshSession disposed');
-			closedEventRaised = true;
+			closedEvent = e;
 		});
 
 		if (isConnected) {
@@ -221,7 +220,9 @@ export class SecureStreamTests {
 		await SecureStreamTests.disposeSecureStream(server, disposeAsync);
 
 		assert(server.isClosed);
-		assert(closedEventRaised);
+		assert(closedEvent);
+		assert.equal(closedEvent.reason, SshDisconnectReason.none);
+		assert.equal(closedEvent.message, 'SshServerSession disposed.');
 	}
 
 	private static async disposeSecureStream(stream: SecureStream, disposeAsync: boolean) {

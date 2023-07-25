@@ -20,6 +20,13 @@ import {
 	SshReconnectError,
 	SshReconnectFailureReason,
 	ObjectDisposedError,
+	SshStream,
+	SshDataWriter,
+	SshDataReader,
+	CancellationToken,
+	CancellationError,
+	CancellationTokenSource,
+	TraceLevel,
 } from '@microsoft/dev-tunnels-ssh';
 
 import { DuplexStream } from './duplexStream';
@@ -28,7 +35,7 @@ import { MockNetworkStream } from './mockNetworkStream';
 
 if (!assert.rejects) {
 	// Polyfill for browsers that don't have this API
-	(<any>assert).rejects = async function(action: () => Promise<any>, error?: Function) {
+	(<any>assert).rejects = async function (action: () => Promise<any>, error?: Function) {
 		try {
 			await action();
 		} catch (e) {
@@ -746,5 +753,108 @@ export class ReconnectTests {
 				SshReconnectFailureReason.differentServerHostKey,
 			);
 		}
+	}
+
+	@test
+	public async reconnectWhileStreaming() {
+		const [clientStream, serverStream] = await connectSessionPair(
+			this.clientSession,
+			this.serverSession,
+		);
+		await this.waitUntilReconnectEnabled();
+		const [serverChannel, clientChannel] = await this.initializeChannelPair();
+
+		// Start continuously sending/receiving data with both client and server sessions.
+		const sendAndReceiveUntilEnd = async (
+			channel: SshChannel,
+			cancellation: CancellationToken,
+		): Promise<number> => {
+			const stream = new SshStream(channel);
+			cancellation.onCancellationRequested(() => stream.end());
+
+			let receiveCount = 0;
+			const sendBuffer = Buffer.alloc(4);
+			let receiveBuffer = Buffer.alloc(0);
+			stream.on('data', (data) => (receiveBuffer = Buffer.concat([receiveBuffer, data])));
+			const streamErrorPromise = new Promise<void>((_, reject) => stream.once('error', reject));
+
+			while (true) {
+				const writer = new SshDataWriter(sendBuffer);
+				writer.writeUInt32(receiveCount);
+				const readPromise = new Promise<void>((resolve, reject) => {
+					if (receiveBuffer.length === 0) {
+						stream.once('data', resolve);
+					} else {
+						resolve();
+					}
+				});
+
+				let sent = false;
+				try {
+					await Promise.race([new Promise<void>((resolve, reject) => {
+						if (!stream.write(sendBuffer, (e) => (e ? reject(e) : resolve()))) {
+							stream.once('drain', resolve);
+						}
+					}), streamErrorPromise]);
+					sent = true;
+
+					await Promise.race([readPromise, streamErrorPromise]);
+					const reader = new SshDataReader(receiveBuffer);
+					assert.strictEqual(reader.readUInt32(), receiveCount);
+					receiveBuffer = receiveBuffer.subarray(4);
+				} catch (e) {
+					if (cancellation.isCancellationRequested) break;
+					channel.session.trace(
+						TraceLevel.Warning,
+						0,
+						`Failed to ${sent ? 'receive' : 'send'} *${receiveCount}: ${e}`,
+					);
+					throw e;
+				}
+
+				receiveCount++;
+				await new Promise((c) => setTimeout(c, 0));
+			}
+
+			return receiveCount;
+		};
+
+		const streamCancellationSource = new CancellationTokenSource();
+		const clientStreamPromise = sendAndReceiveUntilEnd(
+			clientChannel,
+			streamCancellationSource.token,
+		);
+		const serverStreamPromise = sendAndReceiveUntilEnd(
+			serverChannel,
+			streamCancellationSource.token,
+		);
+
+		// Wait for a few messages to be exchanged.
+		await new Promise((c) => setTimeout(c, 100));
+
+		const serverBytesReceivedBeforeReconnect = serverChannel.metrics.bytesReceived;
+		const clientBytesReceivedBeforeReconnect = clientChannel.metrics.bytesReceived;
+		assert(serverBytesReceivedBeforeReconnect > 0);
+		assert(clientBytesReceivedBeforeReconnect > 0);
+
+		// Disconnect and reconnect.
+		disconnectSessionPair(clientStream, serverStream);
+		await this.clientDisconnectedCompletion.promise;
+		await this.serverDisconnectedCompletion.promise;
+
+		await this.doReconnect();
+
+		// Wait for a few more messages to be exchanged.
+		await new Promise((c) => setTimeout(c, 100));
+
+		// Verify some messages were received after reconnection.
+		assert(serverChannel.metrics.bytesReceived > serverBytesReceivedBeforeReconnect);
+		assert(clientChannel.metrics.bytesReceived > clientBytesReceivedBeforeReconnect);
+
+		streamCancellationSource.cancel();
+		const clientPacketsReceived = await clientStreamPromise;
+		const serverPacketsReceived = await serverStreamPromise;
+		assert(clientPacketsReceived > 0);
+		assert(serverPacketsReceived > 0);
 	}
 }

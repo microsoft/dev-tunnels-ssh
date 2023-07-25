@@ -709,6 +709,10 @@ export class SshSession implements Disposable {
 
 			await this.protocol!.handleNewKeys(cancellation);
 
+			if (this.algorithms?.isExtensionInfoRequested) {
+				await this.sendExtensionInfo(cancellation);
+			}
+
 			try {
 				// Send messages that were blocked during key exchange.
 				while (this.blockedMessages.length > 0) {
@@ -1089,6 +1093,8 @@ export class SshSession implements Disposable {
 
 	/* @internal */
 	public async sendExtensionInfo(cancellation?: CancellationToken): Promise<void> {
+		if (!this.protocol) return;
+
 		const message = new ExtensionInfoMessage();
 		message.extensionInfo = {};
 
@@ -1104,7 +1110,7 @@ export class SshSession implements Disposable {
 			}
 		}
 
-		await this.sendMessage(message, cancellation);
+		await this.protocol.sendMessage(message, cancellation);
 	}
 
 	private async handleExtensionInfoMessage(
@@ -1197,18 +1203,24 @@ export class SshSession implements Disposable {
 		await this.close(message.reasonCode ?? SshDisconnectReason.none, description);
 	}
 
-	public dispose() {
+	public dispose(): void;
+
+	/* @internal */
+	public dispose(error?: Error): void;
+
+	public dispose(error?: Error): void {
 		const closedError =
-			this.closedError instanceof SshConnectionError
+			error ??
+			(this.closedError instanceof SshConnectionError
 				? this.closedError
-				: new SshConnectionError('Session disposed.');
+				: new SshConnectionError(this.constructor.name + ' disposed.'));
 		if (!this.disposed) {
 			this.trace(TraceLevel.Info, SshTraceEventIds.sessionClosing, `${this} disposed.`);
 			this.disposed = true;
 			this.closedEmitter.fire(
 				new SshSessionClosedEventArgs(
 					SshDisconnectReason.none,
-					'SshSession disposed',
+					closedError.message,
 					closedError,
 				),
 			);

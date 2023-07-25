@@ -227,7 +227,7 @@ public class SecureStreamTests
 		{
 			Assert.Equal(server, sender);
 			Assert.Equal(SshDisconnectReason.None, e.Reason);
-			Assert.Equal(typeof(SshServerSession).Name + " disposed", e.Message);
+			Assert.Equal(typeof(SshServerSession).Name + " disposed.", e.Message);
 			closedEventRaised = true;
 		};
 
