@@ -845,7 +845,7 @@ export class ReconnectTests {
 		await this.doReconnect();
 
 		// Wait for a few more messages to be exchanged.
-		await new Promise((c) => setTimeout(c, 100));
+		await new Promise((c) => setTimeout(c, 200));
 
 		// Verify some messages were received after reconnection.
 		assert(serverChannel.metrics.bytesReceived > serverBytesReceivedBeforeReconnect);

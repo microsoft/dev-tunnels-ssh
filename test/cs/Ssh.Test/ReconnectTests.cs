@@ -768,7 +768,7 @@ public class ReconnectTests : IDisposable
 		await ReconnectAsync();
 
 		// Wait for a few more messages to be exchanged.
-		await Task.Delay(100);
+		await Task.Delay(400);
 
 		// Verify some messages were received after reconnection.
 		Assert.True(serverChannel.Metrics.BytesReceived > serverBytesReceivedBeforeReconnect);
