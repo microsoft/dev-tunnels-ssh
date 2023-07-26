@@ -225,11 +225,13 @@ public class PortForwardingTests : IDisposable
 	[InlineData("127.0.0.1", "127.0.0.1", "127.0.0.1", "127.0.0.1")]
 	[InlineData("127.0.0.1", "127.0.0.1", "localhost", "127.0.0.1")]
 	[InlineData("127.0.0.1", "127.0.0.1", "localhost", "::1")]
+#if !NET4
 	[InlineData("0.0.0.0", "::1", "::1", "::1")]
 	[InlineData("127.0.0.1", "::1", "::1", "::1")]
 	[InlineData("127.0.0.1", "::1", "localhost", "::1")]
 	[InlineData("::", "::1", "::1", "::1")]
 	[InlineData("::1", "::1", "::1", "::1")]
+#endif
 	public async Task ForwardFromRemotePortReadWrite(
 		string remoteServerIPAddress,
 		string remoteClientIPAddress,
@@ -575,11 +577,13 @@ public class PortForwardingTests : IDisposable
 	[InlineData("127.0.0.1", "127.0.0.1", "127.0.0.1", "127.0.0.1")]
 	[InlineData("127.0.0.1", "127.0.0.1", "localhost", "127.0.0.1")]
 	[InlineData("127.0.0.1", "127.0.0.1", "localhost", "::1")]
+#if !NET4
 	[InlineData("0.0.0.0", "::1", "::1", "::1")]
 	[InlineData("127.0.0.1", "::1", "::1", "::1")]
 	[InlineData("127.0.0.1", "::1", "localhost", "::1")]
 	[InlineData("::", "::1", "::1", "::1")]
 	[InlineData("::1", "::1", "::1", "::1")]
+#endif
 	public async Task ForwardToRemotePortReadWrite(
 		string localServerIPAddress,
 		string localClientIPAddress,
