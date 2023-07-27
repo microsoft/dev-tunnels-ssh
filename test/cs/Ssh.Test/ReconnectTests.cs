@@ -767,12 +767,11 @@ public class ReconnectTests : IDisposable
 
 		await ReconnectAsync();
 
-		// Wait for a few more messages to be exchanged.
-		await Task.Delay(400);
-
 		// Verify some messages were received after reconnection.
-		Assert.True(serverChannel.Metrics.BytesReceived > serverBytesReceivedBeforeReconnect);
-		Assert.True(clientChannel.Metrics.BytesReceived > clientBytesReceivedBeforeReconnect);
+		await TaskExtensions.WaitUntil(() =>
+			 serverChannel.Metrics.BytesReceived > serverBytesReceivedBeforeReconnect &&
+				clientChannel.Metrics.BytesReceived > clientBytesReceivedBeforeReconnect)
+			.WithTimeout(Timeout);
 
 		streamCancellationSource.Cancel();
 		int clientPacketsReceived = await clientStreamTask;

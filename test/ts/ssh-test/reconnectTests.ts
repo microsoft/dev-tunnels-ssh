@@ -32,6 +32,7 @@ import {
 import { DuplexStream } from './duplexStream';
 import { connectSessionPair, disconnectSessionPair, createSessionConfig } from './sessionPair';
 import { MockNetworkStream } from './mockNetworkStream';
+import { until } from './promiseUtils';
 
 if (!assert.rejects) {
 	// Polyfill for browsers that don't have this API
@@ -791,11 +792,14 @@ export class ReconnectTests {
 
 				let sent = false;
 				try {
-					await Promise.race([new Promise<void>((resolve, reject) => {
-						if (!stream.write(sendBuffer, (e) => (e ? reject(e) : resolve()))) {
-							stream.once('drain', resolve);
-						}
-					}), streamErrorPromise]);
+					await Promise.race([
+						new Promise<void>((resolve, reject) => {
+							if (!stream.write(sendBuffer, (e) => (e ? reject(e) : resolve()))) {
+								stream.once('drain', resolve);
+							}
+						}),
+						streamErrorPromise,
+					]);
 					sent = true;
 
 					await Promise.race([readPromise, streamErrorPromise]);
@@ -844,12 +848,13 @@ export class ReconnectTests {
 
 		await this.doReconnect();
 
-		// Wait for a few more messages to be exchanged.
-		await new Promise((c) => setTimeout(c, 200));
-
 		// Verify some messages were received after reconnection.
-		assert(serverChannel.metrics.bytesReceived > serverBytesReceivedBeforeReconnect);
-		assert(clientChannel.metrics.bytesReceived > clientBytesReceivedBeforeReconnect);
+		await until(
+			() =>
+				serverChannel.metrics.bytesReceived > serverBytesReceivedBeforeReconnect &&
+				clientChannel.metrics.bytesReceived > clientBytesReceivedBeforeReconnect,
+			5000,
+		);
 
 		streamCancellationSource.cancel();
 		const clientPacketsReceived = await clientStreamPromise;
