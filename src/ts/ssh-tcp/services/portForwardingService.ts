@@ -191,8 +191,9 @@ export class PortForwardingService extends SshService {
 	 */
 	public messageFactory: PortForwardMessageFactory = new DefaultPortForwardMessageFactory();
 
-	private readonly forwardedPortConnectingEmitter =
-		new Emitter<ForwardedPortConnectingEventArgs>();
+	private readonly forwardedPortConnectingEmitter = new Emitter<
+		ForwardedPortConnectingEventArgs
+	>();
 
 	/**
 	 * Event raised when an incoming or outgoing connection to a forwarded port is
@@ -316,7 +317,7 @@ export class PortForwardingService extends SshService {
 
 		const request = await this.messageFactory.createRequestMessageAsync(remotePort);
 		if (!(await forwarder.request(request, cancellation))) {
-			forwarder.dispose();
+			// The remote side rejected the forwarding request, or it was a duplicate request.
 			return null;
 		}
 
@@ -324,6 +325,14 @@ export class PortForwardingService extends SshService {
 
 		// The remote port is the port sent in the message to the other side,
 		// so the connector is indexed on that port number, rather than the local port.
+		//
+		// Do not track duplicate port forwarders. (The remote side may not have detected the
+		// duplicate if not accepting local connections.)
+		if (this.remoteConnectors.has(remotePort)) {
+			// Do not dispose the forwarder because that would send a message to cancel
+			// forwarding of the port.
+			return null;
+		}
 		this.remoteConnectors.set(remotePort, forwarder);
 
 		const forwardedPort = new ForwardedPort(localPort, remotePort, false);
@@ -553,7 +562,7 @@ export class PortForwardingService extends SshService {
 			cancellation,
 		);
 		if (!forwardedStream) {
-			channel.close().catch((e) => { });
+			channel.close().catch((e) => {});
 			throw new SshChannelError(
 				'The connection to the forwarded port was rejected by the connecting event-handler.',
 			);
@@ -630,8 +639,12 @@ export class PortForwardingService extends SshService {
 			portForwardRequest.port !== 0 &&
 			this.localForwarders.has(portForwardRequest.port)
 		) {
-			// This may happen when re-connecting, so that the forwarded port status gets updated
-			// or refreshed. The remoteForwardedPorts collection will raise a portUpdated event below.
+			// The port is already forwarded, so a failure response will be returned. This may happen
+			// when re-connecting, to ensure the state of forwarded ports is consistent.
+			//
+			// Note duplicate ports are not detected here when AcceptLocalConnectionsForForwardedPorts
+			// is false; in that case duplicate port requests may succeed (if authorized below), though
+			// they don't really do anything.
 			const message = `PortForwardingService port ${portForwardRequest.port} is already forwarded.`;
 			this.session.trace(
 				TraceLevel.Verbose,
@@ -794,7 +807,7 @@ export class PortForwardingService extends SshService {
 						TraceLevel.Error,
 						SshTraceEventIds.portForwardRequestInvalid,
 						'PortForwardingService received forwarding channel ' +
-						`for ${remoteEndPoint} that was not requested.`,
+							`for ${remoteEndPoint} that was not requested.`,
 					);
 					request.failureReason = SshChannelOpenFailureReason.connectFailed;
 					request.failureDescription = 'Forwarding channel was not requested.';
