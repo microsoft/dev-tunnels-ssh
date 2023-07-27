@@ -286,7 +286,6 @@ public class PortForwardingService : SshService
 		if (!(await forwarder.RequestAsync(request, cancellation).ConfigureAwait(false)))
 		{
 			// The remote side rejected the forwarding request, or it was a duplicate request.
-			forwarder.Dispose();
 			return null;
 		}
 
@@ -301,7 +300,8 @@ public class PortForwardingService : SshService
 			// duplicate if not accepting local connections.)
 			if (this.remoteConnectors.ContainsKey(remotePort))
 			{
-				forwarder.Dispose();
+				// Do not dispose the forwarder because that would send a message to cancel
+				// forwarding of the port.
 				return null;
 			}
 

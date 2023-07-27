@@ -191,8 +191,9 @@ export class PortForwardingService extends SshService {
 	 */
 	public messageFactory: PortForwardMessageFactory = new DefaultPortForwardMessageFactory();
 
-	private readonly forwardedPortConnectingEmitter =
-		new Emitter<ForwardedPortConnectingEventArgs>();
+	private readonly forwardedPortConnectingEmitter = new Emitter<
+		ForwardedPortConnectingEventArgs
+	>();
 
 	/**
 	 * Event raised when an incoming or outgoing connection to a forwarded port is
@@ -317,7 +318,6 @@ export class PortForwardingService extends SshService {
 		const request = await this.messageFactory.createRequestMessageAsync(remotePort);
 		if (!(await forwarder.request(request, cancellation))) {
 			// The remote side rejected the forwarding request, or it was a duplicate request.
-			forwarder.dispose();
 			return null;
 		}
 
@@ -329,7 +329,8 @@ export class PortForwardingService extends SshService {
 		// Do not track duplicate port forwarders. (The remote side may not have detected the
 		// duplicate if not accepting local connections.)
 		if (this.remoteConnectors.has(remotePort)) {
-			forwarder.dispose();
+			// Do not dispose the forwarder because that would send a message to cancel
+			// forwarding of the port.
 			return null;
 		}
 		this.remoteConnectors.set(remotePort, forwarder);
@@ -561,7 +562,7 @@ export class PortForwardingService extends SshService {
 			cancellation,
 		);
 		if (!forwardedStream) {
-			channel.close().catch((e) => { });
+			channel.close().catch((e) => {});
 			throw new SshChannelError(
 				'The connection to the forwarded port was rejected by the connecting event-handler.',
 			);
@@ -806,7 +807,7 @@ export class PortForwardingService extends SshService {
 						TraceLevel.Error,
 						SshTraceEventIds.portForwardRequestInvalid,
 						'PortForwardingService received forwarding channel ' +
-						`for ${remoteEndPoint} that was not requested.`,
+							`for ${remoteEndPoint} that was not requested.`,
 					);
 					request.failureReason = SshChannelOpenFailureReason.connectFailed;
 					request.failureDescription = 'Forwarding channel was not requested.';
