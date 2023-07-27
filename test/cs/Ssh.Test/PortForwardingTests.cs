@@ -475,6 +475,31 @@ public class PortForwardingTests : IDisposable
 		}
 	}
 
+	[Theory]
+	[InlineData(false)]
+	[InlineData(true)]
+	public async Task ForwardFromRemotePortRace(bool acceptLocalConnections)
+	{
+		await this.sessionPair.ConnectAsync();
+		var clientSession = this.sessionPair.ClientSession;
+		var serverSession = this.sessionPair.ServerSession;
+		clientSession.Request += (_, e) => e.IsAuthorized = true;
+		clientSession.ActivateService<PortForwardingService>()
+			.AcceptLocalConnectionsForForwardedPorts = acceptLocalConnections;
+
+		var forwarder1Task = serverSession.ForwardFromRemotePortAsync(
+			IPAddress.Loopback, TestPort1);
+		var forwarder2Task = serverSession.ForwardFromRemotePortAsync(
+			IPAddress.Loopback, TestPort1);
+		await Task.WhenAll(forwarder1Task, forwarder2Task).WithTimeout(Timeout);
+
+		// The same port was forwarded twice concurrently.
+		// Only one forwarder should have been returned.
+		Assert.Equal(
+			1,
+			(await forwarder1Task != null ? 1 : 0) + (await forwarder2Task != null ? 1 : 0));
+	}
+
 	[Fact]
 	public async Task ForwardToRemotePortRequest()
 	{

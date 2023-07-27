@@ -285,6 +285,7 @@ public class PortForwardingService : SshService
 			.ConfigureAwait(false);
 		if (!(await forwarder.RequestAsync(request, cancellation).ConfigureAwait(false)))
 		{
+			// The remote side rejected the forwarding request, or it was a duplicate request.
 			forwarder.Dispose();
 			return null;
 		}
@@ -295,6 +296,15 @@ public class PortForwardingService : SshService
 		{
 			// The remote port is the port sent in the message to the other side,
 			// so the connector is indexed on that port number, rather than the local port.
+			//
+			// Do not track duplicate port forwarders. (The remote side may not have detected the
+			// duplicate if not accepting local connections.)
+			if (this.remoteConnectors.ContainsKey(remotePort))
+			{
+				forwarder.Dispose();
+				return null;
+			}
+
 			this.remoteConnectors.Add(remotePort, forwarder);
 		}
 
@@ -626,8 +636,12 @@ public class PortForwardingService : SshService
 		else if (request.RequestType == PortForwardRequestType && portForwardRequest.Port != 0 &&
 			this.localForwarders.ContainsKey((int)portForwardRequest.Port))
 		{
-			// This may happen when re-connecting, so that the forwarded port status gets updated
-			// or refreshed. The RemoteForwardedPorts collection will raise a PortUpdated event below.
+			// The port is already forwarded, so a failure response will be returned. This may happen
+			// when re-connecting, to ensure the state of forwarded ports is consistent.
+			//
+			// Note duplicate ports are not detected here when AcceptLocalConnectionsForForwardedPorts
+			// is false; in that case duplicate port requests may succeed (if authorized below), though 
+			// they don't really do anything.
 			string message = $"{nameof(PortForwardingService)} port {portForwardRequest.Port} " +
 				"is already forwarded.";
 			Session.Trace.TraceEvent(

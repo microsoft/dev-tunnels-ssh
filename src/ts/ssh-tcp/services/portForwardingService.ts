@@ -316,6 +316,7 @@ export class PortForwardingService extends SshService {
 
 		const request = await this.messageFactory.createRequestMessageAsync(remotePort);
 		if (!(await forwarder.request(request, cancellation))) {
+			// The remote side rejected the forwarding request, or it was a duplicate request.
 			forwarder.dispose();
 			return null;
 		}
@@ -324,6 +325,13 @@ export class PortForwardingService extends SshService {
 
 		// The remote port is the port sent in the message to the other side,
 		// so the connector is indexed on that port number, rather than the local port.
+		//
+		// Do not track duplicate port forwarders. (The remote side may not have detected the
+		// duplicate if not accepting local connections.)
+		if (this.remoteConnectors.has(remotePort)) {
+			forwarder.dispose();
+			return null;
+		}
 		this.remoteConnectors.set(remotePort, forwarder);
 
 		const forwardedPort = new ForwardedPort(localPort, remotePort, false);
@@ -630,8 +638,12 @@ export class PortForwardingService extends SshService {
 			portForwardRequest.port !== 0 &&
 			this.localForwarders.has(portForwardRequest.port)
 		) {
-			// This may happen when re-connecting, so that the forwarded port status gets updated
-			// or refreshed. The remoteForwardedPorts collection will raise a portUpdated event below.
+			// The port is already forwarded, so a failure response will be returned. This may happen
+			// when re-connecting, to ensure the state of forwarded ports is consistent.
+			//
+			// Note duplicate ports are not detected here when AcceptLocalConnectionsForForwardedPorts
+			// is false; in that case duplicate port requests may succeed (if authorized below), though
+			// they don't really do anything.
 			const message = `PortForwardingService port ${portForwardRequest.port} is already forwarded.`;
 			this.session.trace(
 				TraceLevel.Verbose,
