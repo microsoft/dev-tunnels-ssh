@@ -229,11 +229,9 @@ public class PortForwardingService : SshService
 	/// <param name="remotePort">The remote port to listen on, or 0 to choose an
 	/// available port. (The chosen port can then be obtained via the
 	/// <see cref="RemotePortConnector.RemotePort" /> property on the returned object.)</param>
-	/// <param name="localHost">The destination hostname or IP address for forwarded
-	/// connections, to be resolved on the local side. WARNING: Avoid using the hostname
-	/// `localhost` as the destination host; use `127.0.0.1` or `::1` instead. OpenSSH does not
-	/// recognize `localhost` as a valid destination host, and it can be slower anyway due to
-	/// a bug in .NET Core: https://github.com/dotnet/runtime/issues/31085 </param>
+	/// <param name="localHost">The destination hostname (such as `localhost`) or IP address for
+	/// forwarded connections, to be resolved on the local side. WARNING: OpenSSH does not
+	/// recognize `localhost` as a valid destination host.</param>
 	/// <param name="localPort">The destination port for forwarded connections.</param>
 	/// <param name="cancellation">Cancellation token for the request; note this cannot
 	/// cancel forwarding once it has started; use the returned disposable do do that.</param>
@@ -329,14 +327,12 @@ public class PortForwardingService : SshService
 	/// </summary>
 	/// <param name="localIPAddress">IP address of the interface to bind to on the local
 	/// side.</param>
-	/// <param name="localPort">The local port number to lsiten on, or 0 to choose an
+	/// <param name="localPort">The local port number to listen on, or 0 to choose an
 	/// available port. (The chosen port can then be obtained via the
 	/// <see cref="LocalPortForwarder.LocalPort" /> property on the returned object.)</param>
-	/// <param name="remoteHost">The destination hostname or IP address for forwarded
-	/// connections, to be resolved on the remote side. WARNING: Avoid using the hostname
-	/// `localhost` as the destination host; use `127.0.0.1` or `::1` instead. OpenSSH does not
-	/// recognize `localhost` as a valid destination host, and it can be slower anyway due to
-	/// a bug in .NET Core: https://github.com/dotnet/runtime/issues/31085 </param>
+	/// <param name="remoteHost">The destination hostname (such as `localhost`) or IP address for
+	/// forwarded connections, to be resolved on the remote side. WARNING: OpenSSH does not
+	/// recognize `localhost` as a valid destination host.</param>
 	/// <param name="remotePort">The destination port for forwarded connections.
 	/// (Must not be 0.)</param>
 	/// <param name="cancellation">Cancellation token for the request; note this cannot
@@ -468,7 +464,7 @@ public class PortForwardingService : SshService
 	/// <param name="remotePort">The destination port for forwarded connections.
 	/// (Must not be 0.)</param>
 	/// <param name="cancellation">Cancellation token for the request; note this cannot
-	/// cancel streaming once it has started; dipose the returned stream for that.</param>
+	/// cancel streaming once it has started; dispose the returned stream for that.</param>
 	/// <returns>A stream that is relayed to the remote port.</returns>
 	/// <exception cref="SshChannelException">The streaming channel could not be opened,
 	/// either because it was rejected by the remote side, or the remote connection failed.

@@ -222,7 +222,15 @@ public class SshServer : IDisposable
 	{
 		if (disposing)
 		{
-			this.disposeCancellationSource.Cancel();
+			try
+			{
+				this.disposeCancellationSource.Cancel();
+			}
+			catch (ObjectDisposedException)
+			{
+				// The cancellation source was already disposed.
+			}
+			
 			this.disposeCancellationSource.Dispose();
 
 			foreach (SshServerSession serverSession in this.sessions.ToArray())

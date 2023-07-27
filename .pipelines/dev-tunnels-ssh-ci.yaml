@@ -274,11 +274,6 @@ jobs:
           selectOrConfig: config
           nugetConfigPath: NuGet.config
 
-      - task: NodeTool@0
-        displayName: Use Node 14.x
-        inputs:
-          versionSpec: 14.x
-
       - task: Npm@1
         displayName: Restore npm packages
         inputs:

@@ -92,6 +92,17 @@ export class RemotePortForwarder extends RemotePortConnector {
 		const socket = net.createConnection({
 			host: localHost,
 			port: localPort,
+
+			// This option enables connection attempts for multiple resolved IP addresses,
+			// aka "Happy Eyeballs" as described in https://datatracker.ietf.org/doc/html/rfc8305.
+			// Effectively this enables fast connections to either 127.0.0.1 or ::1 when 'localhost'
+			// is specified as the hostname. Note this option is available starting with Node.js
+			// v18.13 and is enabled by default starting with Node.js v20.0.
+			autoSelectFamily: true,
+
+			// Use the minimum supported connection attempt delay when connecting to 'localhost'.
+			// See https://nodejs.org/api/net.html#socketconnectoptions-connectlistener
+			autoSelectFamilyAttemptTimeout: localHost === 'localhost' ? 10 : 250,
 		});
 
 		const connectCompletion = new PromiseCompletionSource<void>();

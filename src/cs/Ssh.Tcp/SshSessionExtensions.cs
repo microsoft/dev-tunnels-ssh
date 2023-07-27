@@ -67,11 +67,9 @@ public static class SshSessionExtensions
 	/// <param name="remotePort">The remote port to listen on, or 0 to choose an
 	/// available port. (The chosen port can then be obtained via the
 	/// <see cref="RemotePortConnector.RemotePort" /> property on the returned object.)</param>
-	/// <param name="localHost">The destination hostname or IP address for forwarded
-	/// connections, to be resolved on the local side. WARNING: Avoid using the hostname
-	/// `localhost` as the destination host; use `127.0.0.1` or `::1` instead. OpenSSH does not
-	/// recognize `localhost` as a valid destination host, and it can be slower anyway due to
-	/// a bug in .NET Core: https://github.com/dotnet/runtime/issues/31085 </param>
+	/// <param name="localHost">The destination hostname (such as `localhost`) or IP address for
+	/// forwarded connections, to be resolved on the local side. WARNING: OpenSSH does not
+	/// recognize `localhost` as a valid destination host.</param>
 	/// <param name="localPort">The destination port for forwarded connections.
 	/// (Must not be 0.)</param>
 	/// <param name="cancellation">Cancellation token for the request; note this cannot
@@ -149,11 +147,9 @@ public static class SshSessionExtensions
 	/// <param name="localPort">The local port number to lsiten on, or 0 to choose an
 	/// available port. (The chosen port can then be obtained via the
 	/// <see cref="LocalPortForwarder.LocalPort" /> property on the returned object.)</param>
-	/// <param name="remoteHost">The destination hostname or IP address for forwarded
-	/// connections, to be resolved on the remote side. WARNING: Avoid using the hostname
-	/// `localhost` as the destination host; use `127.0.0.1` or `::1` instead. OpenSSH does not
-	/// recognize `localhost` as a valid destination host, and it can be slower anyway due to
-	/// a bug in .NET Core: https://github.com/dotnet/runtime/issues/31085 </param>
+	/// <param name="remoteHost">The destination hostname (such as `localhost`) or IP address for
+	/// forwarded connections, to be resolved on the remote side. WARNING: OpenSSH does not
+	/// recognize `localhost` as a valid destination host.</param>
 	/// <param name="remotePort">The destination port for forwarded connections.
 	/// (Must not be 0.)</param>
 	/// <param name="cancellation">Cancellation token for the request; note this cannot

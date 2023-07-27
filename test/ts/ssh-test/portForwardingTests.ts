@@ -46,10 +46,6 @@ const loopbackV6 = '::1';
 const anyV4 = '0.0.0.0';
 const anyV6 = '::';
 
-// Node.js >v16 resolves "localhost" to a v6 address instead of v4.
-const nodeMajorVersion = parseInt(process.versions.node.split('.')[0]);
-const loopback = nodeMajorVersion > 16 ? loopbackV6 : loopbackV4;
-
 class TestTcpListenerFactory implements TcpListenerFactory {
 	public constructor(public readonly localPortOverride: number) { }
 
@@ -229,7 +225,7 @@ export class PortForwardingTests {
 		remoteServerIPAddress: anyV4,
 		remoteClientIPAddress: loopbackV4,
 		localForwardHost: 'localhost',
-		localServerIPAddress: loopback,
+		localServerIPAddress: loopbackV4,
 	})
 	@params({
 		remoteServerIPAddress: loopbackV4,
@@ -241,7 +237,13 @@ export class PortForwardingTests {
 		remoteServerIPAddress: loopbackV4,
 		remoteClientIPAddress: loopbackV4,
 		localForwardHost: 'localhost',
-		localServerIPAddress: loopback,
+		localServerIPAddress: loopbackV4,
+	})
+	@params({
+		remoteServerIPAddress: loopbackV4,
+		remoteClientIPAddress: loopbackV4,
+		localForwardHost: 'localhost',
+		localServerIPAddress: loopbackV6,
 	})
 	@params({
 		remoteServerIPAddress: anyV4,
@@ -253,6 +255,12 @@ export class PortForwardingTests {
 		remoteServerIPAddress: loopbackV4,
 		remoteClientIPAddress: loopbackV6,
 		localForwardHost: loopbackV6,
+		localServerIPAddress: loopbackV6,
+	})
+	@params({
+		remoteServerIPAddress: loopbackV4,
+		remoteClientIPAddress: loopbackV6,
+		localForwardHost: 'localhost',
 		localServerIPAddress: loopbackV6,
 	})
 	@params({
@@ -656,7 +664,7 @@ export class PortForwardingTests {
 		localServerIPAddress: anyV4,
 		localClientIPAddress: loopbackV4,
 		remoteForwardHost: 'localhost',
-		remoteServerIPAddress: loopback,
+		remoteServerIPAddress: loopbackV4,
 	})
 	@params({
 		localServerIPAddress: loopbackV4,
@@ -668,7 +676,13 @@ export class PortForwardingTests {
 		localServerIPAddress: loopbackV4,
 		localClientIPAddress: loopbackV4,
 		remoteForwardHost: 'localhost',
-		remoteServerIPAddress: loopback,
+		remoteServerIPAddress: loopbackV4,
+	})
+	@params({
+		localServerIPAddress: loopbackV4,
+		localClientIPAddress: loopbackV4,
+		remoteForwardHost: 'localhost',
+		remoteServerIPAddress: loopbackV6,
 	})
 	@params({
 		localServerIPAddress: anyV4,
@@ -680,6 +694,12 @@ export class PortForwardingTests {
 		localServerIPAddress: loopbackV4,
 		localClientIPAddress: loopbackV6,
 		remoteForwardHost: loopbackV6,
+		remoteServerIPAddress: loopbackV6,
+	})
+	@params({
+		localServerIPAddress: loopbackV4,
+		localClientIPAddress: loopbackV6,
+		remoteForwardHost: 'localhost',
 		remoteServerIPAddress: loopbackV6,
 	})
 	@params({

@@ -24,6 +24,7 @@ export function listenOnLocalPort(port: number, localIPAddress?: string): Promis
 	listener.listen({
 		host: localIPAddress ?? '127.0.0.1',
 		port,
+		ipv6Only: localIPAddress?.startsWith('::'),
 	});
 	return listenCompletion.promise;
 }
