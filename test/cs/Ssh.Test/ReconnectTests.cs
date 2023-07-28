@@ -716,25 +716,26 @@ public class ReconnectTests : IDisposable
 				var message = BitConverter.GetBytes(receiveCount);
 				try
 				{
-					channel.Session.Trace.TraceInformation($"{name} sending *{receiveCount:x2}");
+					channel.Session.Trace.TraceInformation($"{name} sending {receiveCount:x2}");
 					await stream.WriteAsync(message, 0, message.Length, cancellation)
 						.WithTimeout(Timeout);
 					sent = true;
-					channel.Session.Trace.TraceInformation($"{name} receiving *{receiveCount:x2}");
+					channel.Session.Trace.TraceInformation($"{name} receiving {receiveCount:x2}");
 					await stream.ReadAsync(receiveBuffer, 0, receiveBuffer.Length, cancellation)
 						.WithTimeout(Timeout);
 					Assert.Equal(receiveCount, BitConverter.ToInt32(receiveBuffer, 0));
-					channel.Session.Trace.TraceInformation($"{name} verified *{receiveCount:x2}");
+					channel.Session.Trace.TraceInformation($"{name} verified {receiveCount:x2}");
 				}
 				catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
 				{
 					break;
 				}
-				catch (Exception)
+				catch (Exception ex)
 				{
-					channel.Session.Trace.TraceInformation(
-						$"{name} failed to {(sent ? "receive" : "send")} *{receiveCount:x2}");
-
+					channel.Session.Trace.TraceEvent(
+						System.Diagnostics.TraceEventType.Error,
+						0,
+						$"{name} failed to {(sent ? "receive" : "send")} {receiveCount:x2}: {ex}");
 					stream.Close();
 					throw;
 				}
