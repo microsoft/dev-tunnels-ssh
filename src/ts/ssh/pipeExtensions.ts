@@ -93,6 +93,13 @@ export class PipeExtensions {
 			void PipeExtensions.forwardData(toChannel, channel, data).catch();
 		});
 
+		channel.onEof(() => {
+			void PipeExtensions.forwardData(channel, toChannel, Buffer.alloc(0)).catch();
+		});
+		toChannel.onEof(() => {
+			void PipeExtensions.forwardData(toChannel, channel, Buffer.alloc(0)).catch();
+		});
+
 		channel.onClosed((e) => {
 			if (!closed) {
 				closed = true;
