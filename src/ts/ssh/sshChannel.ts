@@ -18,6 +18,7 @@ import {
 	ChannelFailureMessage,
 	ChannelOpenMessage,
 	ChannelOpenConfirmationMessage,
+	ChannelExtendedDataMessage,
 } from './messages/connectionMessages';
 import { SshDisconnectReason } from './messages/transportMessages';
 import { ChannelMetrics } from './metrics/channelMetrics';
@@ -73,6 +74,8 @@ export class SshChannel implements Disposable {
 
 	private readonly dataReceivedEmitter = new Emitter<Buffer>();
 
+	private readonly extendedDataReceivedEmitter = new Emitter<Buffer>();
+
 	/**
 	 * Event raised when a data message is received on the channel.
 	 *
@@ -84,6 +87,8 @@ export class SshChannel implements Disposable {
 	 * to notify the remote side that it may send more data.
 	 */
 	public readonly onDataReceived: Event<Buffer> = this.dataReceivedEmitter.event;
+
+	public readonly onExtendedDataReceived: Event<Buffer> = this.extendedDataReceivedEmitter.event;
 
 	private readonly eofEmitter = new Emitter<void>();
 
@@ -271,6 +276,61 @@ export class SshChannel implements Disposable {
 		}
 	}
 
+	public async sendStderr(data: Buffer, cancellation?: CancellationToken): Promise<void> {
+		if (this.disposed) throw new ObjectDisposedError(this);
+
+		if (data.length === 0) {
+			await this.sendEof();
+			return;
+		} else if (this.sentEof) {
+			throw new Error('Cannot send more data after EOF.');
+		}
+
+		// Prevent out-of-order message chunks even if the caller does not await.
+		// Also don't send until the channel is fully opened.
+		await this.sendSemaphore.wait(cancellation);
+		try {
+			let offset = 0;
+			let count = data.length;
+			while (count > 0) {
+				let packetSize = Math.min(Math.min(this.remoteWindowSize, this.maxPacketSize), count);
+				while (packetSize === 0) {
+					if (!this.openSendingWindowCompletionSource) {
+						this.openSendingWindowCompletionSource = new PromiseCompletionSource<void>();
+					}
+
+					this.session.trace(
+						TraceLevel.Warning,
+						SshTraceEventIds.channelWaitForWindowAdjust,
+						`${this} send window is full. Waiting for window adjustment before sending.`,
+					);
+					await withCancellation(this.openSendingWindowCompletionSource.promise, cancellation);
+
+					this.openSendingWindowCompletionSource = null;
+					packetSize = Math.min(Math.min(this.remoteWindowSize, this.maxPacketSize), count);
+				}
+
+				const msg = new ChannelExtendedDataMessage();
+				msg.dataTypeCode = 1;
+				msg.recipientChannel = this.remoteChannelId;
+
+				// Unfortunately the data must be copied to a new buffer at this point
+				// to ensure it is still available to be re-sent later in case of disconnect.
+				msg.data = Buffer.from(data.slice(offset, offset + packetSize));
+
+				await this.session.sendMessage(msg, cancellation);
+
+				this.remoteWindowSize -= packetSize;
+				count -= packetSize;
+				offset += packetSize;
+
+				this.metrics.addBytesSent(packetSize);
+			}
+		} finally {
+			this.sendSemaphore.tryRelease();
+		}
+	}
+
 	/* @internal */
 	public enableSending(): void {
 		this.sendSemaphore.tryRelease();
@@ -386,6 +446,11 @@ export class SshChannel implements Disposable {
 
 		// DataReceived handler is to adjust the window when it's done with the data.
 		this.dataReceivedEmitter.fire(data);
+	}
+
+	public handleExtendedDataReceived(data: Buffer): void {
+		// this.metrics.addBytesReceived(data.length);
+		this.extendedDataReceivedEmitter.fire(data);
 	}
 
 	/**
