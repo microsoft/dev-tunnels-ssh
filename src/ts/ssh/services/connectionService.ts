@@ -28,6 +28,7 @@ import { ObjectDisposedError, SshChannelError, SshConnectionError } from '../err
 import { SshChannelOpeningEventArgs } from '../events/sshChannelOpeningEventArgs';
 import { serviceActivation } from './serviceActivation';
 import { TraceLevel, SshTraceEventIds } from '../trace';
+import { SshExtendedDataEventArgs } from '../events/sshExtendedDataEventArgs';
 
 interface PendingChannel {
 	openMessage: ChannelOpenMessage;
@@ -440,7 +441,7 @@ export class ConnectionService extends SshService {
 
 	private handleExtendedDataMessage(message: ChannelExtendedDataMessage): void {
 		const channel = this.tryGetChannelForMessage(message);
-		channel?.handleExtendedDataReceived(message.data!);
+		channel?.handleExtendedDataReceived(new SshExtendedDataEventArgs(message.dataTypeCode!, message.data!));
 	}
 
 	private handleAdjustWindowMessage(message: ChannelWindowAdjustMessage): void {

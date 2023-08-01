@@ -30,6 +30,7 @@ import { CancellationToken, CancellationError, withCancellation } from './util/c
 import { Semaphore } from './util/semaphore';
 import { TraceLevel, SshTraceEventIds } from './trace';
 import { PipeExtensions } from './pipeExtensions';
+import { SshExtendedDataEventArgs, SshExtendedDataType } from './events/sshExtendedDataEventArgs';
 
 /**
  * Represents a channel on an SSH session. A session may include multiple channels, which
@@ -74,7 +75,7 @@ export class SshChannel implements Disposable {
 
 	private readonly dataReceivedEmitter = new Emitter<Buffer>();
 
-	private readonly extendedDataReceivedEmitter = new Emitter<Buffer>();
+	private readonly extendedDataReceivedEmitter = new Emitter<SshExtendedDataEventArgs>();
 
 	/**
 	 * Event raised when a data message is received on the channel.
@@ -88,7 +89,7 @@ export class SshChannel implements Disposable {
 	 */
 	public readonly onDataReceived: Event<Buffer> = this.dataReceivedEmitter.event;
 
-	public readonly onExtendedDataReceived: Event<Buffer> = this.extendedDataReceivedEmitter.event;
+	public readonly onExtendedDataReceived: Event<SshExtendedDataEventArgs> = this.extendedDataReceivedEmitter.event;
 
 	private readonly eofEmitter = new Emitter<void>();
 
@@ -276,7 +277,7 @@ export class SshChannel implements Disposable {
 		}
 	}
 
-	public async sendStderr(data: Buffer, cancellation?: CancellationToken): Promise<void> {
+	public async sendExtendedData(dataTypeCode: SshExtendedDataType, data: Buffer, cancellation?: CancellationToken): Promise<void> {
 		if (this.disposed) throw new ObjectDisposedError(this);
 
 		if (data.length === 0) {
@@ -311,7 +312,7 @@ export class SshChannel implements Disposable {
 				}
 
 				const msg = new ChannelExtendedDataMessage();
-				msg.dataTypeCode = 1;
+				msg.dataTypeCode = dataTypeCode;
 				msg.recipientChannel = this.remoteChannelId;
 
 				// Unfortunately the data must be copied to a new buffer at this point
@@ -448,7 +449,7 @@ export class SshChannel implements Disposable {
 		this.dataReceivedEmitter.fire(data);
 	}
 
-	public handleExtendedDataReceived(data: Buffer): void {
+	public handleExtendedDataReceived(data: SshExtendedDataEventArgs): void {
 		// this.metrics.addBytesReceived(data.length);
 		this.extendedDataReceivedEmitter.fire(data);
 	}

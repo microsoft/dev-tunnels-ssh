@@ -27,6 +27,7 @@ import {
 } from '@microsoft/dev-tunnels-ssh';
 import { connectSessionPair, createSessionPair, openChannel } from './sessionPair';
 import { expectError, until, withTimeout } from './promiseUtils';
+import { SshExtendedDataType } from 'src/ts/ssh/events/sshExtendedDataEventArgs';
 
 const timeoutMs = 5000;
 
@@ -203,13 +204,17 @@ export class PipeTests {
 		const pipePromise = serverChannel1.pipe(serverChannel2);
 
 		const testData = Buffer.from('test', 'utf8');
-		const dataCompletion = new PromiseCompletionSource<Buffer>();
+		const dataCompletion = new PromiseCompletionSource<{ dataType: SshExtendedDataType; data: Buffer}>();
 		(fromTarget ? clientChannel1 : clientChannel2).onExtendedDataReceived((data) => {
-			dataCompletion.resolve(data);
+			dataCompletion.resolve({
+				dataType: data.dataTypeCode,
+				data: data.data,
+			});
 		});
-		await (fromTarget ? clientChannel2 : clientChannel1).sendStderr(testData);
+		await (fromTarget ? clientChannel2 : clientChannel1).sendExtendedData(SshExtendedDataType.STDERR, testData);
 		const receivedData = await withTimeout(dataCompletion.promise, timeoutMs);
-		assert(receivedData.equals(testData));
+		assert(receivedData.data.equals(testData));
+		assert.equal(receivedData.dataType, SshExtendedDataType.STDERR);
 	}
 
 	@test
