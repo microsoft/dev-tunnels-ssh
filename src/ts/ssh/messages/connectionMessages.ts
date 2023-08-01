@@ -239,7 +239,9 @@ export class ChannelExtendedDataMessage extends ChannelMessage {
 	}
 
 	public toString() {
-		return this.data ? formatBuffer(this.data, '') : '[0]';
+		return `${super.toString()} (dataTypeCode=${this.dataTypeCode}, data=${
+			this.data ? formatBuffer(this.data, '') : '[0]'
+		})`
 	}
 }
 
