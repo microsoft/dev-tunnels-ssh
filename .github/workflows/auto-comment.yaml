@@ -9,14 +9,14 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           pullRequestOpened: |
             👋 @{{ author }}
-            Once you merge this PR, please make sure you have follow these steps for CLI to pick up your changes. 
+            Once you merge this PR, please make sure you have follow these steps for CLI to pick up your changes.
             1. Go to SSH CI build [link]({{ https://dev.azure.com/devdiv/OnlineServices/_build?definitionId=17611&_a=summary }}).
-            2. Rerun the build by targeting "main" branch with "PublishNpmPackage" and "PublishNugetPAckage" check boxes checked. 
-            3. Once build is completed, the build number is your new ssh package number. 
+            2. Rerun the build by targeting "main" branch with "PublishNpmPackage" and "PublishNugetPAckage" check boxes checked.
+            3. Once build is completed, the build number is your new ssh package number.
             4. Go to SDK repo and send a new Pr with following changes made:
               4.1 Update the "DevTunnelSshPackageVersion" here in SDK repo : [link]({{ https://github.com/microsoft/dev-tunnels/blob/main/cs/build/build.props }})
-              4.2 Update all "microsoft/dev-tunnels-ssh" and "microsoft/dev-tunnels-ssh-tcp" depenencies in the sdk repo with new version number 
-              4.3 Once you merge above changes in sdk repo go to this SDK CI build and checkout the new build number : [link]({{ https://dev.azure.com/devdiv/OnlineServices/_build?definitionId=16351 }})
+              4.2 Update all "microsoft/dev-tunnels-ssh" and "microsoft/dev-tunnels-ssh-tcp" depenencies in the sdk repo with new version number.
+              4.3 Once you merge above changes in sdk repo go to this SDK CI build and checkout the new build number: [link]({{ https://dev.azure.com/devdiv/OnlineServices/_build?definitionId=16351 }})
             5. Go to tunnels repo and send a PR with following changes: 
-              5.1 Update "DevTunnelsSshPackageVersion" as in the ssh repo and "TunnelClientPackageVersion" with new SDk CI build number here and sent a pr in tunnels repo [link]({{ https://dev.azure.com/devdiv/OnlineServices/_git/tunnels?path=/build/build.props&version=GBmain&_a=contents }})
-            Once all above Prs are merged CLI should pick up your changes. 
+              5.1 Update "DevTunnelsSshPackageVersion" as in the ssh repo and "TunnelClientPackageVersion" with new SDK CI build number. Send a pr in tunnels repo [link]({{ https://dev.azure.com/devdiv/OnlineServices/_git/tunnels?path=/build/build.props&version=GBmain&_a=contents }})
+            Once all above Prs are merged CLI should pick up your changes.
