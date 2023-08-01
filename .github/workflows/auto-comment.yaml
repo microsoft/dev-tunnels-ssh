@@ -16,7 +16,8 @@ jobs:
             4. Go to SDK repo and send a new Pr with following changes made:
               4.1 Update the "DevTunnelSshPackageVersion" [here in SDK repo]({{ https://github.com/microsoft/dev-tunnels/blob/main/cs/build/build.props }})
               4.2 Update all "microsoft/dev-tunnels-ssh" and "microsoft/dev-tunnels-ssh-tcp" depenencies in the sdk repo with new version number.
-              4.3 Once you merge above changes in SDK repo checkout the new build number: [SDK CI build]({{ https://dev.azure.com/devdiv/OnlineServices/_build?definitionId=16351 }})
+              4.3 Run "npm install"  and make sure it updates "microsoft/dev-tunnels-ssh" and "microsoft/dev-tunnels-ssh-tcp" versions in the ts/package-lock.json file.
+              4.4 Once you merge above changes in SDK repo checkout the new build number: [SDK CI build]({{ https://dev.azure.com/devdiv/OnlineServices/_build?definitionId=16351 }})
             5. Go to tunnels repo and send a PR with following changes: 
-              5.1 Update "DevTunnelsSshPackageVersion" as in step 3 and  update "TunnelClientPackageVersion" with new SDK CI build number in [Build.props file]({{ https://dev.azure.com/devdiv/OnlineServices/_git/tunnels?path=/build/build.props&version=GBmain&_a=contents }}) and send a new PR.
+              5.1 Update "DevTunnelsSshPackageVersion" as in step 3 and  update "TunnelClientPackageVersion" with new SDK CI build number from step 4.4 in [Build.props file]({{ https://dev.azure.com/devdiv/OnlineServices/_git/tunnels?path=/build/build.props&version=GBmain&_a=contents }}) and send a new PR.
             Once all above PRs are merged CLI should pick up your changes.
