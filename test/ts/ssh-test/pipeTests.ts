@@ -133,6 +133,32 @@ export class PipeTests {
 	@test
 	@params({ fromTarget: true })
 	@params({ fromTarget: false })
+	@params.naming((p) => `pipeChannelEof(fromTarget=${p.fromTarget})`)
+	public async pipeChannelEof({ fromTarget }: { fromTarget: boolean }): Promise<void> {
+		await this.createSessions();
+		await connectSessionPair(this.clientSession1, this.serverSession1);
+		await connectSessionPair(this.clientSession2, this.serverSession2);
+		const [clientChannel1, serverChannel1] = await openChannel(
+			this.clientSession1,
+			this.serverSession1,
+		);
+		const [clientChannel2, serverChannel2] = await openChannel(
+			this.clientSession2,
+			this.serverSession2,
+		);
+		const pipePromise = serverChannel1.pipe(serverChannel2);
+
+		const eofCompletion = new PromiseCompletionSource<void>();
+		(fromTarget ? clientChannel1 : clientChannel2).onEof(() => {
+			eofCompletion.resolve();
+		});
+		await (fromTarget ? clientChannel2 : clientChannel1).send(Buffer.alloc(0));
+		await withTimeout(eofCompletion.promise, timeoutMs);
+	}
+
+	@test
+	@params({ fromTarget: true })
+	@params({ fromTarget: false })
 	@params.naming((p) => `pipeChannelSend(fromTarget=${p.fromTarget})`)
 	public async pipeChannelSend({ fromTarget }: { fromTarget: boolean }): Promise<void> {
 		await this.createSessions();
