@@ -275,6 +275,13 @@ internal class KeyExchangeService : SshService
 					await Session.SendMessageAsync(reply, cancellation).ConfigureAwait(false);
 				}
 			}
+			else
+			{
+				Trace.TraceEvent(
+					TraceEventType.Verbose,
+					SshTraceEventIds.AlgorithmNegotiation,
+					"Already sent correct guess for key-exchange init.");
+			}
 
 			this.exchangeContext.IsExtensionInfoRequested = this.isInitialExchange &&
 				message.KeyExchangeAlgorithms?.Contains(ServerExtensionInfoSignal) == true;

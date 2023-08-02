@@ -289,6 +289,12 @@ export class KeyExchangeService extends SshService {
 				const reply = new KeyExchangeDhInitMessage();
 				reply.e = this.exchangeContext.exchangeValue;
 				await this.session.sendMessage(reply, cancellation);
+			} else {
+				this.trace(
+					TraceLevel.Verbose,
+					SshTraceEventIds.algorithmNegotiation,
+					'Already sent correct guess for key-exchange init.',
+				);
 			}
 
 			this.exchangeContext.isExtensionInfoRequested =
