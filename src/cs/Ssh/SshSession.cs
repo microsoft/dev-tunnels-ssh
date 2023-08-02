@@ -815,7 +815,7 @@ public class SshSession : IDisposable
 			await CloseAsync(ex.DisconnectReason, ex).ConfigureAwait(false);
 
 			if (ex.DisconnectReason == SshDisconnectReason.ConnectionLost &&
-				ProtocolExtensions?.ContainsKey(SshProtocolExtensionNames.SessionReconnect) == true)
+				protocol.Extensions?.ContainsKey(SshProtocolExtensionNames.SessionReconnect) == true)
 			{
 				// Connection-lost exception when reconnect is enabled. Don't throw an exception;
 				// the message will remain in the reconnect message cache and will be re-sent
@@ -841,8 +841,7 @@ public class SshSession : IDisposable
 		{
 			// Sending failed due to a closed stream, but don't throw when reconnect is enabled.
 			// In that case the sent message is buffered and will be re-sent after reconnecting.
-			if (ProtocolExtensions?.ContainsKey(
-				SshProtocolExtensionNames.SessionReconnect) != true)
+			if (protocol.Extensions?.ContainsKey(SshProtocolExtensionNames.SessionReconnect) != true)
 			{
 				throw new SshConnectionException(
 					"Session is disconnected.",
