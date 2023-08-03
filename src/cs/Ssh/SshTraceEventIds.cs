@@ -33,6 +33,7 @@ public static class SshTraceEventIds
 	public const int PortForwardChannelOpenFailed = BaseEventId + 54;
 	public const int PortForwardConnectionFailed = BaseEventId + 55;
 	public const int TaskChainError = BaseEventId + 60;
+	public const int MetricsError = BaseEventId + 61;
 
 	#endregion
 

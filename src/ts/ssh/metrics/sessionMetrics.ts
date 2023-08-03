@@ -3,6 +3,7 @@
 //
 
 import { Emitter } from 'vscode-jsonrpc';
+import { SshTraceEventIds, Trace, TraceLevel } from '../trace';
 
 /**
  * Collects current and cumulative measurements about a session.
@@ -186,9 +187,16 @@ export class SessionMetrics {
 	}
 
 	/* @internal */
-	public updateLatency(latencyMs: number): void {
+	public updateLatency(latencyMs: number, trace?: Trace): void {
 		if (latencyMs < 0) {
-			throw new Error('Measured latency cannot be negative.');
+			if (trace) {
+				trace(
+					TraceLevel.Warning,
+					SshTraceEventIds.metricsError,
+					`Measured latency was negative: ${latencyMs} us`,
+				);
+			}
+			return;
 		}
 
 		this.currentLatency = latencyMs;

@@ -496,7 +496,7 @@ internal class SshProtocol : IDisposable
 						var roundTripLatency = (int)Math.Min(
 							int.MaxValue, timeSinceSent - remoteTimeSinceLastReceived);
 
-						this.metrics.UpdateLatency(roundTripLatency);
+						this.metrics.UpdateLatency(roundTripLatency, this.trace);
 					}
 
 					this.recentSentMessages.Dequeue();
