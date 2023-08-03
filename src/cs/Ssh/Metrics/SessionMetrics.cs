@@ -166,12 +166,19 @@ public sealed class SessionMetrics
 		Interlocked.Increment(ref this.reconnections);
 	}
 
-	internal void UpdateLatency(int latencyMicroseconds)
+	internal void UpdateLatency(int latencyMicroseconds, TraceSource? trace = null)
 	{
 		if (latencyMicroseconds < 0)
 		{
-			throw new ArgumentOutOfRangeException(
-				nameof(latencyMicroseconds), "Measured latency cannot be negative.");
+			if (trace != null)
+			{
+				trace.TraceEvent(
+					TraceEventType.Warning,
+					SshTraceEventIds.MetricsError,
+					$"Measured latency was negative: {latencyMicroseconds} us");
+			}
+
+			return;
 		}
 
 		this.latencyCurrent = latencyMicroseconds;

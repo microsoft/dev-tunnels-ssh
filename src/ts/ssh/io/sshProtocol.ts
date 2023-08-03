@@ -620,7 +620,7 @@ export class SshProtocol implements Disposable {
 					// last-seen sequence and sent the current message.
 					const timeSinceSent = this.lastIncomingTimestamp - oldestSequenceMessage.sentTime;
 					const roundTripLatency = timeSinceSent - remoteTimeSinceLastReceived;
-					this.metrics.updateLatency(roundTripLatency);
+					this.metrics.updateLatency(roundTripLatency, this.trace);
 				}
 
 				this.recentSentMessages.dequeue();
