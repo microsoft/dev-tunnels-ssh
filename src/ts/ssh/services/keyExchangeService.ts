@@ -49,6 +49,7 @@ class ExchangeContext {
 	public exchangeValue?: Buffer;
 	public exchange?: KeyExchange;
 	public newAlgorithms?: SshSessionAlgorithms;
+	public isExtensionInfoRequested?: boolean;
 }
 
 const serverExtensionInfoSignal = 'ext-info-s';
@@ -94,9 +95,24 @@ export class KeyExchangeService extends SshService {
 	}
 
 	public finishKeyExchange(): SshSessionAlgorithms {
+		if (!this.exchangeContext) {
+			throw new SshConnectionError(
+				'Key exchange not started.',
+				SshDisconnectReason.protocolError,
+			);
+		}
+
 		const newAlgorithms = this.exchangeContext!.newAlgorithms;
+		if (!newAlgorithms) {
+			throw new SshConnectionError(
+				'Key exchange not completed.',
+				SshDisconnectReason.protocolError,
+			);
+		}
+
+		newAlgorithms.isExtensionInfoRequested = this.exchangeContext?.isExtensionInfoRequested;
 		this.exchangeContext = null;
-		return <SshSessionAlgorithms>newAlgorithms;
+		return newAlgorithms;
 	}
 
 	public abortKeyExchange(): void {
@@ -111,15 +127,13 @@ export class KeyExchangeService extends SshService {
 		const message = new KeyExchangeInitMessage();
 		message.keyExchangeAlgorithms = algorithmNames(config.keyExchangeAlgorithms).concat(extinfo);
 		message.serverHostKeyAlgorithms = this.getPublicKeyAlgorithms();
-		message.encryptionAlgorithmsClientToServer = message.encryptionAlgorithmsServerToClient = algorithmNames(
-			config.encryptionAlgorithms,
-		);
+		message.encryptionAlgorithmsClientToServer = message.encryptionAlgorithmsServerToClient =
+			algorithmNames(config.encryptionAlgorithms);
 		message.macAlgorithmsClientToServer = message.macAlgorithmsServerToClient = algorithmNames(
 			config.hmacAlgorithms,
 		);
-		message.compressionAlgorithmsClientToServer = message.compressionAlgorithmsServerToClient = algorithmNames(
-			config.compressionAlgorithms,
-		);
+		message.compressionAlgorithmsClientToServer = message.compressionAlgorithmsServerToClient =
+			algorithmNames(config.compressionAlgorithms);
 		message.languagesClientToServer = [''];
 		message.languagesServerToClient = [''];
 		message.firstKexPacketFollows = false;
@@ -262,46 +276,50 @@ export class KeyExchangeService extends SshService {
 
 			// Check if the negotiated algorithm is the one preferred by THIS side.
 			// This means if there was a "guess" at kex initialization then it was correct.
-			const negotiatedKexAlgorthmIsPreferred =
+			const negotiatedKexAlgorithmIsPreferred =
 				this.exchangeContext.keyExchange === config.keyExchangeAlgorithms[0]?.name;
 
 			// If a guess was not sent, or the guess was wrong, send the init message now.
-			if (!alreadySentGuess || !negotiatedKexAlgorthmIsPreferred) {
+			if (!alreadySentGuess || !negotiatedKexAlgorithmIsPreferred) {
 				const kexAlgorithm = config.getKeyExchangeAlgorithm(this.exchangeContext.keyExchange!)!;
 				this.exchangeContext.exchange = kexAlgorithm.createKeyExchange();
-				this.exchangeContext.exchangeValue = await this.exchangeContext.exchange.startKeyExchange();
+				this.exchangeContext.exchangeValue =
+					await this.exchangeContext.exchange.startKeyExchange();
 
 				const reply = new KeyExchangeDhInitMessage();
 				reply.e = this.exchangeContext.exchangeValue;
 				await this.session.sendMessage(reply, cancellation);
+			} else {
+				this.trace(
+					TraceLevel.Verbose,
+					SshTraceEventIds.algorithmNegotiation,
+					'Already sent correct guess for key-exchange init.',
+				);
 			}
 
-			extensionInfoSignal = serverExtensionInfoSignal;
+			this.exchangeContext.isExtensionInfoRequested =
+				this.isInitialExchange &&
+				message.keyExchangeAlgorithms?.includes(serverExtensionInfoSignal);
 		} else {
 			if (message.firstKexPacketFollows) {
 				// The remote side indicated it is sending a guess immediately following.
 				// Check if the negotiated algorithm is the one preferred by the OTHER side.
 				// If so, the following "guess" will be correct. Otherwise it must be ignored.
-				const negotiatedKexAlgorthmIsPreferred =
+				const negotiatedKexAlgorithmIsPreferred =
 					this.exchangeContext.keyExchange === message.keyExchangeAlgorithms?.[0];
-				const guessResult = negotiatedKexAlgorthmIsPreferred ? 'correct' : 'incorrect';
+				const guessResult = negotiatedKexAlgorithmIsPreferred ? 'correct' : 'incorrect';
 				this.trace(
 					TraceLevel.Verbose,
 					SshTraceEventIds.algorithmNegotiation,
 					`Client's KeyExchange guess was ${guessResult}.`,
 				);
-				this.exchangeContext.discardGuessedInit = !negotiatedKexAlgorthmIsPreferred;
+				this.exchangeContext.discardGuessedInit = !negotiatedKexAlgorithmIsPreferred;
 			}
 
 			this.exchangeContext.clientKexInitPayload = message.toBuffer();
-
-			extensionInfoSignal = clientExtensionInfoSignal;
-		}
-
-		if (this.isInitialExchange && message.keyExchangeAlgorithms!.includes(extensionInfoSignal)) {
-			// The extension info message will be blocked in the queue
-			// until immediately after the key-exchange is done.
-			await this.session.sendExtensionInfo(cancellation);
+			this.exchangeContext.isExtensionInfoRequested =
+				this.isInitialExchange &&
+				message.keyExchangeAlgorithms?.includes(clientExtensionInfoSignal);
 		}
 	}
 

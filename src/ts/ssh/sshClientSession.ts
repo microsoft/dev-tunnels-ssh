@@ -503,7 +503,7 @@ export class SshClientSession extends SshSession {
 		this.trace(
 			TraceLevel.Info,
 			SshTraceEventIds.clientSessionReconnecting,
-			`{this} reconnected. Re-sent ${count} dropped messages.`,
+			`${this} reconnected. Re-sent ${count} dropped messages.`,
 		);
 	}
 

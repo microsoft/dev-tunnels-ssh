@@ -312,7 +312,8 @@ export class SecureStream extends Duplex implements Disposable {
 		if (!this.disposed) {
 			this.disposed = true;
 
-			await this.session.close(SshDisconnectReason.none, 'SshSession disposed');
+			await this.session.close(
+				SshDisconnectReason.none, this.session.constructor.name + ' disposed.');
 			this.session.dispose();
 			this.unsubscribe();
 

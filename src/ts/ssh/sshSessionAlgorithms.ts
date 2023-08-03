@@ -22,6 +22,7 @@ export class SshSessionAlgorithms implements Disposable {
 	public messageVerifier?: MessageVerifier | null;
 	public compressor?: CompressionAlgorithm | null;
 	public decompressor?: CompressionAlgorithm | null;
+	public isExtensionInfoRequested?: boolean;
 
 	public dispose(): void {
 		if (this.cipher) this.cipher.dispose();

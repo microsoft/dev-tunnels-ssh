@@ -188,7 +188,7 @@ public class SshServerSession : SshSession
 		if (this.reconnectableSessions == null)
 		{
 			throw new InvalidOperationException("Disconnected sessions collection " +
-				"should have been initialied when reconnect is enabled.");
+				"should have been initialized when reconnect is enabled.");
 		}
 
 		// Try to find the requested server session in the list of available disconnected
@@ -284,11 +284,12 @@ public class SshServerSession : SshSession
 			// Re-send the lost messages that the client requested.
 			foreach (var message in messagesToResend)
 			{
-				await reconnectSession.SendMessageAsync(message, cancellation).ConfigureAwait(false);
+				await reconnectSession.Protocol.SendMessageAsync(message, cancellation)
+					.ConfigureAwait(false);
 			}
 
 			// Now this server session is invalid because the client reconnected to another one.
-			Dispose();
+			Dispose(new SshConnectionException("Reconnected.", SshDisconnectReason.None));
 		}
 		finally
 		{

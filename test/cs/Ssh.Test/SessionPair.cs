@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using Microsoft.DevTunnels.Ssh.Algorithms;
 using Nerdbank.Streams;
 using Xunit;
+using Xunit.Abstractions;
 
 namespace Microsoft.DevTunnels.Ssh.Test;
 
@@ -20,6 +21,16 @@ class SessionPair : IDisposable
 		SshSessionConfiguration serverConfig = null,
 		SshSessionConfiguration clientConfig = null,
 		ICollection<SshServerSession> disconnectedSessions = null)
+		: this(testOutput: null, serverConfig, clientConfig, disconnectedSessions)
+	{
+
+	}
+
+	public SessionPair(
+		ITestOutputHelper testOutput,
+		SshSessionConfiguration serverConfig = null,
+		SshSessionConfiguration clientConfig = null,
+		ICollection<SshServerSession> disconnectedSessions = null)
 	{
 		if (serverConfig == null)
 		{
@@ -30,6 +41,13 @@ class SessionPair : IDisposable
 		if (clientConfig == null)
 		{
 			clientConfig = serverConfig;
+		}
+
+		if (testOutput != null)
+		{
+			var testOutputListener = new TestOutputTraceListener(testOutput);
+			ClientTrace.Listeners.Add(testOutputListener);
+			ServerTrace.Listeners.Add(testOutputListener);
 		}
 
 		ClientTrace.Switch.Level = SourceLevels.All;

@@ -134,7 +134,7 @@ export class SshServerSession extends SshSession {
 		if (!this.reconnectableSessions) {
 			throw new Error(
 				'Disconnected sessions collection ' +
-					'should have been initialied when reconnect is enabled.',
+					'should have been initialized when reconnect is enabled.',
 			);
 		}
 
@@ -224,7 +224,7 @@ export class SshServerSession extends SshSession {
 			}
 
 			// Now this server session is invalid because the client reconnected to another one.
-			this.dispose();
+			this.dispose(new SshConnectionError('Reconnected.', SshDisconnectReason.none));
 		} finally {
 			reconnectSession.reconnecting = false;
 		}
@@ -253,7 +253,12 @@ export class SshServerSession extends SshSession {
 		reconnectSession.reconnectedEmitter.fire();
 	}
 
-	public dispose(): void {
+	public dispose(): void;
+
+	/* @internal */
+	public dispose(error?: Error): void;
+
+	public dispose(error?: Error): void {
 		if (this.reconnectableSessions) {
 			const index = this.reconnectableSessions.indexOf(this);
 			if (index >= 0) {
@@ -261,6 +266,6 @@ export class SshServerSession extends SshSession {
 			}
 		}
 
-		super.dispose();
+		super.dispose(error);
 	}
 }

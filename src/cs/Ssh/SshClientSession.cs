@@ -498,9 +498,11 @@ public class SshClientSession : SshSession
 		int count = 0;
 		foreach (var message in messagesToResend)
 		{
-			await SendMessageAsync(message, cancellation).ConfigureAwait(false);
+			await Protocol!.SendMessageAsync(message, cancellation).ConfigureAwait(false);
 			count++;
 		}
+
+		await ContinueSendBlockedMessagesAfterReconnectAsync(cancellation).ConfigureAwait(false);
 
 		// Now the session is fully reconnected!
 		previousProtocolInstance.Dispose();

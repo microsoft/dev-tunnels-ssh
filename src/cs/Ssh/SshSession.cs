@@ -690,10 +690,16 @@ public class SshSession : IDisposable
 		GC.SuppressFinalize(this);
 	}
 
+	internal void Dispose(Exception ex)
+	{
+		this.closedException = ex;
+		Dispose();
+	}
+
 	protected virtual void Dispose(bool disposing)
 	{
 		var closedEx = this.closedException as SshConnectionException ??
-			new SshConnectionException("Session disposed.", this.closedException);
+			new SshConnectionException($"{GetType().Name} disposed.", this.closedException);
 
 		if (disposing)
 		{
@@ -716,7 +722,7 @@ public class SshSession : IDisposable
 						SshTraceEventIds.SessionClosing,
 						$"{this} Close()");
 					Closed?.Invoke(this, new SshSessionClosedEventArgs(
-						closedEx.DisconnectReason, GetType().Name + " disposed", closedEx));
+						closedEx.DisconnectReason, closedEx.Message, closedEx));
 				}
 			}
 
@@ -777,21 +783,26 @@ public class SshSession : IDisposable
 		var protocol = Protocol;
 		if (protocol == null) throw new InvalidOperationException("Not connected.");
 
-		// Delay sending messages if in the middle of a key (re-)exchange.
-		if (this.kexService?.Exchanging == true &&
-			message.MessageType > 4 &&
-			(message.MessageType < 20 || message.MessageType > 49))
-		{
-			this.blockedMessages.Enqueue(message);
-			return;
-		}
-
 		// Wait for blocked messages to clear before sending.
 		await this.blockedMessagesSemaphore.WaitAsync(cancellation).ConfigureAwait(false);
 
 		bool result;
 		try
 		{
+			// Defer sending messages if in the middle of a key (re-)exchange or reconnecting.
+			// But do not defer messages that are part of the key exchange or reconnect protocol.
+			if ((this.kexService?.Exchanging == true || Reconnecting) &&
+				message.MessageType > 4 &&
+				(message.MessageType < 20 || message.MessageType > 49) &&
+				!(Reconnecting &&
+					(message is SessionReconnectRequestMessage ||
+					message is SessionReconnectResponseMessage)))
+			{
+				this.blockedMessages.Enqueue(message);
+				this.blockedMessagesSemaphore.TryRelease();
+				return;
+			}
+
 			result = await protocol.SendMessageAsync(message, cancellation).ConfigureAwait(false);
 			this.blockedMessagesSemaphore.TryRelease();
 		}
@@ -804,7 +815,7 @@ public class SshSession : IDisposable
 			await CloseAsync(ex.DisconnectReason, ex).ConfigureAwait(false);
 
 			if (ex.DisconnectReason == SshDisconnectReason.ConnectionLost &&
-				ProtocolExtensions?.ContainsKey(SshProtocolExtensionNames.SessionReconnect) == true)
+				protocol.Extensions?.ContainsKey(SshProtocolExtensionNames.SessionReconnect) == true)
 			{
 				// Connection-lost exception when reconnect is enabled. Don't throw an exception;
 				// the message will remain in the reconnect message cache and will be re-sent
@@ -830,8 +841,7 @@ public class SshSession : IDisposable
 		{
 			// Sending failed due to a closed stream, but don't throw when reconnect is enabled.
 			// In that case the sent message is buffered and will be re-sent after reconnecting.
-			if (ProtocolExtensions?.ContainsKey(
-				SshProtocolExtensionNames.SessionReconnect) != true)
+			if (protocol.Extensions?.ContainsKey(SshProtocolExtensionNames.SessionReconnect) != true)
 			{
 				throw new SshConnectionException(
 					"Session is disconnected.",
@@ -842,7 +852,7 @@ public class SshSession : IDisposable
 
 	private async Task ContinueSendBlockedMessagesAsync(CancellationToken cancellation)
 	{
-		if (!this.blockedMessages.IsEmpty)
+		try
 		{
 			SshMessage message;
 			while (this.blockedMessages.TryDequeue(out message!))
@@ -850,9 +860,30 @@ public class SshSession : IDisposable
 				var protocol = Protocol;
 				if (protocol == null) throw new ObjectDisposedException(nameof(SshSession));
 
-				await protocol.SendMessageAsync(message, cancellation)
-					.ConfigureAwait(false);
+				await protocol.SendMessageAsync(message, cancellation).ConfigureAwait(false);
 			}
+		}
+		catch (Exception ex)
+		{
+			Trace.TraceEvent(
+				TraceEventType.Error, SshTraceEventIds.SendMessageFailed, ex.ToString());
+			await CloseAsync(SshDisconnectReason.ProtocolError, ex).ConfigureAwait(false);
+		}
+	}
+
+	internal async Task ContinueSendBlockedMessagesAfterReconnectAsync(
+		CancellationToken cancellation)
+	{
+		await this.blockedMessagesSemaphore.WaitAsync(cancellation).ConfigureAwait(false);
+		try
+		{
+			await ContinueSendBlockedMessagesAsync(cancellation).ConfigureAwait(false);
+
+			Reconnecting = false;
+		}
+		finally
+		{
+			this.blockedMessagesSemaphore.TryRelease();
 		}
 	}
 
@@ -860,7 +891,7 @@ public class SshSession : IDisposable
 	{
 		if (message == null) throw new ArgumentNullException(nameof(message));
 
-		// Dont wait for too long trying to send the disconnect message.
+		// Don't wait for too long trying to send the disconnect message.
 		var timeout = TimeSpan.FromMilliseconds(100);
 		using (var cancellationSource = new CancellationTokenSource(timeout))
 		{
@@ -949,15 +980,14 @@ public class SshSession : IDisposable
 		{
 			await Protocol!.HandleNewKeysMessageAsync(cancellation).ConfigureAwait(false);
 
-			try
+			if (Algorithms!.IsExtensionInfoRequested)
+			{
+				await SendExtensionInfoAsync(cancellation).ConfigureAwait(false);
+			}
+
+			if (!Reconnecting)
 			{
 				await ContinueSendBlockedMessagesAsync(cancellation).ConfigureAwait(false);
-			}
-			catch (Exception ex)
-			{
-				Trace.TraceEvent(
-					TraceEventType.Error, SshTraceEventIds.SendMessageFailed, ex.ToString());
-				await CloseAsync(SshDisconnectReason.ProtocolError, ex).ConfigureAwait(false);
 			}
 		}
 		finally
@@ -1398,6 +1428,11 @@ public class SshSession : IDisposable
 	/// </summary>
 	internal async Task SendExtensionInfoAsync(CancellationToken cancellation)
 	{
+		if (Protocol == null)
+		{
+			return;
+		}
+
 		var extensionInfo = new Dictionary<string, string>();
 
 		foreach (var extensionName in Config.ProtocolExtensions)
@@ -1417,7 +1452,7 @@ public class SshSession : IDisposable
 			}
 		}
 
-		await SendMessageAsync(
+		await Protocol.SendMessageAsync(
 			new ExtensionInfoMessage { ExtensionInfo = extensionInfo }, cancellation)
 			.ConfigureAwait(false);
 	}

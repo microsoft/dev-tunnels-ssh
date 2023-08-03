@@ -73,13 +73,15 @@ internal class KeyExchangeService : SshService
 				"Key exchange not started.", SshDisconnectReason.ProtocolError);
 		}
 
-		if (this.exchangeContext.NewAlgorithms == null)
+		SshSessionAlgorithms? newAlgorithms = this.exchangeContext.NewAlgorithms;
+		if (newAlgorithms == null)
 		{
 			throw new SshConnectionException(
 				"Key exchange not completed.", SshDisconnectReason.ProtocolError);
 		}
 
-		SshSessionAlgorithms newAlgorithms = this.exchangeContext.NewAlgorithms;
+		newAlgorithms.IsExtensionInfoRequested = this.exchangeContext.IsExtensionInfoRequested;
+
 		this.exchangeContext = null;
 		return newAlgorithms;
 	}
@@ -208,6 +210,7 @@ internal class KeyExchangeService : SshService
 			this.exchangeContext.NewAlgorithms = new SshSessionAlgorithms();
 			await Session.HandleMessageAsync(new NewKeysMessage(), cancellation)
 				.ConfigureAwait(false);
+			return;
 		}
 		else
 		{
@@ -241,78 +244,71 @@ internal class KeyExchangeService : SshService
 				message.CompressionAlgorithmsServerToClient);
 		}
 
-		string extensionInfoSignal;
 		if (Session is SshClientSession)
 		{
-			if (this.exchangeContext != null)
+			this.exchangeContext.ServerKexInitPayload = message.ToBuffer().ToArray();
+
+			// If the exchange value is already initialized then this side sent a guess.
+			bool alreadySentGuess = this.exchangeContext.ExchangeValue != null;
+
+			// Check if the negotiated algorithm is the one preferred by THIS side.
+			// This means if there was a "guess" at kex initialization then it was correct.
+			bool negotiatedKexAlgorithmIsPreferred =
+				this.exchangeContext.KeyExchange ==
+				Session.Config.AvailableKeyExchangeAlgorithms.FirstOrDefault();
+
+			// If a guess was not sent, or the guess was wrong, send the init message now.
+			if (!alreadySentGuess || !negotiatedKexAlgorithmIsPreferred)
 			{
-				this.exchangeContext.ServerKexInitPayload = message.ToBuffer().ToArray();
-
-				// If the exchange value is already initialized then this side sent a guess.
-				bool alreadySentGuess = this.exchangeContext.ExchangeValue != null;
-
-				// Check if the negotiated algorithm is the one preferred by THIS side.
-				// This means if there was a "guess" at kex initialization then it was correct.
-				bool negotiatedKexAlgorthmIsPreferred =
-					this.exchangeContext.KeyExchange ==
-					Session.Config.AvailableKeyExchangeAlgorithms.FirstOrDefault();
-
-				// If a guess was not sent, or the guess was wrong, send the init message now.
-				if (!alreadySentGuess || !negotiatedKexAlgorthmIsPreferred)
+				var kexAlgorithm = Session.Config.GetKeyExchangeAlgorithm(
+					this.exchangeContext!.KeyExchange);
+				if (kexAlgorithm != null)
 				{
-					var kexAlgorithm = Session.Config.GetKeyExchangeAlgorithm(
-						this.exchangeContext!.KeyExchange);
-					if (kexAlgorithm != null)
-					{
-						this.exchangeContext.Exchange = kexAlgorithm!.CreateKeyExchange();
-						this.exchangeContext.ExchangeValue =
-							this.exchangeContext.Exchange.StartKeyExchange().ToArray();
+					this.exchangeContext.Exchange = kexAlgorithm!.CreateKeyExchange();
+					this.exchangeContext.ExchangeValue =
+						this.exchangeContext.Exchange.StartKeyExchange().ToArray();
 
-						var reply = new KeyExchangeDhInitMessage
-						{
-							E = this.exchangeContext.ExchangeValue,
-						};
-						await Session.SendMessageAsync(reply, cancellation).ConfigureAwait(false);
-					}
+					var reply = new KeyExchangeDhInitMessage
+					{
+						E = this.exchangeContext.ExchangeValue,
+					};
+					await Session.SendMessageAsync(reply, cancellation).ConfigureAwait(false);
 				}
 			}
+			else
+			{
+				Trace.TraceEvent(
+					TraceEventType.Verbose,
+					SshTraceEventIds.AlgorithmNegotiation,
+					"Already sent correct guess for key-exchange init.");
+			}
 
-			extensionInfoSignal = ServerExtensionInfoSignal;
+			this.exchangeContext.IsExtensionInfoRequested = this.isInitialExchange &&
+				message.KeyExchangeAlgorithms?.Contains(ServerExtensionInfoSignal) == true;
 		}
 		else
 		{
-			if (this.exchangeContext != null)
+			if (message.FirstKexPacketFollows)
 			{
-				if (message.FirstKexPacketFollows)
-				{
-					// The remote side indicated it is sending a guess immediately following.
-					// Check if the negotiated algorithm is the one preferred by the OTHER side.
-					// If so, the following "guess" will be correct. Otherwise it must be ignored.
-					bool negotiatedKexAlgorthmIsPreferred =
-						this.exchangeContext.KeyExchange ==
-						message.KeyExchangeAlgorithms?.FirstOrDefault();
-					var guessResult = (negotiatedKexAlgorthmIsPreferred ? "correct" : "incorrect");
-					var traceMessage = $"Client's {nameof(ExchangeContext.KeyExchange)} guess " +
-						$"({this.exchangeContext.KeyExchange}) was {guessResult}.";
-					Session.Trace.TraceEvent(
-						TraceEventType.Verbose,
-						SshTraceEventIds.AlgorithmNegotiation,
-						traceMessage);
-					this.exchangeContext.DiscardGuessedInit = !negotiatedKexAlgorthmIsPreferred;
-				}
-
-				this.exchangeContext.ClientKexInitPayload = message.ToBuffer().ToArray();
+				// The remote side indicated it is sending a guess immediately following.
+				// Check if the negotiated algorithm is the one preferred by the OTHER side.
+				// If so, the following "guess" will be correct. Otherwise it must be ignored.
+				bool negotiatedKexAlgorithmIsPreferred =
+					this.exchangeContext.KeyExchange ==
+					message.KeyExchangeAlgorithms?.FirstOrDefault();
+				var guessResult = (negotiatedKexAlgorithmIsPreferred ? "correct" : "incorrect");
+				var traceMessage = $"Client's {nameof(ExchangeContext.KeyExchange)} guess " +
+					$"({this.exchangeContext.KeyExchange}) was {guessResult}.";
+				Session.Trace.TraceEvent(
+					TraceEventType.Verbose,
+					SshTraceEventIds.AlgorithmNegotiation,
+					traceMessage);
+				this.exchangeContext.DiscardGuessedInit = !negotiatedKexAlgorithmIsPreferred;
 			}
 
-			extensionInfoSignal = ClientExtensionInfoSignal;
-		}
-
-		if (this.isInitialExchange &&
-			message.KeyExchangeAlgorithms?.Contains(extensionInfoSignal) == true)
-		{
-			// The extension info message will be blocked in the queue
-			// until immediately after the key-exchange is done.
-			await Session.SendExtensionInfoAsync(cancellation).ConfigureAwait(false);
+			this.exchangeContext.ClientKexInitPayload = message.ToBuffer().ToArray();
+			this.exchangeContext.IsExtensionInfoRequested = this.isInitialExchange &&
+				message.KeyExchangeAlgorithms?.Contains(ClientExtensionInfoSignal) == true;
 		}
 	}
 
@@ -737,5 +733,7 @@ internal class KeyExchangeService : SshService
 		public IKeyExchange? Exchange { get; set; }
 
 		public SshSessionAlgorithms? NewAlgorithms { get; set; }
+
+		public bool IsExtensionInfoRequested { get; set; }
 	}
 }
