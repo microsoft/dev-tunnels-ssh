@@ -314,7 +314,7 @@ export class ConnectionService extends SshService {
 	}
 
 	private handleCloseMessage(message: ChannelCloseMessage): void {
-		const channel = this.tryGetChannelForMessage(message);
+		const channel = this.findChannelById(message.recipientChannel!);
 		if (channel) {
 			channel.handleClose();
 		}
@@ -441,7 +441,7 @@ export class ConnectionService extends SshService {
 	}
 
 	private handleEofMessage(message: ChannelEofMessage): void {
-		const channel = this.tryGetChannelForMessage(message);
+		const channel = this.findChannelById(message.recipientChannel!);
 		channel?.handleEof();
 	}
 
@@ -461,6 +461,10 @@ export class ConnectionService extends SshService {
 		}
 	}
 
+	/**
+	 * Gets the channel object based on the message `recipientChannel` property.
+	 * Logs a warning if the channel was not found.
+	 */
 	private tryGetChannelForMessage(channelMessage: ChannelMessage): SshChannel | null {
 		const channel = this.findChannelById(channelMessage.recipientChannel!);
 		if (!channel) {
