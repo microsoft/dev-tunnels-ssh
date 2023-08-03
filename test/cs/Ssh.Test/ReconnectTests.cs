@@ -111,7 +111,7 @@ public class ReconnectTests : IDisposable
 		return (serverChannel, clientChannel);
 	}
 
-	private async Task ReconnectAsync(bool waitUntilDisconnected = true)
+	private async Task ReconnectAsync(bool waitUntilDisconnected = true, int mockLatency = 0)
 	{
 		if (waitUntilDisconnected)
 		{
@@ -143,6 +143,8 @@ public class ReconnectTests : IDisposable
 		var (newServerStream, newClientStream) = FullDuplexStream.CreatePair();
 		this.sessionPair.ServerStream = new MockNetworkStream(newServerStream);
 		this.sessionPair.ClientStream = new MockNetworkStream(newClientStream);
+		this.sessionPair.ServerStream.MockLatency = mockLatency;
+		this.sessionPair.ClientStream.MockLatency = mockLatency;
 		var serverConnectTask = newServerSession.ConnectAsync(this.sessionPair.ServerStream);
 		var reconnectTask = this.clientSession.ReconnectAsync(this.sessionPair.ClientStream);
 		await reconnectTask.WithTimeout(Timeout);
@@ -696,6 +698,9 @@ public class ReconnectTests : IDisposable
 	[Fact]
 	public async Task ReconnectWhileStreaming()
 	{
+		this.sessionPair.ClientStream.MockLatency = 10;
+		this.sessionPair.ServerStream.MockLatency = 10;
+
 		this.sessionPair.ClientSession.Config.TraceChannelData = true;
 
 		await this.sessionPair.ConnectAsync().WithTimeout(Timeout);
@@ -766,7 +771,7 @@ public class ReconnectTests : IDisposable
 		long serverBytesReceivedBeforeReconnect = serverChannel.Metrics.BytesReceived;
 		long clientBytesReceivedBeforeReconnect = clientChannel.Metrics.BytesReceived;
 
-		await ReconnectAsync();
+		await ReconnectAsync(mockLatency: 10);
 
 		// Verify some messages were received after reconnection.
 		await TaskExtensions.WaitUntil(() =>
