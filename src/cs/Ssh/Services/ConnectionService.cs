@@ -469,7 +469,7 @@ internal class ConnectionService : SshService
 	private Task HandleMessageAsync(ChannelEofMessage message, CancellationToken cancellation)
 	{
 		cancellation.ThrowIfCancellationRequested();
-		var channel = TryGetChannelForMessage(message);
+		var channel = TryFindChannelById(message.RecipientChannel);
 		channel?.OnEof();
 		return Task.CompletedTask;
 	}
@@ -477,7 +477,7 @@ internal class ConnectionService : SshService
 	private Task HandleMessageAsync(ChannelCloseMessage message, CancellationToken cancellation)
 	{
 		cancellation.ThrowIfCancellationRequested();
-		var channel = TryGetChannelForMessage(message);
+		var channel = TryFindChannelById(message.RecipientChannel);
 		channel?.Close();
 		return Task.CompletedTask;
 	}
@@ -606,6 +606,10 @@ internal class ConnectionService : SshService
 		}
 	}
 
+	/// <summary>
+	/// Gets the channel object based on the message <see cref="ChannelMessage.RecipientChannel" />
+	/// property. Logs a warning if the channel was not found.
+	/// </summary>
 	private SshChannel? TryGetChannelForMessage(ChannelMessage channelMessage)
 	{
 		var channel = TryFindChannelById(channelMessage.RecipientChannel);
