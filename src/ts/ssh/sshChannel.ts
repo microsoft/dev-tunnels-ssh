@@ -224,60 +224,14 @@ export class SshChannel implements Disposable {
 	}
 
 	public async send(data: Buffer, cancellation?: CancellationToken): Promise<void> {
-		if (this.disposed) throw new ObjectDisposedError(this);
-
-		if (data.length === 0) {
-			await this.sendEof();
-			return;
-		} else if (this.sentEof) {
-			throw new Error('Cannot send more data after EOF.');
-		}
-
-		// Prevent out-of-order message chunks even if the caller does not await.
-		// Also don't send until the channel is fully opened.
-		await this.sendSemaphore.wait(cancellation);
-		try {
-			let offset = 0;
-			let count = data.length;
-			while (count > 0) {
-				let packetSize = Math.min(Math.min(this.remoteWindowSize, this.maxPacketSize), count);
-				while (packetSize === 0) {
-					if (!this.openSendingWindowCompletionSource) {
-						this.openSendingWindowCompletionSource = new PromiseCompletionSource<void>();
-					}
-
-					this.session.trace(
-						TraceLevel.Warning,
-						SshTraceEventIds.channelWaitForWindowAdjust,
-						`${this} send window is full. Waiting for window adjustment before sending.`,
-					);
-					await withCancellation(this.openSendingWindowCompletionSource.promise, cancellation);
-
-					this.openSendingWindowCompletionSource = null;
-					packetSize = Math.min(Math.min(this.remoteWindowSize, this.maxPacketSize), count);
-				}
-
-				const msg = new ChannelDataMessage();
-				msg.recipientChannel = this.remoteChannelId;
-
-				// Unfortunately the data must be copied to a new buffer at this point
-				// to ensure it is still available to be re-sent later in case of disconnect.
-				msg.data = Buffer.from(data.slice(offset, offset + packetSize));
-
-				await this.session.sendMessage(msg, cancellation);
-
-				this.remoteWindowSize -= packetSize;
-				count -= packetSize;
-				offset += packetSize;
-
-				this.metrics.addBytesSent(packetSize);
-			}
-		} finally {
-			this.sendSemaphore.tryRelease();
-		}
+		return this.sendCommon(data, undefined, cancellation);
 	}
 
 	public async sendExtendedData(dataTypeCode: SshExtendedDataType, data: Buffer, cancellation?: CancellationToken): Promise<void> {
+		return this.sendCommon(data, dataTypeCode, cancellation);
+	}
+
+	public async sendCommon(data: Buffer, extendedDataType: SshExtendedDataType | undefined, cancellation?: CancellationToken): Promise<void> {
 		if (this.disposed) throw new ObjectDisposedError(this);
 
 		if (data.length === 0) {
@@ -311,8 +265,13 @@ export class SshChannel implements Disposable {
 					packetSize = Math.min(Math.min(this.remoteWindowSize, this.maxPacketSize), count);
 				}
 
-				const msg = new ChannelExtendedDataMessage();
-				msg.dataTypeCode = dataTypeCode;
+				let msg: ChannelExtendedDataMessage | ChannelDataMessage;
+				if (extendedDataType !== undefined) {
+					msg = new ChannelExtendedDataMessage();
+					msg.dataTypeCode = extendedDataType;
+				} else {
+					msg = new ChannelDataMessage();
+				}
 				msg.recipientChannel = this.remoteChannelId;
 
 				// Unfortunately the data must be copied to a new buffer at this point
@@ -450,7 +409,7 @@ export class SshChannel implements Disposable {
 	}
 
 	public handleExtendedDataReceived(data: SshExtendedDataEventArgs): void {
-		// this.metrics.addBytesReceived(data.length);
+		this.metrics.addBytesReceived(data.data.length);
 		this.extendedDataReceivedEmitter.fire(data);
 	}
 
