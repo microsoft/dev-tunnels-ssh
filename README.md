@@ -1,3 +1,6 @@
+[![npm version](https://badge.fury.io/js/%40microsoft%2Fdev-tunnels-ssh.svg)](https://badge.fury.io/js/%40microsoft%2Fdev-tunnels-ssh)
+[![NuGet version](https://badge.fury.io/nu/Microsoft.DevTunnels.Ssh.svg)](https://badge.fury.io/nu/Microsoft.DevTunnels.Ssh)
+
 # Project
 
 ## Contributing
