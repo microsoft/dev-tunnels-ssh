@@ -24,6 +24,7 @@ export { SshRequestEventArgs } from './events/sshRequestEventArgs';
 export { SshChannelOpeningEventArgs } from './events/sshChannelOpeningEventArgs';
 export { SshSessionClosedEventArgs } from './events/sshSessionClosedEventArgs';
 export { SshChannelClosedEventArgs } from './events/sshChannelClosedEventArgs';
+export { SshExtendedDataType, SshExtendedDataEventArgs } from './events/sshExtendedDataEventArgs';
 
 export { SshMessage } from './messages/sshMessage';
 export {

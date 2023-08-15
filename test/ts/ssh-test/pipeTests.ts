@@ -22,12 +22,12 @@ import {
 	SshDataReader,
 	SshDataWriter,
 	SshDisconnectReason,
+	SshExtendedDataType,
 	SshServerSession,
 	SshSessionClosedEventArgs,
 } from '@microsoft/dev-tunnels-ssh';
 import { connectSessionPair, createSessionPair, openChannel } from './sessionPair';
 import { expectError, until, withTimeout } from './promiseUtils';
-import { SshExtendedDataType } from 'src/ts/ssh/events/sshExtendedDataEventArgs';
 
 const timeoutMs = 5000;
 
