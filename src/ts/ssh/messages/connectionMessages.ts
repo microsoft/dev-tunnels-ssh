@@ -215,6 +215,36 @@ export class ChannelDataMessage extends ChannelMessage {
 	}
 }
 
+export class ChannelExtendedDataMessage extends ChannelMessage {
+	public get messageType(): number {
+		return 95;
+	}
+
+	public dataTypeCode?: number;
+	public data?: Buffer;
+
+	protected onRead(reader: SshDataReader): void {
+		super.onRead(reader);
+
+		this.dataTypeCode = reader.readUInt32();
+
+		this.data = reader.readBinary();
+	}
+
+	protected onWrite(writer: SshDataWriter): void {
+		super.onWrite(writer);
+
+		writer.writeUInt32(this.validateField(this.dataTypeCode, 'data type code'));
+		writer.writeBinary(this.validateField(this.data, 'data'));
+	}
+
+	public toString() {
+		return `${super.toString()} (dataTypeCode=${this.dataTypeCode}, data=${
+			this.data ? formatBuffer(this.data, '') : '[0]'
+		})`
+	}
+}
+
 export class ChannelEofMessage extends ChannelMessage {
 	public get messageType(): number {
 		return 96;
@@ -413,6 +443,7 @@ SshMessage.index.set(91, ChannelOpenConfirmationMessage);
 SshMessage.index.set(92, ChannelOpenFailureMessage);
 SshMessage.index.set(93, ChannelWindowAdjustMessage);
 SshMessage.index.set(94, ChannelDataMessage);
+SshMessage.index.set(95, ChannelExtendedDataMessage);
 SshMessage.index.set(96, ChannelEofMessage);
 SshMessage.index.set(97, ChannelCloseMessage);
 SshMessage.index.set(98, ChannelRequestMessage);

@@ -27,6 +27,7 @@ import {
 } from '@microsoft/dev-tunnels-ssh';
 import { connectSessionPair, createSessionPair, openChannel } from './sessionPair';
 import { expectError, until, withTimeout } from './promiseUtils';
+import { SshExtendedDataType } from 'src/ts/ssh/events/sshExtendedDataEventArgs';
 
 const timeoutMs = 5000;
 
@@ -182,6 +183,38 @@ export class PipeTests {
 		await (fromTarget ? clientChannel2 : clientChannel1).send(testData);
 		const receivedData = await withTimeout(dataCompletion.promise, timeoutMs);
 		assert(receivedData.equals(testData));
+	}
+
+	@test
+	@params({ fromTarget: true })
+	@params({ fromTarget: false })
+	@params.naming((p) => `pipeChannelSendExtendedData(fromTarget=${p.fromTarget})`)
+	public async pipeChannelSendExtendedData({ fromTarget }: { fromTarget: boolean }): Promise<void> {
+		await this.createSessions();
+		await connectSessionPair(this.clientSession1, this.serverSession1);
+		await connectSessionPair(this.clientSession2, this.serverSession2);
+		const [clientChannel1, serverChannel1] = await openChannel(
+			this.clientSession1,
+			this.serverSession1,
+		);
+		const [clientChannel2, serverChannel2] = await openChannel(
+			this.clientSession2,
+			this.serverSession2,
+		);
+		const pipePromise = serverChannel1.pipe(serverChannel2);
+
+		const testData = Buffer.from('test', 'utf8');
+		const dataCompletion = new PromiseCompletionSource<{ dataType: SshExtendedDataType; data: Buffer}>();
+		(fromTarget ? clientChannel1 : clientChannel2).onExtendedDataReceived((data) => {
+			dataCompletion.resolve({
+				dataType: data.dataTypeCode,
+				data: data.data,
+			});
+		});
+		await (fromTarget ? clientChannel2 : clientChannel1).sendExtendedData(SshExtendedDataType.STDERR, testData);
+		const receivedData = await withTimeout(dataCompletion.promise, timeoutMs);
+		assert(receivedData.data.equals(testData));
+		assert.equal(receivedData.dataType, SshExtendedDataType.STDERR);
 	}
 
 	@test

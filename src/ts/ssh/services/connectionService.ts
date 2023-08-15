@@ -17,6 +17,7 @@ import {
 	ChannelEofMessage,
 	SshChannelOpenFailureReason,
 	ChannelMessage,
+	ChannelExtendedDataMessage,
 } from '../messages/connectionMessages';
 import { SshSession } from '../sshSession';
 import { CancellationToken, Disposable } from 'vscode-jsonrpc';
@@ -27,6 +28,7 @@ import { ObjectDisposedError, SshChannelError, SshConnectionError } from '../err
 import { SshChannelOpeningEventArgs } from '../events/sshChannelOpeningEventArgs';
 import { serviceActivation } from './serviceActivation';
 import { TraceLevel, SshTraceEventIds } from '../trace';
+import { SshExtendedDataEventArgs } from '../events/sshExtendedDataEventArgs';
 
 interface PendingChannel {
 	openMessage: ChannelOpenMessage;
@@ -177,6 +179,8 @@ export class ConnectionService extends SshService {
 	): void | Promise<void> {
 		if (message instanceof ChannelDataMessage) {
 			return this.handleDataMessage(message);
+		} else if (message instanceof ChannelExtendedDataMessage) {
+			return this.handleExtendedDataMessage(message);
 		} else if (message instanceof ChannelWindowAdjustMessage) {
 			return this.handleAdjustWindowMessage(message);
 		} else if (message instanceof ChannelEofMessage) {
@@ -433,6 +437,11 @@ export class ConnectionService extends SshService {
 	private handleDataMessage(message: ChannelDataMessage): void {
 		const channel = this.tryGetChannelForMessage(message);
 		channel?.handleDataReceived(message.data!);
+	}
+
+	private handleExtendedDataMessage(message: ChannelExtendedDataMessage): void {
+		const channel = this.tryGetChannelForMessage(message);
+		channel?.handleExtendedDataReceived(new SshExtendedDataEventArgs(message.dataTypeCode!, message.data!));
 	}
 
 	private handleAdjustWindowMessage(message: ChannelWindowAdjustMessage): void {

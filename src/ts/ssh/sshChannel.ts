@@ -18,6 +18,7 @@ import {
 	ChannelFailureMessage,
 	ChannelOpenMessage,
 	ChannelOpenConfirmationMessage,
+	ChannelExtendedDataMessage,
 } from './messages/connectionMessages';
 import { SshDisconnectReason } from './messages/transportMessages';
 import { ChannelMetrics } from './metrics/channelMetrics';
@@ -29,6 +30,7 @@ import { CancellationToken, CancellationError, withCancellation } from './util/c
 import { Semaphore } from './util/semaphore';
 import { TraceLevel, SshTraceEventIds } from './trace';
 import { PipeExtensions } from './pipeExtensions';
+import { SshExtendedDataEventArgs, SshExtendedDataType } from './events/sshExtendedDataEventArgs';
 
 /**
  * Represents a channel on an SSH session. A session may include multiple channels, which
@@ -73,6 +75,8 @@ export class SshChannel implements Disposable {
 
 	private readonly dataReceivedEmitter = new Emitter<Buffer>();
 
+	private readonly extendedDataReceivedEmitter = new Emitter<SshExtendedDataEventArgs>();
+
 	/**
 	 * Event raised when a data message is received on the channel.
 	 *
@@ -84,6 +88,8 @@ export class SshChannel implements Disposable {
 	 * to notify the remote side that it may send more data.
 	 */
 	public readonly onDataReceived: Event<Buffer> = this.dataReceivedEmitter.event;
+
+	public readonly onExtendedDataReceived: Event<SshExtendedDataEventArgs> = this.extendedDataReceivedEmitter.event;
 
 	private readonly eofEmitter = new Emitter<void>();
 
@@ -218,6 +224,14 @@ export class SshChannel implements Disposable {
 	}
 
 	public async send(data: Buffer, cancellation?: CancellationToken): Promise<void> {
+		return this.sendCommon(data, undefined, cancellation);
+	}
+
+	public async sendExtendedData(dataTypeCode: SshExtendedDataType, data: Buffer, cancellation?: CancellationToken): Promise<void> {
+		return this.sendCommon(data, dataTypeCode, cancellation);
+	}
+
+	public async sendCommon(data: Buffer, extendedDataType: SshExtendedDataType | undefined, cancellation?: CancellationToken): Promise<void> {
 		if (this.disposed) throw new ObjectDisposedError(this);
 
 		if (data.length === 0) {
@@ -251,7 +265,13 @@ export class SshChannel implements Disposable {
 					packetSize = Math.min(Math.min(this.remoteWindowSize, this.maxPacketSize), count);
 				}
 
-				const msg = new ChannelDataMessage();
+				let msg: ChannelExtendedDataMessage | ChannelDataMessage;
+				if (extendedDataType !== undefined) {
+					msg = new ChannelExtendedDataMessage();
+					msg.dataTypeCode = extendedDataType;
+				} else {
+					msg = new ChannelDataMessage();
+				}
 				msg.recipientChannel = this.remoteChannelId;
 
 				// Unfortunately the data must be copied to a new buffer at this point
@@ -386,6 +406,11 @@ export class SshChannel implements Disposable {
 
 		// DataReceived handler is to adjust the window when it's done with the data.
 		this.dataReceivedEmitter.fire(data);
+	}
+
+	public handleExtendedDataReceived(data: SshExtendedDataEventArgs): void {
+		this.metrics.addBytesReceived(data.data.length);
+		this.extendedDataReceivedEmitter.fire(data);
 	}
 
 	/**

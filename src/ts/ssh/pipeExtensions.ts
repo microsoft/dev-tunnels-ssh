@@ -28,6 +28,7 @@ import { PromiseCompletionSource } from './util/promiseCompletionSource';
 import { SshMessage } from './messages/sshMessage';
 import { SshChannelError } from './errors';
 import { SshTraceEventIds, TraceLevel } from './trace';
+import { SshExtendedDataType } from './events/sshExtendedDataEventArgs';
 
 /**
  * Extension methods for piping sessions and channels.
@@ -98,6 +99,13 @@ export class PipeExtensions {
 		});
 		toChannel.onEof(() => {
 			void PipeExtensions.forwardData(toChannel, channel, Buffer.alloc(0)).catch();
+		});
+
+		channel.onExtendedDataReceived((data) => {
+			void PipeExtensions.forwardExtendedData(channel, toChannel, data.dataTypeCode, data.data).catch();
+		});
+		toChannel.onExtendedDataReceived((data) => {
+			void PipeExtensions.forwardExtendedData(toChannel, channel, data.dataTypeCode, data.data).catch();
 		});
 
 		channel.onClosed((e) => {
@@ -191,6 +199,22 @@ export class PipeExtensions {
 		const buffer = Buffer.alloc(data.length);
 		data.copy(buffer);
 		const promise = toChannel.send(buffer, CancellationToken.None);
+		channel.adjustWindow(buffer.length);
+		return promise;
+	}
+
+	private static async forwardExtendedData(
+		channel: SshChannel,
+		toChannel: SshChannel,
+		dataTypeCode: SshExtendedDataType,
+		data: Buffer,
+	): Promise<void> {
+		// Make a copy of the buffer before sending because SshChannel.send() is an async operation
+		// (it may need to wait for the window to open), while the buffer will be re-used for the
+		// next message as sson as this task yields.
+		const buffer = Buffer.alloc(data.length);
+		data.copy(buffer);
+		const promise = toChannel.sendExtendedData(dataTypeCode, buffer, CancellationToken.None);
 		channel.adjustWindow(buffer.length);
 		return promise;
 	}
