@@ -284,6 +284,10 @@ public class SshServerSession : SshSession
 			// Re-send the lost messages that the client requested.
 			foreach (var message in messagesToResend)
 			{
+				Trace.TraceEvent(
+					TraceEventType.Verbose,
+					SshTraceEventIds.ServerSessionReconnecting,
+					$"{this} re-sending {message.GetType().Name}");
 				await reconnectSession.Protocol.SendMessageAsync(message, cancellation)
 					.ConfigureAwait(false);
 			}

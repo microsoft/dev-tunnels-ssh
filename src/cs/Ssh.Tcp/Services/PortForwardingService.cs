@@ -632,18 +632,23 @@ public class PortForwardingService : SshService
 		else if (request.RequestType == PortForwardRequestType && portForwardRequest.Port != 0 &&
 			this.localForwarders.ContainsKey((int)portForwardRequest.Port))
 		{
-			// The port is already forwarded, so a failure response will be returned. This may happen
-			// when re-connecting, to ensure the state of forwarded ports is consistent.
+			// The port is already forwarded. This may happen when re-connecting, to ensure the
+			// state of forwarded ports is consistent.
 			//
 			// Note duplicate ports are not detected here when AcceptLocalConnectionsForForwardedPorts
-			// is false; in that case duplicate port requests may succeed (if authorized below), though 
-			// they don't really do anything.
+			// is false; in that case the forward operation does nothing, and a successful response
+			// is still returned anyway.
 			string message = $"{nameof(PortForwardingService)} port {portForwardRequest.Port} " +
 				"is already forwarded.";
 			Session.Trace.TraceEvent(
 				TraceEventType.Verbose,
 				SshTraceEventIds.PortForwardRequestInvalid,
 				message);
+
+			var portResponse = await this.MessageFactory.CreateSuccessMessageAsync(
+				(int)portForwardRequest.Port).ConfigureAwait(false);
+			portResponse.Port = portForwardRequest.Port;
+			response = portResponse;
 		}
 		else
 		{

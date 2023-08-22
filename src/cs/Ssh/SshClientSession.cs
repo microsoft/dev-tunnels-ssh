@@ -498,6 +498,10 @@ public class SshClientSession : SshSession
 		int count = 0;
 		foreach (var message in messagesToResend)
 		{
+			Trace.TraceEvent(
+				TraceEventType.Verbose,
+				SshTraceEventIds.ClientSessionReconnecting,
+				$"{this} re-sending {message.GetType().Name}");
 			await Protocol!.SendMessageAsync(message, cancellation).ConfigureAwait(false);
 			count++;
 		}

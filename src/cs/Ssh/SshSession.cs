@@ -564,6 +564,14 @@ public class SshSession : IDisposable
 				Trace.TraceEvent(
 					 TraceEventType.Error, SshTraceEventIds.HandleMessageFailed, scex.ToString());
 			}
+			else
+			{
+				Trace.TraceEvent(
+					TraceEventType.Warning,
+					SshTraceEventIds.HandleMessageFailed,
+					"Disconnected\n" +
+						string.Join("\n", scex.StackTrace.ToString().Split('\n').Take(15)));
+			}
 
 			await CloseAsync(scex.DisconnectReason, scex).ConfigureAwait(false);
 			return null;
@@ -615,7 +623,8 @@ public class SshSession : IDisposable
 		Trace.TraceEvent(
 			TraceEventType.Verbose,
 			SshTraceEventIds.SessionClosing,
-			$"{this} Close({reason}, {message})");
+			$"{this} Close({reason}, {message})\n" +
+				string.Join("\n", new StackTrace(2).ToString().Split('\n').Take(15)));
 
 		if (reason != SshDisconnectReason.ConnectionLost)
 		{
@@ -671,6 +680,7 @@ public class SshSession : IDisposable
 		if (this.ProtocolExtensions?.ContainsKey(SshProtocolExtensionNames.SessionReconnect)
 			!= true)
 		{
+			Trace.TraceEvent(TraceEventType.Verbose, 0, "Reconnection protocol was not negotiated.");
 			return false;
 		}
 
