@@ -18,9 +18,14 @@ import {
 	PromiseCompletionSource,
 	SshDisconnectReason,
 	SshConnectionError,
+	SessionRequestSuccessMessage,
+	SessionRequestFailureMessage,
+	SshMessage,
+	SessionRequestMessage,
 } from '@microsoft/dev-tunnels-ssh';
 import { DuplexStream, shutdownWebSocketServer } from './duplexStream';
 import { createSessionPair, connectSessionPair } from './sessionPair';
+import { withTimeout } from './promiseUtils';
 
 @suite
 @slow(3000)
@@ -452,5 +457,30 @@ export class SessionTests {
 
 		assert(error);
 		assert(error instanceof ObjectDisposedError);
+	}
+
+	@test
+	public async overlappingSessionRequests() {
+		const [clientSession, serverSession] = await this.createSessions();
+		await connectSessionPair(clientSession, serverSession, undefined, true);
+
+		const asyncResponse = async (delay: number, success: boolean): Promise<SshMessage> => {
+			await new Promise((resolve) => setTimeout(resolve, delay));
+			return success ? new SessionRequestSuccessMessage() : new SessionRequestFailureMessage();
+		};
+
+		serverSession.onRequest((e) => {
+			// Use a longer delay for the first message, so it completes after the second one.
+			var delay = 2 - parseInt(e.requestType);
+			e.responsePromise = asyncResponse(delay, e.requestType !== '1');
+		});
+
+		const testRequest1 = new SessionRequestMessage('1', true);
+		const testRequest2 = new SessionRequestMessage('2', true);
+		const request1Promise = withTimeout(clientSession.request(testRequest1), 5000);
+		const request2Promise = withTimeout(clientSession.request(testRequest2), 5000);
+
+		assert(!(await request1Promise));
+		assert(await request2Promise);
 	}
 }

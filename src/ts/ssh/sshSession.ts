@@ -49,6 +49,7 @@ import { withCancellation, CancellationError } from './util/cancellation';
 import { SshConnectionError, ObjectDisposedError } from './errors';
 import { Semaphore } from './util/semaphore';
 import { PipeExtensions } from './pipeExtensions';
+import { Queue } from './util/queue';
 
 declare type SessionRequestResponseMessage =
 	| SessionRequestSuccessMessage
@@ -58,6 +59,13 @@ export const enum ExtensionRequestTypes {
 	initialChannelRequest = 'initial-channel-request@microsoft.com',
 	enableSessionReconnect = 'enable-session-reconnect@microsoft.com',
 	sessionReconnect = 'session-reconnect@microsoft.com',
+}
+
+interface RequestHandler {
+	/** Callback invoked when the (success or failure) response is received. */
+	(err?: Error, result?: SessionRequestResponseMessage): void;
+	/** Flag indicating the request has been cancelled. */
+	isCancelled?: boolean;
 }
 
 /**
@@ -74,8 +82,7 @@ export class SshSession implements Disposable {
 	protected kexService: KeyExchangeService | null;
 	protected connectionService: ConnectionService | null = null;
 	private connectPromise?: Promise<void>;
-	private requestHandler: ((err?: Error, result?: SessionRequestResponseMessage) => void) | null =
-		null;
+	private requestHandlers: Queue<RequestHandler> = new Queue<RequestHandler>();
 	private versionExchangePromise?: Promise<void>;
 	private readonly blockedMessages: SshMessage[] = [];
 	private readonly blockedMessagesSemaphore = new Semaphore(1);
@@ -821,28 +828,17 @@ export class SshSession implements Disposable {
 		if (!successType) throw new TypeError('Success response type is required.');
 		if (!failureType) throw new TypeError('Failure response type is required.');
 
-		// TODO: enable sending multiple requests in TS
-		// see https://dev.azure.com/devdiv/DevDiv/_git/SSH/commit/0b84a48811e2f015107c73bf4584b6c3b676a6de
-		if (this.requestHandler) {
-			throw new Error('Another request is already pending.');
-		}
-
 		request.wantReply = true;
 
-		// Capture as a local variable because the member may change.
-		const requestCompletionSource = new PromiseCompletionSource<TSuccess | TFailure>();
-		if (cancellation) {
-			if (cancellation.isCancellationRequested) throw new CancellationError();
-			cancellation.onCancellationRequested(() => {
-				this.requestHandler = null;
-				requestCompletionSource.reject(new CancellationError());
-			});
-		}
-
-		this.requestHandler = (err?: Error, result?: SessionRequestResponseMessage) => {
-			this.requestHandler = null;
+		const requestHandler: RequestHandler = (
+			err?: Error,
+			result?: SessionRequestResponseMessage,
+		) => {
 			if (err) {
 				requestCompletionSource.reject(err);
+			} else if (requestHandler.isCancelled) {
+				// The completion source was already rejected with a cancellation error.
+				return;
 			} else if (result instanceof SessionRequestFailureMessage) {
 				const failure = result?.convertTo(new failureType(), true) ?? null;
 				requestCompletionSource.resolve(failure);
@@ -856,19 +852,43 @@ export class SshSession implements Disposable {
 			}
 		};
 
+		const requestCompletionSource = new PromiseCompletionSource<TSuccess | TFailure>();
+		if (cancellation) {
+			if (cancellation.isCancellationRequested) throw new CancellationError();
+			cancellation.onCancellationRequested(() => {
+				requestHandler.isCancelled = true;
+				requestCompletionSource.reject(new CancellationError());
+			});
+		}
+
+		this.requestHandlers.enqueue(requestHandler);
+
 		await this.sendMessage(request, cancellation);
 		return await requestCompletionSource.promise;
 	}
 
 	private handleRequestSuccessMessage(message: SessionRequestSuccessMessage): void {
-		if (this.requestHandler) {
-			this.requestHandler(undefined, message);
-		}
+		this.invokeRequestHandler(message, undefined, undefined);
 	}
 
 	private handleRequestFailureMessage(message: SessionRequestFailureMessage): void {
-		if (this.requestHandler) {
-			this.requestHandler(undefined, message);
+		this.invokeRequestHandler(undefined, message, undefined);
+	}
+
+	private invokeRequestHandler(
+		success?: SessionRequestSuccessMessage,
+		failure?: SessionRequestFailureMessage,
+		error?: Error,
+	) {
+		let requestHandler: RequestHandler | undefined;
+		while ((requestHandler = this.requestHandlers.dequeue())) {
+			requestHandler(error, success ?? failure);
+
+			// An error is provided if the session is disposing. In that case,
+			// all pending requests should fail with that error.
+			if (!error) {
+				break;
+			}
 		}
 	}
 
@@ -1226,9 +1246,8 @@ export class SshSession implements Disposable {
 			);
 		}
 
-		if (this.requestHandler) {
-			this.requestHandler(closedError);
-		}
+		// Cancel any pending requests.
+		this.invokeRequestHandler(undefined, undefined, closedError);
 
 		this.metrics.close();
 

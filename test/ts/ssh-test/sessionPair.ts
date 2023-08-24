@@ -72,7 +72,9 @@ export async function connectSessionPair(
 		clientSession.onAuthenticating((e) => {
 			e.authenticationPromise = Promise.resolve({});
 		});
-		await clientSession.authenticate({});
+		if (!await clientSession.authenticate({})) {
+			throw new Error('Session authentication failed.');
+		}
 	}
 
 	return [clientNetworkStream, serverNetworkStream];

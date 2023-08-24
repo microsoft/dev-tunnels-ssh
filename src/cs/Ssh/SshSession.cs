@@ -1149,10 +1149,7 @@ public class SshSession : IDisposable
 		var requestHandler = new RequestHandler<TSuccess, TFailure>();
 		if (cancellation.CanBeCanceled)
 		{
-			cancellation.Register(() =>
-			{
-				requestHandler.Remove();
-			});
+			cancellation.Register(requestHandler.Cancel);
 			cancellation.ThrowIfCancellationRequested();
 		}
 
@@ -1765,8 +1762,8 @@ public class SshSession : IDisposable
 			SessionRequestSuccessMessage? success,
 			SessionRequestFailureMessage? failure,
 			Exception? ex);
-		public void Remove();
-		public bool IsRemoved { get; }
+		public void Cancel();
+		public bool IsCancelled { get; }
 	}
 
 	private class RequestHandler<TSuccess, TFailure> : IRequestHandler
@@ -1778,9 +1775,10 @@ public class SshSession : IDisposable
 			SessionRequestFailureMessage? failure,
 			Exception? ex)
 		{
-			if (this.IsRemoved)
+			if (this.IsCancelled)
 			{
-				CompletionSource.TrySetCanceled();
+				// The completion source was already cancelled.
+				return;
 			}
 			else if (ex != null)
 			{
@@ -1800,16 +1798,16 @@ public class SshSession : IDisposable
 			}
 		}
 
-		public void Remove()
+		public void Cancel()
 		{
-			this.IsRemoved = false;
+			this.IsCancelled = true;
 			CompletionSource.TrySetCanceled();
 		}
 
 		public TaskCompletionSource<(TSuccess? Success, TFailure? Failure)> CompletionSource
 		{ get; } = new (TaskCreationOptions.RunContinuationsAsynchronously);
 
-		public bool IsRemoved { get; private set; }
+		public bool IsCancelled { get; private set; }
 	}
 
 	private void InvokeRequestHandler(
@@ -1819,13 +1817,14 @@ public class SshSession : IDisposable
 	{
 		while (this.requestHandlers.TryDequeue(out var requestHandler))
 		{
-			if (requestHandler == null || requestHandler.IsRemoved)
-			{
-				continue;
-			}
-
 			requestHandler.HandleRequest(success, failure, ex);
-			break;
+
+			// An exception is provided if the session is disposing. In that case,
+			// all pending requests should fail with that exception.
+			if (ex == null)
+			{
+				break;
+			}
 		}
 	}
 }
