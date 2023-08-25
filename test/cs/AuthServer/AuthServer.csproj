@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+	<PropertyGroup>
+		<AssemblyName>Microsoft.DevTunnels.Ssh.Test.AuthServer</AssemblyName>
+		<RootNamespace>Microsoft.DevTunnels.Ssh.Test</RootNamespace>
+		<OutputType>Exe</OutputType>
+		<StartupObject>Microsoft.DevTunnels.Ssh.Test.AuthServer</StartupObject>
+		<ApplicationManifest>app.manifest</ApplicationManifest>
+		<_EnableMacOSCodeSign>false</_EnableMacOSCodeSign>
+	</PropertyGroup>
+
+	<ItemGroup>
+	  <PackageReference Include="Microsoft.Identity.Client.Extensions.Msal" Version="2.32.0" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<ProjectReference Include="$(SshSourceDirectory)Ssh/Ssh.csproj" />
+		<ProjectReference Include="$(SshSourceDirectory)Ssh.Tcp/Ssh.Tcp.csproj" />
+	</ItemGroup>
+
+</Project>
