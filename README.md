@@ -171,6 +171,7 @@ The following RFCs define the SSH protocol:
  - [RFC 4252 - SSH Authentication Protocol](https://tools.ietf.org/html/rfc4252)
  - [RFC 4253 - SSH Transport Layer Protocol](https://tools.ietf.org/html/rfc4253)
  - [RFC 4254 - SSH Connection Protocol](https://tools.ietf.org/html/rfc4254)
+ - [RFC 4256 - Generic Message Exchange Authentication for SSH](https://tools.ietf.org/html/rfc4256)
  - [RFC 4716 - SSH Public Key File Format](https://tools.ietf.org/html/rfc4716)
  - [RFC 5647 - AES GCM for the SSH Protocol](https://tools.ietf.org/html/rfc5647)
  - [RFC 5656 - EC Algorithm Integration in SSH](https://tools.ietf.org/html/rfc5656)

@@ -139,7 +139,7 @@ public class InteropTests
 
 		var server = new SshServer(config, TestTS);
 		server.Credentials = new[] { serverKey };
-		server.ExceptionRasied += (sender, ex) => { Assert.Null(ex); };
+		server.ExceptionRaised += (sender, ex) => { Assert.Null(ex); };
 		var serverTask = server.AcceptSessionsAsync(TestPort, IPAddress.Loopback);
 
 		Process sshProcess = null;
@@ -565,7 +565,7 @@ public class InteropTests
 
 			var server = new SshServer(config, TestTS);
 			server.Credentials = new[] { serverKey };
-			server.ExceptionRasied += (sender, ex) => { Assert.Null(ex); };
+			server.ExceptionRaised += (sender, ex) => { Assert.Null(ex); };
 			var serverTask = server.AcceptSessionsAsync(JumpPort, IPAddress.Loopback);
 
 			server.SessionAuthenticating += (__, e) =>

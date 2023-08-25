@@ -445,6 +445,60 @@ public class SessionTests : IDisposable
 	}
 
 	[Fact]
+	public async Task AuthenticateInteractive()
+	{
+		this.serverSession.Authenticating += (sender, e) =>
+		{
+			if (e.AuthenticationType != SshAuthenticationType.ClientInteractive)
+			{
+				e.AuthenticationTask = Task.FromResult<ClaimsPrincipal>(null);
+			}
+			else if (e.InfoResponse == null)
+			{
+				e.InfoRequest = new AuthenticationInfoRequestMessage("TEST");
+				e.InfoRequest.AddPrompt("One", echo: true);
+				e.InfoRequest.AddPrompt("Two", echo: false);
+				e.AuthenticationTask = Task.FromResult<ClaimsPrincipal>(null);
+			}
+			else
+			{
+				Assert.Collection(
+					e.InfoResponse.Responses,
+					r => Assert.Equal("1", r),
+					r => Assert.Equal("2", r));
+				e.AuthenticationTask = Task.FromResult(new ClaimsPrincipal());
+			}
+		};
+
+		this.clientSession.Authenticating += (sender, e) =>
+		{
+			if (e.AuthenticationType == SshAuthenticationType.ServerPublicKey)
+			{
+				e.AuthenticationTask = Task.FromResult(new ClaimsPrincipal());
+			}
+			else if (e.AuthenticationType == SshAuthenticationType.ClientInteractive)
+			{
+				Assert.NotNull(e.InfoRequest);
+				Assert.Equal("TEST", e.InfoRequest.Name);
+				Assert.Collection(
+					e.InfoRequest.Prompts,
+					p => Assert.Equal(("One", true), p),
+					p => Assert.Equal(("Two", false), p));
+				e.InfoResponse = new AuthenticationInfoResponseMessage();
+				e.InfoResponse.Responses.Add("1");
+				e.InfoResponse.Responses.Add("2");
+				e.AuthenticationTask = Task.FromResult<ClaimsPrincipal>(null);
+			}
+		};
+
+		await this.sessionPair.ConnectAsync(authenticate: false).WithTimeout(Timeout);
+
+		bool authenticated = await this.clientSession.AuthenticateAsync(
+			new SshClientCredentials(TestUsername));
+		Assert.True(authenticated);
+	}
+
+	[Fact]
 	public async Task SendWhileDisconnected()
 	{
 		bool clientDisconnectedEvent = false;

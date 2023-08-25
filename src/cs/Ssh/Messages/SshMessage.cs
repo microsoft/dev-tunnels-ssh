@@ -10,14 +10,22 @@ namespace Microsoft.DevTunnels.Ssh.Messages;
 public abstract class SshMessage
 {
 	/// <summary>
-	/// Tries to create a message with the given message type code.
+	/// Tries to create a message with the given message type code and optional context.
 	/// </summary>
 	/// <returns>The constructed message object, or null if not a known message type.</returns>
-	public static SshMessage? TryCreate(SshSessionConfiguration config, byte messageType)
+	public static SshMessage? TryCreate(
+		SshSessionConfiguration config,
+		byte messageType,
+		string? messageContext)
 	{
 		if (config == null) throw new ArgumentNullException(nameof(config));
 
 		if (config.Messages.TryGetValue(messageType, out var type))
+		{
+			return (SshMessage)Activator.CreateInstance(type)!;
+		}
+		else if (messageContext != null &&
+			config.ContextualMessages.TryGetValue((messageType, messageContext), out type))
 		{
 			return (SshMessage)Activator.CreateInstance(type)!;
 		}
