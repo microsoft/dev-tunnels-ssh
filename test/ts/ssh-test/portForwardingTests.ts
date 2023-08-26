@@ -537,35 +537,12 @@ export class PortForwardingTests {
 		const forwarder1Promise = serverPfs.forwardFromRemotePort(loopbackV4, testPort);
 		const forwarder2Promise = serverPfs.forwardFromRemotePort(loopbackV4, testPort);
 
-		// TODO: Remove the try/catch here and error assertions below after the TS SSH API
-		// supports concurrent requests.
-		let forwarder1: RemotePortForwarder | null = null;
-		let error1: Error | null = null;
-		try {
-			forwarder1 = await forwarder1Promise;
-		} catch (e) {
-			error1 = <Error>e;
-		}
-
-		let forwarder2: RemotePortForwarder | null = null;
-		let error2: Error | null = null;
-		try {
-			forwarder2 = await forwarder2Promise;
-		} catch (e) {
-			error2 = <Error>e;
-		}
+		let forwarder1 = await forwarder1Promise;
+		let forwarder2 = await forwarder2Promise;
 
 		// The same port was forwarded twice concurrently.
 		// Only one forwarder should have been returned.
 		assert.strictEqual((forwarder1 ? 1 : 0) + (forwarder2 ? 1 : 0), 1);
-
-		// Currently the TS SSH API does not support concurrent requests. So one of the port-forward
-		// requests throws an error 'Another request is already pending'.
-		assert.strictEqual((error1 ? 1 : 0) + (error2 ? 1 : 0), 1);
-		assert(
-			error1?.message?.includes('request is already pending') ||
-				error2?.message?.includes('request is already pending'),
-		);
 	}
 
 	@test

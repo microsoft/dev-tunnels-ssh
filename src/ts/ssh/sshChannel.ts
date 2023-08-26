@@ -31,6 +31,7 @@ import { Semaphore } from './util/semaphore';
 import { TraceLevel, SshTraceEventIds } from './trace';
 import { PipeExtensions } from './pipeExtensions';
 import { SshExtendedDataEventArgs, SshExtendedDataType } from './events/sshExtendedDataEventArgs';
+import { Queue } from './util/queue';
 
 /**
  * Represents a channel on an SSH session. A session may include multiple channels, which
@@ -65,7 +66,7 @@ export class SshChannel implements Disposable {
 	private exitErrorMessage?: string;
 	private disposed: boolean = false;
 	private openSendingWindowCompletionSource: PromiseCompletionSource<void> | null = null;
-	private requestCompletionSource: PromiseCompletionSource<boolean> | null = null;
+	private requestCompletionSources = new Queue<PromiseCompletionSource<boolean>>();
 	private readonly sendSemaphore = new Semaphore(0);
 
 	/**
@@ -89,7 +90,8 @@ export class SshChannel implements Disposable {
 	 */
 	public readonly onDataReceived: Event<Buffer> = this.dataReceivedEmitter.event;
 
-	public readonly onExtendedDataReceived: Event<SshExtendedDataEventArgs> = this.extendedDataReceivedEmitter.event;
+	public readonly onExtendedDataReceived: Event<SshExtendedDataEventArgs> =
+		this.extendedDataReceivedEmitter.event;
 
 	private readonly eofEmitter = new Emitter<void>();
 
@@ -202,21 +204,14 @@ export class SshChannel implements Disposable {
 			return true;
 		}
 
-		// TODO: enable sending multiple requests in TS
-		// see https://dev.azure.com/devdiv/DevDiv/_git/SSH/commit/0b84a48811e2f015107c73bf4584b6c3b676a6de
-		if (this.requestCompletionSource != null) {
-			throw new Error('Another request is already pending.');
-		}
-
-		// Capture as a local variable because the member may change.
 		const requestCompletionSource = new PromiseCompletionSource<boolean>();
-		this.requestCompletionSource = requestCompletionSource;
 		if (cancellation) {
 			if (cancellation.isCancellationRequested) throw new CancellationError();
 			cancellation.onCancellationRequested(() => {
 				requestCompletionSource.reject(new CancellationError());
 			});
 		}
+		this.requestCompletionSources.enqueue(requestCompletionSource);
 
 		await this.session.sendMessage(request, cancellation);
 
@@ -227,11 +222,19 @@ export class SshChannel implements Disposable {
 		return this.sendCommon(data, undefined, cancellation);
 	}
 
-	public async sendExtendedData(dataTypeCode: SshExtendedDataType, data: Buffer, cancellation?: CancellationToken): Promise<void> {
+	public async sendExtendedData(
+		dataTypeCode: SshExtendedDataType,
+		data: Buffer,
+		cancellation?: CancellationToken,
+	): Promise<void> {
 		return this.sendCommon(data, dataTypeCode, cancellation);
 	}
 
-	public async sendCommon(data: Buffer, extendedDataType: SshExtendedDataType | undefined, cancellation?: CancellationToken): Promise<void> {
+	public async sendCommon(
+		data: Buffer,
+		extendedDataType: SshExtendedDataType | undefined,
+		cancellation?: CancellationToken,
+	): Promise<void> {
 		if (this.disposed) throw new ObjectDisposedError(this);
 
 		if (data.length === 0) {
@@ -394,9 +397,9 @@ export class SshChannel implements Disposable {
 
 	/* @internal */
 	public handleResponse(result: boolean) {
-		if (this.requestCompletionSource) {
-			this.requestCompletionSource.resolve(result);
-			this.requestCompletionSource = null;
+		const requestCompletionSource = this.requestCompletionSources.dequeue();
+		if (requestCompletionSource) {
+			requestCompletionSource.resolve(result);
 		}
 	}
 
@@ -525,7 +528,6 @@ export class SshChannel implements Disposable {
 		if (!this.localClosed) {
 			this.localClosed = true;
 			const closedMessage = this.raiseClosedEvent();
-			this.requestCompletionSource?.reject(new SshChannelError(closedMessage));
 		}
 
 		this.disposeInternal();
@@ -571,7 +573,6 @@ export class SshChannel implements Disposable {
 		if (!this.localClosed) {
 			this.localClosed = true;
 			const closedMessage = this.raiseClosedEvent(true);
-			this.requestCompletionSource?.reject(new SshChannelError(closedMessage));
 		}
 
 		this.disposeInternal();
@@ -621,7 +622,6 @@ export class SshChannel implements Disposable {
 
 			this.localClosed = true;
 			this.closedEmitter.fire(args);
-			this.requestCompletionSource?.reject(new SshChannelError(message));
 		}
 
 		this.disposeInternal();
@@ -631,7 +631,7 @@ export class SshChannel implements Disposable {
 		if (this.disposed) return;
 		this.disposed = true;
 
-		this.requestCompletionSource?.reject(new ObjectDisposedError(this));
+		this.cancelPendingRequests();
 		this.connectionService.removeChannel(this);
 		this.sendSemaphore.dispose();
 	}
@@ -643,6 +643,12 @@ export class SshChannel implements Disposable {
 	 */
 	public pipe(toChannel: SshChannel): Promise<void> {
 		return PipeExtensions.pipeChannel(this, toChannel);
+	}
+
+	private cancelPendingRequests() {
+		for (const completion of this.requestCompletionSources) {
+			completion.resolve(false);
+		}
 	}
 
 	public toString() {
