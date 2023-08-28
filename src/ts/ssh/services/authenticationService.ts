@@ -4,6 +4,7 @@
 
 import { SshService } from './sshService';
 import { SshSession } from '../sshSession';
+import { AuthenticationMethod } from '../messages/authenticationMethod';
 import {
 	AuthenticationMessage,
 	AuthenticationFailureMessage,
@@ -11,8 +12,9 @@ import {
 	AuthenticationSuccessMessage,
 	PublicKeyRequestMessage,
 	AuthenticationRequestMessage,
-	AuthenticationMethod,
 	PublicKeyOKMessage,
+	AuthenticationInfoRequestMessage,
+	AuthenticationInfoResponseMessage,
 } from '../messages/authenticationMessages';
 import { SshClientSession } from '../sshClientSession';
 import { SshServerSession } from '../sshServerSession';
@@ -29,6 +31,7 @@ import { serviceActivation } from './serviceActivation';
 import { SshClientCredentials } from '../sshCredentials';
 import { Queue } from '../util/queue';
 import { TraceLevel, SshTraceEventIds } from '../trace';
+import { SshConnectionError } from '../errors';
 
 /**
  * Handles SSH protocol messages related to client authentication.
@@ -39,7 +42,11 @@ export class AuthenticationService extends SshService {
 
 	public readonly publicKeyAlgorithmName: string;
 
-	private clientAuthenticationMethods?: Queue<(cancellation?: CancellationToken) => Promise<void>>;
+	private clientAuthenticationMethods?: Queue<{
+		method: AuthenticationMethod;
+		handler: (cancellation?: CancellationToken) => Promise<void>;
+	}>;
+	private currentRequestMessage?: AuthenticationRequestMessage | null = null;
 	private authenticationFailureCount: number = 0;
 	private readonly disposeCancellationSource = new CancellationTokenSource();
 
@@ -63,8 +70,14 @@ export class AuthenticationService extends SshService {
 			return this.handleFailureMessage(message);
 		} else if (message instanceof AuthenticationRequestMessage) {
 			return this.handleAuthenticationRequestMessage(message, cancellation);
+		} else if (message instanceof AuthenticationInfoRequestMessage) {
+			return this.handleInfoRequestMessage(message, cancellation);
+		} else if (message instanceof AuthenticationInfoResponseMessage) {
+			return this.handleInfoResponseMessage(message, cancellation);
+		} else if (message instanceof PublicKeyOKMessage) {
+			// Not handled.
 		} else {
-			throw new Error(`Message not implemented: ${message}`);
+			// Ignore unrecognized authentication messages.
 		}
 	}
 
@@ -77,29 +90,37 @@ export class AuthenticationService extends SshService {
 			SshTraceEventIds.sessionAuthenticating,
 			`Authentication request: ${message.methodName}`,
 		);
+		this.setCurrentRequest(message);
+
+		let methodName: AuthenticationMethod | null = message.methodName!;
+		if (!this.session.config.authenticationMethods.includes(methodName)) {
+			methodName = null;
+		}
+
 		if (
-			message.methodName === AuthenticationMethod.publicKey ||
-			message.methodName === AuthenticationMethod.hostBased
+			methodName === AuthenticationMethod.publicKey ||
+			methodName === AuthenticationMethod.hostBased
 		) {
 			return this.handlePublicKeyRequestMessage(
 				message.convertTo(new PublicKeyRequestMessage()),
 				cancellation,
 			);
-		} else if (message.methodName === AuthenticationMethod.password) {
+		} else if (methodName === AuthenticationMethod.password) {
 			return this.handlePasswordRequestMessage(
 				message.convertTo(new PasswordRequestMessage()),
 				cancellation,
 			);
-		} else if (message.methodName === AuthenticationMethod.none) {
+		} else if (methodName === AuthenticationMethod.keyboardInteractive) {
+			return this.beginInteractiveAuthentication(message, cancellation);
+		} else if (methodName === AuthenticationMethod.none) {
 			return this.handleAuthenticating(
-				message,
-				new SshAuthenticatingEventArgs(
-					SshAuthenticationType.clientNone,
-					{ username: message.username },
-					cancellation,
-				),
+				new SshAuthenticatingEventArgs(SshAuthenticationType.clientNone, {
+					username: message.username,
+				}),
+				cancellation,
 			);
 		} else {
+			this.setCurrentRequest(null);
 			const failureMessage = new AuthenticationFailureMessage();
 			failureMessage.methodNames = [
 				AuthenticationMethod.publicKey,
@@ -107,6 +128,15 @@ export class AuthenticationService extends SshService {
 				AuthenticationMethod.hostBased,
 			];
 			await this.session.sendMessage(failureMessage, cancellation);
+		}
+	}
+
+	private setCurrentRequest(message: AuthenticationRequestMessage | null) {
+		this.currentRequestMessage = message;
+
+		const protocol = this.session.protocol;
+		if (protocol) {
+			protocol.messageContext = message?.methodName ?? null;
 		}
 	}
 
@@ -174,7 +204,7 @@ export class AuthenticationService extends SshService {
 
 		// Raise an Authenticating event that allows handlers to do additional verification
 		// of the client's username and public key.
-		await this.handleAuthenticating(message, args, cancellation);
+		await this.handleAuthenticating(args, cancellation);
 	}
 
 	private async handlePasswordRequestMessage(
@@ -187,14 +217,57 @@ export class AuthenticationService extends SshService {
 			username: message.username ?? '',
 			password: message.password ?? '',
 		});
-		await this.handleAuthenticating(message, args, cancellation);
+		await this.handleAuthenticating(args, cancellation);
+	}
+
+	private async beginInteractiveAuthentication(
+		message: AuthenticationRequestMessage,
+		cancellation?: CancellationToken,
+	): Promise<void> {
+		// Raise an Authenticating event that allows the server to interactively prompt for
+		// information from the client.
+		const args = new SshAuthenticatingEventArgs(SshAuthenticationType.clientInteractive, {
+			username: message.username,
+		});
+		await this.handleAuthenticating(args, cancellation);
+	}
+
+	private async handleInfoRequestMessage(
+		message: AuthenticationInfoRequestMessage,
+		cancellation?: CancellationToken,
+	): Promise<void> {
+		// Raise an Authenticating event that allows the client to respond to interactive prompts
+		// and provide requested information to the server.
+		const args = new SshAuthenticatingEventArgs(SshAuthenticationType.clientInteractive, {
+			infoRequest: message,
+		});
+		await this.handleAuthenticating(args, cancellation);
+	}
+
+	private async handleInfoResponseMessage(
+		message: AuthenticationInfoResponseMessage,
+		cancellation?: CancellationToken,
+	): Promise<void> {
+		// Raise an Authenticating event that allows the server to process the client's responses
+		// to interactive prompts, and request further info if necessary.
+		const args = new SshAuthenticatingEventArgs(SshAuthenticationType.clientInteractive, {
+			username: this.currentRequestMessage?.username,
+			infoResponse: message,
+		});
+		await this.handleAuthenticating(args, cancellation);
 	}
 
 	private async handleAuthenticating(
-		requestMessage: AuthenticationRequestMessage,
 		args: SshAuthenticatingEventArgs,
 		cancellation?: CancellationToken,
 	) {
+		if (!this.currentRequestMessage) {
+			throw new SshConnectionError(
+				'No current authentication request.',
+				SshDisconnectReason.protocolError,
+			);
+		}
+
 		args.cancellation = this.disposeCancellationSource.token;
 
 		let authenticatedPrincipal: object | null = null;
@@ -213,16 +286,19 @@ export class AuthenticationService extends SshService {
 
 		if (authenticatedPrincipal) {
 			if (args.authenticationType === SshAuthenticationType.clientPublicKeyQuery) {
-				const publicKeyRequest = <PublicKeyRequestMessage>requestMessage;
+				const publicKeyRequest = <PublicKeyRequestMessage>this.currentRequestMessage;
 				const okMessage = new PublicKeyOKMessage();
 				okMessage.keyAlgorithmName = publicKeyRequest.keyAlgorithmName;
 				okMessage.publicKey = publicKeyRequest.publicKey;
+
+				this.setCurrentRequest(null);
 				await this.session.sendMessage(okMessage, cancellation);
 			} else {
 				this.session.principal = authenticatedPrincipal;
 
-				if (requestMessage.serviceName) {
-					this.session.activateService(requestMessage.serviceName);
+				const serviceName = this.currentRequestMessage.serviceName;
+				if (serviceName) {
+					this.session.activateService(serviceName);
 				}
 
 				this.trace(
@@ -230,11 +306,28 @@ export class AuthenticationService extends SshService {
 					SshTraceEventIds.sessionAuthenticated,
 					`${SshAuthenticationType[args.authenticationType]} authentication succeeded.`,
 				);
+
+				this.setCurrentRequest(null);
 				await this.session.sendMessage(new AuthenticationSuccessMessage(), cancellation);
 
 				(this.session as SshServerSession)?.handleClientAuthenticated();
 			}
+		} else if (
+			args.authenticationType === SshAuthenticationType.clientInteractive &&
+			!this.session.isClientSession &&
+			args.infoRequest
+		) {
+			// Server authenticating event-handler supplied an info request.
+			await this.sendMessage(args.infoRequest, cancellation);
+		} else if (
+			args.authenticationType === SshAuthenticationType.clientInteractive &&
+			this.session.isClientSession &&
+			args.infoResponse
+		) {
+			// Client authenticating event-handler supplied an info response.
+			await this.sendMessage(args.infoResponse, cancellation);
 		} else {
+			this.setCurrentRequest(null);
 			await this.handleAuthenticationFailure(
 				`${SshAuthenticationType[args.authenticationType]} authentication failed.`,
 			);
@@ -250,11 +343,7 @@ export class AuthenticationService extends SshService {
 		this.trace(TraceLevel.Warning, SshTraceEventIds.clientAuthenticationFailed, message);
 
 		const failureMessage = new AuthenticationFailureMessage();
-		failureMessage.methodNames = [
-			AuthenticationMethod.publicKey,
-			AuthenticationMethod.password,
-			AuthenticationMethod.hostBased,
-		];
+		failureMessage.methodNames = this.session.config.authenticationMethods;
 		await this.session.sendMessage(failureMessage, cancellation);
 
 		// Allow trying again with another authentication method. But prevent unlimited tries.
@@ -270,73 +359,117 @@ export class AuthenticationService extends SshService {
 		credentials: SshClientCredentials,
 		cancellation?: CancellationToken,
 	): Promise<void> {
-		this.clientAuthenticationMethods = new Queue<
-			(cancellation?: CancellationToken) => Promise<void>
-		>();
+		this.clientAuthenticationMethods = new Queue<{
+			method: AuthenticationMethod;
+			handler: (cancellation?: CancellationToken) => Promise<void>;
+		}>();
+		const configuredMethods = this.session.config.authenticationMethods;
 
-		for (const publicKey of credentials.publicKeys ?? []) {
-			if (!publicKey) continue;
+		if (configuredMethods.includes(AuthenticationMethod.publicKey)) {
+			for (const publicKey of credentials.publicKeys ?? []) {
+				if (!publicKey) continue;
 
-			const username = credentials.username ?? '';
-			let privateKey: KeyPair | null = publicKey;
-			const privateKeyProvider = credentials.privateKeyProvider;
+				const username = credentials.username ?? '';
+				let privateKey: KeyPair | null = publicKey;
+				const privateKeyProvider = credentials.privateKeyProvider;
 
-			this.clientAuthenticationMethods.enqueue(async (cancellation2) => {
-				if (!privateKey!.hasPrivateKey) {
-					if (privateKeyProvider == null) {
-						throw new Error('A private key provider is required.');
-					}
+				this.clientAuthenticationMethods.enqueue({
+					method: AuthenticationMethod.publicKey,
+					handler: async (cancellation2) => {
+						if (!privateKey!.hasPrivateKey) {
+							if (privateKeyProvider == null) {
+								throw new Error('A private key provider is required.');
+							}
 
-					privateKey = await privateKeyProvider(
-						publicKey,
-						cancellation2 ?? CancellationToken.None,
-					);
-				}
+							privateKey = await privateKeyProvider(
+								publicKey,
+								cancellation2 ?? CancellationToken.None,
+							);
+						}
 
-				if (privateKey) {
-					await this.requestPublicKeyAuthentication(username, privateKey, cancellation2);
-				} else {
-					await this.session.close(SshDisconnectReason.authCancelledByUser);
-				}
-			});
+						if (privateKey) {
+							await this.requestPublicKeyAuthentication(username, privateKey, cancellation2);
+						} else {
+							await this.session.close(SshDisconnectReason.authCancelledByUser);
+						}
+					},
+				});
+			}
 		}
 
-		const passwordCredentialProvider = credentials.passwordProvider;
-		if (passwordCredentialProvider) {
-			this.clientAuthenticationMethods.enqueue(async (cancellation2) => {
-				const passwordCredentialPromise = passwordCredentialProvider(
-					cancellation2 ?? CancellationToken.None,
-				);
-				const passwordCredential = passwordCredentialPromise
-					? await passwordCredentialPromise
-					: null;
-				if (passwordCredential) {
-					await this.requestPasswordAuthentication(
-						passwordCredential[0] ?? '',
-						passwordCredential[1],
-						cancellation2,
-					);
-				} else {
-					await this.session.close(SshDisconnectReason.authCancelledByUser);
-				}
-			});
-		} else if (credentials.password) {
-			const username = credentials.username ?? '';
-			const password = credentials.password;
-			this.clientAuthenticationMethods.enqueue(async (cancellation2) => {
-				await this.requestPasswordAuthentication(username, password, cancellation2);
-			});
+		if (configuredMethods.includes(AuthenticationMethod.password)) {
+			const passwordCredentialProvider = credentials.passwordProvider;
+			if (passwordCredentialProvider) {
+				this.clientAuthenticationMethods.enqueue({
+					method: AuthenticationMethod.password,
+					handler: async (cancellation2) => {
+						const passwordCredentialPromise = passwordCredentialProvider(
+							cancellation2 ?? CancellationToken.None,
+						);
+						const passwordCredential = passwordCredentialPromise
+							? await passwordCredentialPromise
+							: null;
+						if (passwordCredential) {
+							await this.requestPasswordAuthentication(
+								passwordCredential[0] ?? '',
+								passwordCredential[1],
+								cancellation2,
+							);
+						} else {
+							await this.session.close(SshDisconnectReason.authCancelledByUser);
+						}
+					},
+				});
+			} else if (credentials.password) {
+				const username = credentials.username ?? '';
+				const password = credentials.password;
+				this.clientAuthenticationMethods.enqueue({
+					method: AuthenticationMethod.password,
+					handler: async (cancellation2) => {
+						await this.requestPasswordAuthentication(username, password, cancellation2);
+					},
+				});
+			}
 		}
 
+		// Only add None or Interactive methods if no client credentials were supplied.
 		if (this.clientAuthenticationMethods.size === 0) {
 			const username = credentials.username ?? '';
-			this.clientAuthenticationMethods.enqueue(async (cancellation2) => {
-				await this.requestUsernameAuthentication(username, cancellation2);
-			});
+
+			if (configuredMethods.includes(AuthenticationMethod.none)) {
+				this.clientAuthenticationMethods.enqueue({
+					method: AuthenticationMethod.none,
+					handler: async (cancellation2) => {
+						await this.requestUsernameAuthentication(username, cancellation2);
+					},
+				});
+			}
+
+			if (configuredMethods.includes(AuthenticationMethod.keyboardInteractive)) {
+				this.clientAuthenticationMethods.enqueue({
+					method: AuthenticationMethod.keyboardInteractive,
+					handler: async (cancellation2) => {
+						await this.requestInteractiveAuthentication(username, cancellation2);
+					},
+				});
+			}
+
+			if (this.clientAuthenticationMethods.size === 0) {
+				throw new Error(
+					'Could not prepare request for authentication method(s): ' +
+						configuredMethods.join(', ') +
+						'. Supply client credentials or enable none or interactive authentication methods.',
+				);
+			}
 		}
 
+		// Auth request messages all include a request the for the server to activate the connection
+		// service . Go ahead and activate it on the client side too; if authentication fails then
+		// a following channel open request will fail anyway.
+		this.session.activateService(ConnectionService);
+
 		const firstAuthMethod = this.clientAuthenticationMethods.dequeue()!;
-		await firstAuthMethod(cancellation);
+		await firstAuthMethod.handler(cancellation);
 	}
 
 	private async requestUsernameAuthentication(
@@ -347,11 +480,8 @@ export class AuthenticationService extends SshService {
 		authMessage.serviceName = ConnectionService.serviceName;
 		authMessage.methodName = AuthenticationMethod.none;
 		authMessage.username = username;
+		this.setCurrentRequest(authMessage);
 		await this.session.sendMessage(authMessage, cancellation);
-
-		// Assume the included service request succeeds, without waiting for an auth success
-		// message. If not, a following channel open request will fail anyway.
-		this.session.activateService(ConnectionService);
 	}
 
 	public async requestPublicKeyAuthentication(
@@ -374,14 +504,8 @@ export class AuthenticationService extends SshService {
 		authMessage.keyAlgorithmName = algorithm.name;
 		authMessage.publicKey = (await key.getPublicKeyBytes(algorithm.name))!;
 		authMessage.signature = await this.createAuthenticationSignature(authMessage, algorithm, key);
+		this.setCurrentRequest(authMessage);
 		await this.session.sendMessage(authMessage, cancellation);
-
-		if (this.clientAuthenticationMethods!.size === 0) {
-			// There are no remaining auth methods. Assume the service request
-			// included here succeeds, without waiting for an auth success message
-			// If not, a following channel open request will fail anyway.
-			this.session.activateService(ConnectionService);
-		}
 	}
 
 	public async requestPasswordAuthentication(
@@ -393,22 +517,40 @@ export class AuthenticationService extends SshService {
 		authMessage.serviceName = ConnectionService.serviceName;
 		authMessage.username = username;
 		authMessage.password = password;
+		this.setCurrentRequest(authMessage);
 		await this.session.sendMessage(authMessage, cancellation);
-
-		// Assume the included service request succeeds, without waiting for an auth success
-		// message. If not, a following channel open request will fail anyway.
-		this.session.activateService(ConnectionService);
 	}
 
-	private handleFailureMessage(message: AuthenticationFailureMessage): void {
+	private async requestInteractiveAuthentication(
+		username: string,
+		cancellation?: CancellationToken,
+	): Promise<void> {
+		const authMessage = new AuthenticationRequestMessage();
+		authMessage.serviceName = ConnectionService.serviceName;
+		authMessage.methodName = AuthenticationMethod.keyboardInteractive;
+		authMessage.username = username;
+		this.setCurrentRequest(authMessage);
+		await this.session.sendMessage(authMessage, cancellation);
+	}
+
+	private async handleFailureMessage(message: AuthenticationFailureMessage): Promise<void> {
+		this.setCurrentRequest(null);
+
+		while (this.clientAuthenticationMethods?.size) {
+			const nextAuthMethod = this.clientAuthenticationMethods.dequeue()!;
+
+			// Skip client auth methods that the server did not suggest.
+			if (message.methodNames?.includes(nextAuthMethod.method)) {
+				await nextAuthMethod.handler(this.disposeCancellationSource.token);
+				return;
+			}
+		}
+
 		(<SshClientSession>this.session).onAuthenticationComplete(false);
 	}
 
 	private handleSuccessMessage(message: AuthenticationSuccessMessage): void {
-		// The authentication request included the connection service name.
-		// So it should be registered when authentication succeeded.
-		this.session.activateService(ConnectionService);
-
+		this.setCurrentRequest(null);
 		(<SshClientSession>this.session).onAuthenticationComplete(true);
 	}
 

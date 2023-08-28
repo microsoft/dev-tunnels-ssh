@@ -17,6 +17,7 @@ import { KeyExchangeService } from './services/keyExchangeService';
 import { ConnectionService } from './services/connectionService';
 import { AuthenticationService } from './services/authenticationService';
 import { SshMessage, SshMessageConstructor } from './messages/sshMessage';
+import { AuthenticationMethod } from './messages/authenticationMethod';
 
 export enum SshProtocolExtensionNames {
 	/**
@@ -61,8 +62,25 @@ export class SshSessionConfiguration {
 		this.services.set(ConnectionService, null);
 		this.services.set(AuthenticationService, null);
 
-		for (const [messageNumber, messageType] of SshMessage.index) {
-			this.messages.set(messageNumber, messageType);
+		this.authenticationMethods.push(
+			AuthenticationMethod.none,
+			AuthenticationMethod.password,
+			AuthenticationMethod.publicKey,
+			AuthenticationMethod.keyboardInteractive,
+		);
+
+		for (const [messageKey, messageType] of SshMessage.index) {
+			if (typeof messageKey === 'number') {
+				this.messages.set(messageKey, messageType);
+			} else {
+				const [messageNumber, messageContext] = messageKey;
+				let contextMessageTypes = this.contextualMessages.get(messageContext);
+				if (!contextMessageTypes) {
+					contextMessageTypes = new Map<number, SshMessageConstructor>();
+					this.contextualMessages.set(messageContext, contextMessageTypes);
+				}
+				contextMessageTypes.set(messageNumber, messageType);
+			}
 		}
 
 		if (useSecurity) {
@@ -116,12 +134,29 @@ export class SshSessionConfiguration {
 	}
 
 	/**
+	 * Gets the list of enabled authentication methods.
+	 *
+	 * Add or remove `AuthenticationMethod` constants to restrict which client authentication
+	 * methods the client will try or the server will allow. In any case, the client or server must
+	 * handle the `SshSession.onAuthenticating` event to perform authentication.
+	 */
+	public readonly authenticationMethods: AuthenticationMethod[] = [];
+
+	/**
 	 * Gets a dictionary that maps from known message numbers to message types.
 	 *
 	 * Message types must extend the `SshMessage` abstract class. Message subclasses that do
 	 * not have a distinct message type from their base class must not be included in this map.
 	 */
 	public readonly messages = new Map<number, SshMessageConstructor>();
+
+	/**
+	 * Gets a dictionary that maps from message context to message type mappings for each context.
+	 *
+	 * Services like `AuthenticationService` may set the current message context to
+	 * disambiguate when the same message number may be re-used in different contexts.
+	 */
+	public readonly contextualMessages = new Map<string, Map<number, SshMessageConstructor>>();
 
 	/**
 	 * Gets the collection of algorithms that are enabled for key exchange.

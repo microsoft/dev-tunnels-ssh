@@ -100,7 +100,7 @@ export class SshSession implements Disposable {
 	public readonly metrics = new SessionMetrics();
 
 	/* @internal */
-	protected protocol?: SshProtocol;
+	public protocol?: SshProtocol;
 
 	/* @internal */
 	public reconnecting: boolean = false;
@@ -170,6 +170,8 @@ export class SshSession implements Disposable {
 	public trace: Trace = (level, eventId, msg, err) => {};
 
 	public constructor(public readonly config: SshSessionConfiguration, isClientSession?: boolean) {
+		this.isClientSession = isClientSession ?? false;
+
 		if (!config) throw new TypeError('Session configuration is required.');
 
 		if (!config.keyExchangeAlgorithms.find((a) => !!a)) {
@@ -193,7 +195,7 @@ export class SshSession implements Disposable {
 			this.kexService = null;
 			this.activateService(ConnectionService);
 		} else {
-			this.kexService = new KeyExchangeService(this, isClientSession ?? false);
+			this.kexService = new KeyExchangeService(this);
 		}
 
 		config.onConfigurationChanged(() => {
@@ -203,6 +205,13 @@ export class SshSession implements Disposable {
 			}
 		});
 	}
+
+	/**
+	 * Allows other internal components to check whether a session is a client (or server),
+	 * without using `instanceof` which is slower and can cause circular dependencies.
+	 */
+	/* @internal */
+	public readonly isClientSession: boolean;
 
 	public get isConnected(): boolean {
 		return this.connected;

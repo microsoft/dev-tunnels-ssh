@@ -4,6 +4,10 @@
 
 import { KeyPair } from '../algorithms/publicKeyAlgorithm';
 import { CancellationToken } from 'vscode-jsonrpc';
+import {
+	AuthenticationInfoRequestMessage,
+	AuthenticationInfoResponseMessage,
+} from '../messages/authenticationMessages';
 
 /**
  * Indicates the type of authentication being requested by an SSH client or server when an
@@ -69,6 +73,15 @@ export enum SshAuthenticationType {
 	clientPublicKey = 4,
 
 	/**
+	 * The client is attempting to authenticate with interactive prompts.
+	 *
+	 * This event is raised by an `SshServerSession` when the client requests authentication
+	 * using the "keyboard-interactive" method. The event may be raised multiple times for the
+	 * same client to facilitate multi-step authentication.
+	 */
+	clientInteractive = 5,
+
+	/**
 	 * The server is attempting to authenticate with a public key credential.
 	 *
 	 * This event is raised by an `SshClientSession` when the server requests
@@ -91,7 +104,7 @@ export enum SshAuthenticationType {
  *
  * After validating the credentials, the event handler must set the `authenticationPromise`
  * property to a task that resolves to a principal object to indicate successful authentication.
- * That principal will then be associated with the sesssion as the `SshSession.principal` property.
+ * That principal will then be associated with the session as the `SshSession.principal` property.
  */
 export class SshAuthenticatingEventArgs {
 	public constructor(
@@ -102,12 +115,16 @@ export class SshAuthenticatingEventArgs {
 			publicKey,
 			clientHostname,
 			clientUsername,
+			infoRequest,
+			infoResponse,
 		}: {
 			username?: string;
 			password?: string;
 			publicKey?: KeyPair;
 			clientHostname?: string;
 			clientUsername?: string;
+			infoRequest?: AuthenticationInfoRequestMessage;
+			infoResponse?: AuthenticationInfoResponseMessage;
 		},
 		cancellation?: CancellationToken,
 	) {
@@ -157,6 +174,9 @@ export class SshAuthenticatingEventArgs {
 			case SshAuthenticationType.serverPublicKey:
 				valid = validate({ publicKeyRequired: true });
 				break;
+			case SshAuthenticationType.clientInteractive:
+				valid = true;
+				break;
 			default:
 				throw new Error(`Invalid authentication type: ${authenticationType}`);
 		}
@@ -170,6 +190,8 @@ export class SshAuthenticatingEventArgs {
 		this.publicKey = publicKey ?? null;
 		this.clientHostname = clientHostname ?? null;
 		this.clientUsername = clientUsername ?? null;
+		this.infoRequest = infoRequest ?? null;
+		this.infoResponse = infoResponse ?? null;
 		this.cancellationValue = cancellation ?? CancellationToken.None;
 	}
 
@@ -201,6 +223,21 @@ export class SshAuthenticatingEventArgs {
 	public readonly clientUsername: string | null;
 
 	/**
+	 * Gets or sets a request more information for interactive authentication.
+	 *
+	 * The server may set this property when handling an interactive authenticating event to prompt
+	 * for information/credentials. The client may read this property when handling an interactive
+	 * authenticating event to determine what prompts to show and what information is requested.
+	 */
+	public infoRequest: AuthenticationInfoRequestMessage | null = null;
+
+	/**
+	 * Gets or sets the client's responses to interactive prompts; valid only for interactive
+	 * authentication when information was previously requested via `InfoRequest`.
+	 */
+	public infoResponse: AuthenticationInfoResponseMessage | null = null;
+
+	/**
 	 * Gets or sets a task to be filled in by the event handler to indicate whether async
 	 * authentication is successful.
 	 *
@@ -226,7 +263,11 @@ export class SshAuthenticatingEventArgs {
 	private cancellationValue: CancellationToken;
 
 	public toString() {
-		if (this.password) {
+		if (this.infoRequest) {
+			return `Info request: ${this.infoRequest.name}`;
+		} else if (this.infoResponse) {
+			return `"${this.username}" info response`;
+		} else if (this.password) {
 			return `${this.username ? '"' + this.username + '" ' : ''}[password]`;
 		} else if (this.publicKey) {
 			return `${this.username ? '"' + this.username + '" ' : ''}[${
