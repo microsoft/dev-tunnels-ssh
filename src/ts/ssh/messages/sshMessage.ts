@@ -81,14 +81,23 @@ export abstract class SshMessage {
 		return this.constructor.name;
 	}
 
-	public static readonly index = new Map<number, { new (): SshMessage }>();
+	/* @internal */
+	public static readonly index = new Map<number | [number, string], { new (): SshMessage }>();
 
 	public static create(
 		config: SshSessionConfiguration,
 		messageType: number,
+		messageContext: string | null,
 		data: Buffer,
 	): SshMessage | null {
-		const messageClass = config.messages.get(messageType);
+		let messageClass = config.messages.get(messageType);
+		if (!messageClass && messageContext) {
+			const contextMessageTypes = config.contextualMessages.get(messageContext);
+			if (contextMessageTypes) {
+				messageClass = contextMessageTypes.get(messageType);
+			}
+		}
+
 		if (messageClass) {
 			const message = new messageClass();
 			message.read(new SshDataReader(data));

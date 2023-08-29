@@ -53,7 +53,7 @@ public class SshServer : IDisposable
 	public event EventHandler<SshRequestEventArgs<SessionRequestMessage>>? SessionRequest;
 	public event EventHandler<SshChannelOpeningEventArgs>? ChannelOpening;
 	public event EventHandler<SshRequestEventArgs<ChannelRequestMessage>>? ChannelRequest;
-	public event EventHandler<Exception>? ExceptionRasied;
+	public event EventHandler<Exception>? ExceptionRaised;
 
 	public SshServerCredentials Credentials { get; set; } = new SshServerCredentials();
 
@@ -165,20 +165,20 @@ public class SshServer : IDisposable
 						catch (SshConnectionException ex)
 						{
 							await session.CloseAsync(ex.DisconnectReason, ex).ConfigureAwait(false);
-							ExceptionRasied?.Invoke(this, ex);
+							ExceptionRaised?.Invoke(this, ex);
 						}
 						catch (Exception ex)
 						{
 							await session.CloseAsync(SshDisconnectReason.ProtocolError, ex)
 							.ConfigureAwait(false);
-							ExceptionRasied?.Invoke(this, ex);
+							ExceptionRaised?.Invoke(this, ex);
 						}
 					});
 				}
 			}
 			catch (Exception ex)
 			{
-				ExceptionRasied?.Invoke(this, ex);
+				ExceptionRaised?.Invoke(this, ex);
 			}
 			finally
 			{

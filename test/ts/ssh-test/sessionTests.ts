@@ -22,6 +22,8 @@ import {
 	SessionRequestFailureMessage,
 	SshMessage,
 	SessionRequestMessage,
+	AuthenticationInfoRequestMessage,
+	AuthenticationInfoResponseMessage,
 } from '@microsoft/dev-tunnels-ssh';
 import { DuplexStream, shutdownWebSocketServer } from './duplexStream';
 import { createSessionPair, connectSessionPair } from './sessionPair';
@@ -457,6 +459,51 @@ export class SessionTests {
 
 		assert(error);
 		assert(error instanceof ObjectDisposedError);
+	}
+
+	@test
+	public async authenticateInteractive() {
+		const [clientSession, serverSession] = await this.createSessions();
+
+		serverSession.onAuthenticating((e) => {
+			if (e.authenticationType !== SshAuthenticationType.clientInteractive) {
+				e.authenticationPromise = Promise.resolve(null);
+				return;
+			} else if (!e.infoResponse) {
+				e.infoRequest = new AuthenticationInfoRequestMessage();
+				e.infoRequest.prompts = [
+					{ prompt: 'One', echo: true },
+					{ prompt: 'Two', echo: false },
+				];
+				e.authenticationPromise = Promise.resolve(null);
+			} else {
+				assert(e.infoResponse.responses);
+				assert.equal(e.infoResponse.responses.length, 2);
+				assert.strictEqual(e.infoResponse.responses[0], '1');
+				assert.strictEqual(e.infoResponse.responses[1], '2');
+				e.authenticationPromise = Promise.resolve({});
+			}
+		});
+		clientSession.onAuthenticating((e) => {
+			if (e.authenticationType === SshAuthenticationType.serverPublicKey) {
+				e.authenticationPromise = Promise.resolve({});
+			} else if (e.authenticationType === SshAuthenticationType.clientInteractive) {
+				assert(e.infoRequest);
+				assert.equal(e.infoRequest.prompts?.length, 2);
+				assert.strictEqual(e.infoRequest.prompts![0].prompt, 'One');
+				assert(e.infoRequest.prompts![0].echo);
+				assert.strictEqual(e.infoRequest.prompts![1].prompt, 'Two');
+				assert(!e.infoRequest.prompts![1].echo);
+				e.infoResponse = new AuthenticationInfoResponseMessage();
+				e.infoResponse.responses = ['1', '2'];
+			}
+		});
+
+		await connectSessionPair(clientSession, serverSession, undefined, false);
+
+		const authenticated = await clientSession.authenticate(
+			{ username: SessionTests.testUsername });
+		assert(authenticated);
 	}
 
 	@test

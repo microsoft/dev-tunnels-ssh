@@ -61,7 +61,16 @@ public class SshSessionConfiguration
 		Services.Add(typeof(ConnectionService), null);
 		Services.Add(typeof(AuthenticationService), null);
 
+		AuthenticationMethods = new List<string>
+		{
+			Ssh.Messages.AuthenticationMethods.None,
+			Ssh.Messages.AuthenticationMethods.Password,
+			Ssh.Messages.AuthenticationMethods.PublicKey,
+			Ssh.Messages.AuthenticationMethods.KeyboardInteractive,
+		};
+
 		Messages = new Dictionary<byte, Type>(capacity: 40);
+		ContextualMessages = new Dictionary<(byte, string), Type>(capacity: 4);
 		RegisterMessages();
 
 		KeyExchangeAlgorithms = new List<KeyExchangeAlgorithm?>();
@@ -129,7 +138,21 @@ public class SshSessionConfiguration
 		AddMessage(typeof(AuthenticationRequestMessage), AuthenticationRequestMessage.MessageNumber);
 		AddMessage(typeof(AuthenticationFailureMessage), AuthenticationFailureMessage.MessageNumber);
 		AddMessage(typeof(AuthenticationSuccessMessage), AuthenticationSuccessMessage.MessageNumber);
-		AddMessage(typeof(PublicKeyOkMessage), PublicKeyOkMessage.MessageNumber);
+
+		// Some authentication message numbers (60-69) may be re-used for different message types
+		// depending on the current authentication context.
+		AddMessage(
+			typeof(PublicKeyOkMessage),
+			PublicKeyOkMessage.MessageNumber,
+			Ssh.Messages.AuthenticationMethods.PublicKey);
+		AddMessage(
+			typeof(AuthenticationInfoRequestMessage),
+			AuthenticationInfoRequestMessage.MessageNumber,
+			Ssh.Messages.AuthenticationMethods.KeyboardInteractive);
+		AddMessage(
+			typeof(AuthenticationInfoResponseMessage),
+			AuthenticationInfoResponseMessage.MessageNumber,
+			Ssh.Messages.AuthenticationMethods.KeyboardInteractive);
 
 		AddMessage(typeof(SessionRequestMessage), SessionRequestMessage.MessageNumber);
 		AddMessage(typeof(SessionRequestSuccessMessage), SessionRequestSuccessMessage.MessageNumber);
@@ -239,6 +262,17 @@ public class SshSessionConfiguration
 	}
 
 	/// <summary>
+	/// Gets the list of enabled authentication methods.
+	/// </summary>
+	/// <remarks>
+	/// Add or remove constants from <see cref="Ssh.Messages.AuthenticationMethods" /> to restrict
+	/// which client authentication methods the client will try or the server will allow. In any
+	/// case, the client or server must handle the <see cref="SshSession.Authenticating" /> event
+	/// to perform authentication.
+	/// </remarks>
+	public ICollection<string> AuthenticationMethods { get; private set; }
+
+	/// <summary>
 	/// Gets a dictionary that maps from known message numbers to message types.
 	/// </summary>
 	/// <remarks>
@@ -249,6 +283,15 @@ public class SshSessionConfiguration
 	/// must not be included in this dictionary.
 	/// </remarks>
 	public IDictionary<byte, Type> Messages { get; }
+
+	/// <summary>
+	/// Gets a dictionary that maps from message number and context tuples to message types.
+	/// </summary>
+	/// <remarks>
+	/// Services like <see cref="AuthenticationService" /> may set the current message context
+	/// to disambiguate when the same message number may be re-used in different contexts.
+	/// </remarks>
+	public IDictionary<(byte MessageType, string MessageContext), Type> ContextualMessages { get; }
 
 	/// <summary>
 	/// Adds a message to the configuration.
@@ -294,6 +337,17 @@ public class SshSessionConfiguration
 		byte messageNumber)
 	{
 		Messages.Add(messageNumber, messageType);
+	}
+
+	private void AddMessage(
+#if NET6_0_OR_GREATER
+		[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)]
+#endif
+		Type messageType,
+		byte messageNumber,
+		string messageContext)
+	{
+		ContextualMessages.Add((messageNumber, messageContext), messageType);
 	}
 
 	/// <summary>

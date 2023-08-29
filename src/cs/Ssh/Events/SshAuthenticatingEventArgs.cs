@@ -1,11 +1,13 @@
 // Copyright (c) Microsoft. All rights reserved.
 
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Security.Claims;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.DevTunnels.Ssh.Algorithms;
+using Microsoft.DevTunnels.Ssh.Messages;
 
 namespace Microsoft.DevTunnels.Ssh.Events;
 
@@ -81,6 +83,16 @@ public enum SshAuthenticationType
 	ClientPublicKey = 4,
 
 	/// <summary>
+	/// The client is attempting to authenticate with interactive prompts.
+	/// </summary>
+	/// <remarks>
+	/// This event is raised by an <see cref="SshServerSession"/> when the client requests
+	/// authentication using the "keyboard-interactive" method. The event may be raised multiple
+	/// times for the same client to facilitate multi-step authentication.
+	/// </remarks>
+	ClientInteractive = 5,
+
+	/// <summary>
 	/// The server is attempting to authenticate with a public key credential.
 	/// </summary>
 	/// <remarks>
@@ -106,7 +118,7 @@ public enum SshAuthenticationType
 /// After validating the credentials, the event handler must set the
 /// <see cref="AuthenticationTask" /> property to a task that resolves to a principal object
 /// to indicate successful authentication. That principal will then be associated with the
-/// sesssion as the <see cref="SshSession.Principal" /> property.
+/// session as the <see cref="SshSession.Principal" /> property.
 /// </remarks>
 [DebuggerDisplay("{ToString(),nq}")]
 [DebuggerStepThrough]
@@ -165,6 +177,26 @@ public class SshAuthenticatingEventArgs
 		Cancellation = cancellation;
 	}
 
+	public SshAuthenticatingEventArgs(
+		SshAuthenticationType authenticationType,
+		string? username,
+		AuthenticationInfoRequestMessage? infoRequest,
+		AuthenticationInfoResponseMessage? infoResponse,
+		CancellationToken cancellation = default)
+	{
+		if (authenticationType != SshAuthenticationType.ClientInteractive)
+		{
+			throw new ArgumentException(
+				$"Authentication type {SshAuthenticationType.ClientInteractive} expected.");
+		}
+
+		AuthenticationType = authenticationType;
+		Username = username;
+		InfoRequest = infoRequest;
+		InfoResponse = infoResponse;
+		Cancellation = cancellation;
+	}
+
 	/// <summary>
 	/// Indicates the type of authentication being requested, which determines which credential
 	/// properties are valid.
@@ -200,6 +232,22 @@ public class SshAuthenticatingEventArgs
 	public string? ClientUsername { get; }
 
 	/// <summary>
+	/// Gets or sets a request for more information for interactive authentication.
+	/// </summary>
+	/// <remarks>
+	/// The server may set this property when handling an interactive authenticating event to prompt
+	/// for information/credentials. The client may read this property when handling an interactive
+	/// authenticating event to determine what prompts to show and what information is requested.
+	/// </remarks>
+	public AuthenticationInfoRequestMessage? InfoRequest { get; set; }
+
+	/// <summary>
+	/// Gets or sets the client's responses to interactive prompts; valid only for interactive
+	/// authentication when information was previously requested via <see cref="InfoRequest"/>.
+	/// </summary>
+	public AuthenticationInfoResponseMessage? InfoResponse { get; set; }
+
+	/// <summary>
 	/// Gets a token that is cancelled if the session ends before the authentication handler
 	/// completes.
 	/// </summary>
@@ -218,7 +266,15 @@ public class SshAuthenticatingEventArgs
 
 	public override string ToString()
 	{
-		if (Username != null)
+		if (InfoRequest != null)
+		{
+			return $"Info request: {InfoRequest.Name}";
+		}
+		else if (InfoResponse != null)
+		{
+			return $"Username: {Username}, Info response";
+		}
+		else if (Username != null)
 		{
 			return $"Username: {Username}, Key: {PublicKey?.KeyAlgorithmName ?? "password"}";
 		}

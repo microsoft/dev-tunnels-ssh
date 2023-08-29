@@ -78,6 +78,8 @@ export class SshProtocol implements Disposable {
 
 	public algorithms: SshSessionAlgorithms | null = null;
 
+	public messageContext: string | null = null;
+
 	public outgoingMessagesHaveLatencyInfo = false;
 	public incomingMessagesHaveLatencyInfo = false;
 	public outgoingMessagesHaveReconnectInfo = false;
@@ -629,7 +631,7 @@ export class SshProtocol implements Disposable {
 		}
 
 		const messageType = payload[0];
-		let message = SshMessage.create(this.config, messageType, payload);
+		let message = SshMessage.create(this.config, messageType, this.messageContext, payload);
 
 		if (!message) {
 			const unimplementedMessage = new UnimplementedMessage();

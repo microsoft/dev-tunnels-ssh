@@ -4,13 +4,7 @@
 
 import { SshMessage } from './sshMessage';
 import { SshDataReader, SshDataWriter } from '../io/sshData';
-
-export const enum AuthenticationMethod {
-	none = 'none',
-	publicKey = 'publickey',
-	password = 'password',
-	hostBased = 'hostbased',
-}
+import { AuthenticationMethod } from './authenticationMethod';
 
 export class AuthenticationMessage extends SshMessage {}
 
@@ -33,6 +27,10 @@ export class AuthenticationRequestMessage extends AuthenticationMessage {
 		writer.writeString(this.username || '', 'utf8');
 		writer.writeString(this.serviceName || '', 'ascii');
 		writer.writeString(this.validateField(this.methodName, 'method name'), 'ascii');
+	}
+
+	public toString(): string {
+		return super.toString() + ` (Method: ${this.methodName}, Username: ${this.username})`;
 	}
 }
 
@@ -96,6 +94,77 @@ export class PublicKeyRequestMessage extends AuthenticationRequestMessage {
 			if (this.hasSignature) {
 				writer.writeBinary(this.signature!);
 			}
+		}
+	}
+}
+
+export class AuthenticationInfoRequestMessage extends AuthenticationMessage {
+	public get messageType(): number {
+		return 60;
+	}
+
+	public name?: string;
+	public instruction?: string;
+	public language?: string;
+	public prompts?: { prompt: string; echo: boolean }[];
+
+	protected onRead(reader: SshDataReader): void {
+		this.name = reader.readString('utf8');
+		this.instruction = reader.readString('utf8');
+		this.language = reader.readString('ascii');
+
+		this.prompts = [];
+		const promptsCount = reader.readUInt32();
+
+		const promptStrings: string[] = [];
+		for (let i = 0; i < promptsCount; i++) {
+			promptStrings.push(reader.readString('utf8'));
+		}
+		for (let i = 0; i < promptsCount; i++) {
+			this.prompts.push({
+				prompt: promptStrings[i],
+				echo: reader.readBoolean(),
+			});
+		}
+	}
+
+	protected onWrite(writer: SshDataWriter): void {
+		writer.writeString(this.name || '', 'utf8');
+		writer.writeString(this.instruction || '', 'utf8');
+		writer.writeString(this.language || '', 'ascii');
+
+		const promptsCount = this.prompts?.length ?? 0;
+		writer.writeUInt32(promptsCount);
+
+		for (let i = 0; i < promptsCount; i++) {
+			writer.writeString(this.prompts![i].prompt || '', 'utf8');
+		}
+		for (let i = 0; i < promptsCount; i++) {
+			writer.writeBoolean(this.prompts![i].echo);
+		}
+	}
+}
+
+export class AuthenticationInfoResponseMessage extends AuthenticationMessage {
+	public get messageType(): number {
+		return 61;
+	}
+
+	public responses?: string[];
+
+	protected onRead(reader: SshDataReader): void {
+		this.responses = [];
+		const responseCount = reader.readUInt32();
+		for (let i = 0; i < responseCount; i++) {
+			this.responses.push(reader.readString('utf8'));
+		}
+	}
+
+	protected onWrite(writer: SshDataWriter): void {
+		const responseCount = this.responses?.length ?? 0;
+		writer.writeUInt32(responseCount);
+		for (let i = 0; i < responseCount; i++) {
+			writer.writeString(this.responses![i] || '', 'utf8');
 		}
 	}
 }
@@ -178,3 +247,8 @@ export class AuthenticationSuccessMessage extends AuthenticationMessage {
 SshMessage.index.set(50, AuthenticationRequestMessage);
 SshMessage.index.set(51, AuthenticationFailureMessage);
 SshMessage.index.set(52, AuthenticationSuccessMessage);
+SshMessage.index.set([60, AuthenticationMethod.publicKey], PublicKeyRequestMessage);
+SshMessage.index.set(
+	[60, AuthenticationMethod.keyboardInteractive], AuthenticationInfoRequestMessage);
+SshMessage.index.set(
+	[61, AuthenticationMethod.keyboardInteractive], AuthenticationInfoResponseMessage);

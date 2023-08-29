@@ -27,6 +27,18 @@ export { SshChannelClosedEventArgs } from './events/sshChannelClosedEventArgs';
 export { SshExtendedDataType, SshExtendedDataEventArgs } from './events/sshExtendedDataEventArgs';
 
 export { SshMessage } from './messages/sshMessage';
+export { AuthenticationMethod } from './messages/authenticationMethod';
+export {
+	AuthenticationMessage,
+	AuthenticationRequestMessage,
+	AuthenticationSuccessMessage,
+	AuthenticationFailureMessage,
+	AuthenticationInfoRequestMessage,
+	AuthenticationInfoResponseMessage,
+	PublicKeyRequestMessage,
+	PublicKeyOKMessage,
+	PasswordRequestMessage,
+} from './messages/authenticationMessages';
 export {
 	SessionRequestMessage,
 	DebugMessage,

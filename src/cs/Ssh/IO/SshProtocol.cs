@@ -97,6 +97,8 @@ internal class SshProtocol : IDisposable
 
 	internal SshSessionAlgorithms? Algorithms { get; private set; }
 
+	internal string? MessageContext { get; set; }
+
 	internal bool OutgoingMessagesHaveLatencyInfo { get; set; }
 	internal bool IncomingMessagesHaveLatencyInfo { get; set; }
 	internal bool OutgoingMessagesHaveReconnectInfo { get; set; }
@@ -505,7 +507,7 @@ internal class SshProtocol : IDisposable
 		}
 
 		var messageType = payload[0];
-		SshMessage? message = SshMessage.TryCreate(this.config, messageType);
+		SshMessage? message = SshMessage.TryCreate(this.config, messageType, MessageContext);
 		if (message != null)
 		{
 			var reader = new SshDataReader(payload);

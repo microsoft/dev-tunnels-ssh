@@ -62,7 +62,7 @@ export class KeyExchangeService extends SshService {
 	private isInitialExchange: boolean = false;
 	private exchangeContext: ExchangeContext | null = null;
 
-	public constructor(session: SshSession, private readonly isClientSession: boolean) {
+	public constructor(session: SshSession) {
 		super(session);
 	}
 
@@ -80,7 +80,7 @@ export class KeyExchangeService extends SshService {
 		const kexInitMessage = this.createKeyExchangeInitMessage();
 		let kexGuessMessage: KeyExchangeDhInitMessage | null = null;
 
-		if (this.isClientSession) {
+		if (this.session.isClientSession) {
 			if (isInitialExchange && this.session.config.enableKeyExchangeGuess) {
 				kexGuessMessage = await this.createKeyExchangeGuessMessage();
 				kexInitMessage.firstKexPacketFollows = !!kexGuessMessage;
@@ -121,7 +121,8 @@ export class KeyExchangeService extends SshService {
 
 	private createKeyExchangeInitMessage(): KeyExchangeInitMessage {
 		// Reference RFC 8308: Signaling of Extension Negotiation in Key Exchange.
-		const extinfo = this.isClientSession ? clientExtensionInfoSignal : serverExtensionInfoSignal;
+		const extinfo = this.session.isClientSession ?
+			clientExtensionInfoSignal : serverExtensionInfoSignal;
 
 		const config = this.session.config;
 		const message = new KeyExchangeInitMessage();
@@ -149,7 +150,7 @@ export class KeyExchangeService extends SshService {
 	private getPublicKeyAlgorithms(): string[] {
 		let publicKeyAlgorithms = [...this.session.config.publicKeyAlgorithms];
 
-		if (publicKeyAlgorithms.length > 1 && !this.isClientSession) {
+		if (publicKeyAlgorithms.length > 1 && !this.session.isClientSession) {
 			const privateKeyAlgorithms = (<SshServerSession>this.session).credentials?.publicKeys?.map(
 				(k) => k.keyAlgorithmName,
 			);
@@ -267,8 +268,7 @@ export class KeyExchangeService extends SshService {
 			message.compressionAlgorithmsServerToClient,
 		);
 
-		let extensionInfoSignal: string;
-		if (this.isClientSession) {
+		if (this.session.isClientSession) {
 			this.exchangeContext.serverKexInitPayload = message.toBuffer();
 
 			// If the exchange value is already initialized then this side sent a guess.
@@ -327,7 +327,7 @@ export class KeyExchangeService extends SshService {
 		message: KeyExchangeDhInitMessage,
 		cancellation?: CancellationToken,
 	): Promise<void> {
-		if (this.isClientSession) {
+		if (this.session.isClientSession) {
 			return;
 		}
 
@@ -491,7 +491,7 @@ export class KeyExchangeService extends SshService {
 		message: KeyExchangeDhReplyMessage,
 		cancellation?: CancellationToken,
 	): Promise<void> {
-		if (!this.isClientSession) {
+		if (!this.session.isClientSession) {
 			return;
 		}
 
@@ -645,7 +645,7 @@ export class KeyExchangeService extends SshService {
 		// in different order of preference.
 		let serverAlgorithms: string[];
 		let clientAlgorithms: string[];
-		if (this.isClientSession) {
+		if (this.session.isClientSession) {
 			serverAlgorithms = remoteAlgorithms || [];
 			clientAlgorithms = localAlgorithms;
 		} else {
@@ -688,7 +688,7 @@ export class KeyExchangeService extends SshService {
 
 		const writer = new SshDataWriter(Buffer.alloc(2048));
 
-		if (this.isClientSession) {
+		if (this.session.isClientSession) {
 			writer.writeString(SshSession.localVersion.toString(), 'ascii');
 			writer.writeString(this.session.remoteVersion.toString(), 'ascii');
 		} else {
