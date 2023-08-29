@@ -232,7 +232,7 @@ public class SshAuthenticatingEventArgs
 	public string? ClientUsername { get; }
 
 	/// <summary>
-	/// Gets or sets a request more information for interactive authentication.
+	/// Gets or sets a request for more information for interactive authentication.
 	/// </summary>
 	/// <remarks>
 	/// The server may set this property when handling an interactive authenticating event to prompt

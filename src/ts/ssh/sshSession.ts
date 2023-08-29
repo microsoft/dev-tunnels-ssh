@@ -170,7 +170,7 @@ export class SshSession implements Disposable {
 	public trace: Trace = (level, eventId, msg, err) => {};
 
 	public constructor(public readonly config: SshSessionConfiguration, isClientSession?: boolean) {
-		this.isClientSession = isClientSession ?? false;
+		this.isClientSession = isClientSession;
 
 		if (!config) throw new TypeError('Session configuration is required.');
 
@@ -211,7 +211,7 @@ export class SshSession implements Disposable {
 	 * without using `instanceof` which is slower and can cause circular dependencies.
 	 */
 	/* @internal */
-	public readonly isClientSession: boolean;
+	public readonly isClientSession?: boolean;
 
 	public get isConnected(): boolean {
 		return this.connected;

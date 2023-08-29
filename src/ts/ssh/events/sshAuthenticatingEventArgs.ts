@@ -223,7 +223,7 @@ export class SshAuthenticatingEventArgs {
 	public readonly clientUsername: string | null;
 
 	/**
-	 * Gets or sets a request more information for interactive authentication.
+	 * Gets or sets a request for more information for interactive authentication.
 	 *
 	 * The server may set this property when handling an interactive authenticating event to prompt
 	 * for information/credentials. The client may read this property when handling an interactive
