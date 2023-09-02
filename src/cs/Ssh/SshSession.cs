@@ -93,14 +93,7 @@ public class SshSession : IDisposable
 			this.kexService = ActivateService<KeyExchangeService>();
 		}
 
-		config.ConfigurationChanged += (sender, e) =>
-		{
-			var protocol = Protocol;
-			if (protocol != null)
-			{
-				protocol.TraceChannelData = config.TraceChannelData;
-			}
-		};
+		Config.ConfigurationChanged += OnConfigurationChanged;
 	}
 
 	public SshSessionConfiguration Config { get; }
@@ -139,7 +132,7 @@ public class SshSession : IDisposable
 	/// After validating the credentials, the event handler must set the
 	/// <see cref="SshAuthenticatingEventArgs.AuthenticationTask" /> property to a task that
 	/// resolves to a principal object to indicate successful authentication. That principal will
-	/// then be associated with the sesssion as the <see cref="Principal" /> property.
+	/// then be associated with the session as the <see cref="Principal" /> property.
 	/// </remarks>
 	public event EventHandler<SshAuthenticatingEventArgs>? Authenticating;
 
@@ -190,6 +183,15 @@ public class SshSession : IDisposable
 	internal bool Reconnecting { get; set; }
 
 	internal SshSessionAlgorithms? Algorithms => Protocol?.Algorithms;
+
+	private void OnConfigurationChanged(object sender, EventArgs e)
+	{
+		var protocol = Protocol;
+		if (protocol != null)
+		{
+			protocol.TraceChannelData = Config.TraceChannelData;
+		}
+	}
 
 	/// <summary>
 	/// Gets a session service by type, or null if the service is not configured or activated.
@@ -764,6 +766,8 @@ public class SshSession : IDisposable
 			// this.sessionRequestSemaphore.Dispose();
 
 			this.taskChain.Dispose();
+
+			Config.ConfigurationChanged -= OnConfigurationChanged;
 		}
 	}
 
