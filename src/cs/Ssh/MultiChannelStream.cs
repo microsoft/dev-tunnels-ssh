@@ -148,10 +148,7 @@ public class MultiChannelStream : IDisposable
 		{
 			await ConnectAsync(cancellation).ConfigureAwait(false);
 
-			using var tokenRegistration = cancellation.CanBeCanceled ?
-				cancellation.Register(() => tcs.TrySetCanceled(cancellation)) : default;
-
-			var disconnectReason = await tcs.Task.ConfigureAwait(false);
+			var disconnectReason = await tcs.Task.WaitAsync(cancellation).ConfigureAwait(false);
 			if (disconnectReason != SshDisconnectReason.ByApplication && disconnectReason != SshDisconnectReason.None)
 			{
 				throw new SshConnectionException("SSH connection failed", disconnectReason);

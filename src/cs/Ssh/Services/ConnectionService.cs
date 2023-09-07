@@ -27,17 +27,15 @@ internal class ConnectionService : SshService
 	{
 		public PendingChannel(
 			 ChannelOpenMessage openMessage,
-			 TaskCompletionSource<SshChannel> completionSource,
-			 CancellationTokenRegistration? cancellationRegistration)
+			 TaskCompletionSource<SshChannel> completionSource)
 		{
 			OpenMessage = openMessage;
 			CompletionSource = completionSource;
-			CancellationRegistration = cancellationRegistration;
 		}
 
 		public ChannelOpenMessage OpenMessage { get; }
 		public TaskCompletionSource<SshChannel> CompletionSource { get; }
-		public CancellationTokenRegistration? CancellationRegistration { get; }
+		public CancellationTokenRegistration CancellationRegistration { get; set; }
 	}
 
 	public const string Name = "ssh-connection";
@@ -129,21 +127,6 @@ internal class ConnectionService : SshService
 
 		openMessage.SenderChannel = channelId;
 
-		CancellationTokenRegistration? cancellationRegistration = null;
-		if (cancellation.CanBeCanceled)
-		{
-			cancellationRegistration = cancellation.Register(() =>
-			{
-				lock (this.lockObject)
-				{
-					if (this.pendingChannels.Remove(channelId))
-					{
-						completionSource.TrySetCanceled();
-					}
-				}
-			});
-		}
-
 		lock (this.lockObject)
 		{
 			if (this.disposed)
@@ -152,9 +135,21 @@ internal class ConnectionService : SshService
 					new ObjectDisposedException(Session.ToString(), "Session closed.");
 			}
 
-			this.pendingChannels.Add(
-				channelId,
-				new PendingChannel(openMessage, completionSource, cancellationRegistration));
+			// Add pending channel before registering cancellation because the delegate may fire immediately
+			// if the cancellation is already cancelled, and that will remove the channelId from the pendingChannels.
+			var pendingChannel = new PendingChannel(openMessage, completionSource);
+			this.pendingChannels.Add(channelId, pendingChannel);
+			pendingChannel.CancellationRegistration = cancellation.Register(() =>
+			{
+				lock (this.lockObject)
+				{
+					if (this.pendingChannels.Remove(channelId))
+					{
+						pendingChannel.CancellationRegistration.Dispose();
+						completionSource.TrySetCanceled(cancellation);
+					}
+				}
+			});
 		}
 
 		await Session.SendMessageAsync(
@@ -171,23 +166,7 @@ internal class ConnectionService : SshService
 		var completionSource = new TaskCompletionSource<SshChannel>(
 			TaskCreationOptions.RunContinuationsAsynchronously);
 
-		CancellationTokenRegistration? cancellationRegistration = null;
-		if (cancellation.CanBeCanceled)
-		{
-			cancellationRegistration = cancellation.Register(() =>
-			{
-				lock (this.lockObject)
-				{
-					if (this.pendingAcceptChannels.TryGetValue(channelType, out var list))
-					{
-						list.Remove(completionSource);
-					}
-				}
-
-				completionSource.TrySetCanceled(cancellation);
-			});
-		}
-
+		CancellationTokenRegistration cancellationRegistration;
 		SshChannel? channel = null;
 		lock (this.lockObject)
 		{
@@ -203,27 +182,45 @@ internal class ConnectionService : SshService
 			{
 				// Found a channel that was already opened but not accepted.
 				this.nonAcceptedChannels.Remove(channel.ChannelId);
+				return channel;
 			}
-			else
+
+			// Set up the completion source to wait for a channel of the requested type.
+			if (!this.pendingAcceptChannels.TryGetValue(channelType, out var list))
 			{
-				// Set up the completion source to wait for a channel of the requested type.
-				if (!this.pendingAcceptChannels.TryGetValue(channelType, out var list))
+				list = new List<TaskCompletionSource<SshChannel>>();
+				this.pendingAcceptChannels.Add(channelType, list);
+			}
+
+			list.Add(completionSource);
+
+			// Register cancellation delegate after adding to pendingAcceptChannels because if it is already cancelled,
+			// the delegate will fire immediately and that will remove the completion source from pendingAcceptChannels.
+			cancellationRegistration = cancellation.Register(() =>
+			{
+				lock (this.lockObject)
 				{
-					list = new List<TaskCompletionSource<SshChannel>>();
-					this.pendingAcceptChannels.Add(channelType, list);
+					if (this.pendingAcceptChannels.TryGetValue(channelType, out var list))
+					{
+						list.Remove(completionSource);
+						if (list.Count == 0)
+						{
+							this.pendingAcceptChannels.Remove(channelType);
+						}
+					}
 				}
 
-				list.Add(completionSource);
-			}
+				completionSource.TrySetCanceled(cancellation);
+			});
 		}
 
 		try
 		{
-			return channel ?? await completionSource.Task.ConfigureAwait(false);
+			return await completionSource.Task.ConfigureAwait(false);
 		}
 		finally
 		{
-			cancellationRegistration?.Dispose();
+			cancellationRegistration.Dispose();
 		}
 	}
 
@@ -409,6 +406,11 @@ internal class ConnectionService : SshService
 						break;
 					}
 				}
+
+				if (list.Count == 0)
+				{
+					this.pendingAcceptChannels.Remove(channel.ChannelType);
+				}
 			}
 
 			if (!accepted)
@@ -497,7 +499,7 @@ internal class ConnectionService : SshService
 			{
 				openMessage = pendingChannel.OpenMessage;
 				completionSource = pendingChannel.CompletionSource;
-				pendingChannel.CancellationRegistration?.Dispose();
+				pendingChannel.CancellationRegistration.Dispose();
 				this.pendingChannels.Remove(message.RecipientChannel);
 			}
 			else if (this.channels.ContainsKey(message.RecipientChannel))
@@ -539,11 +541,11 @@ internal class ConnectionService : SshService
 		{
 			if (args.FailureReason == SshChannelOpenFailureReason.None)
 			{
-				completionSource.SetResult(channel);
+				completionSource.TrySetResult(channel);
 			}
 			else
 			{
-				completionSource.SetException(new SshChannelException(
+				completionSource.TrySetException(new SshChannelException(
 					args.FailureDescription ?? "Channel open failure: " + args.FailureReason,
 					args.FailureReason));
 				return;
@@ -569,14 +571,14 @@ internal class ConnectionService : SshService
 				message.RecipientChannel, out var pendingChannel))
 			{
 				completionSource = pendingChannel.CompletionSource;
-				pendingChannel.CancellationRegistration?.Dispose();
+				pendingChannel.CancellationRegistration.Dispose();
 				this.pendingChannels.Remove(message.RecipientChannel);
 			}
 		}
 
 		if (completionSource != null)
 		{
-			completionSource.SetException(new SshChannelException(
+			completionSource.TrySetException(new SshChannelException(
 				message.Description ?? "Channel open failure: " + message.ReasonCode,
 				message.ReasonCode));
 		}

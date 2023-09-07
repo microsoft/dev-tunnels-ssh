@@ -258,11 +258,6 @@ public class SshChannel : IDisposable
 		// Capture as a local variable because the member may change.
 		var requestCompletionSource = new TaskCompletionSource<bool>(
 			TaskCreationOptions.RunContinuationsAsynchronously);
-		if (cancellation.CanBeCanceled)
-		{
-			cancellation.Register(() => requestCompletionSource.TrySetCanceled());
-			cancellation.ThrowIfCancellationRequested();
-		}
 
 		await channelRequestSemaphore.WaitAsync(cancellation).ConfigureAwait(false);
 		try
@@ -275,7 +270,7 @@ public class SshChannel : IDisposable
 			channelRequestSemaphore.Release();
 		}
 
-		return await requestCompletionSource.Task.ConfigureAwait(false);
+		return await requestCompletionSource.Task.WaitAsync(cancellation).ConfigureAwait(false);
 	}
 
 	/// <summary>
@@ -504,7 +499,7 @@ public class SshChannel : IDisposable
 	{
 		if (this.requestCompletionSources.TryDequeue(out var completion))
 		{
-			completion.TrySetResult(result);
+				completion.TrySetResult(result);
 		}
 	}
 

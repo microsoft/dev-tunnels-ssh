@@ -321,7 +321,7 @@ public class PortForwardingTests : IDisposable
 			Assert.Equal(0, count);
 
 			// The channel will be closed asynchronously.
-			await TaskExtensions.WaitUntil(() => forwardingChannel.IsClosed).WithTimeout(Timeout);
+			await TestTaskExtensions.WaitUntil(() => forwardingChannel.IsClosed).WithTimeout(Timeout);
 		}
 		finally
 		{
@@ -367,7 +367,7 @@ public class PortForwardingTests : IDisposable
 			var localClient = await acceptTask.WithTimeout(Timeout);
 			var localStream = localClient.GetStream();
 
-			await TaskExtensions.WaitUntil(() =>
+			await TestTaskExtensions.WaitUntil(() =>
 			{
 				return clientForwardingChannel != null && serverForwardingChannel != null;
 			}).WithTimeout(Timeout);
@@ -398,7 +398,7 @@ public class PortForwardingTests : IDisposable
 		forwarder.Dispose();
 
 		// Wait until a connection failure indicates forwarding was successfully cancelled.
-		await TaskExtensions.WaitUntil(async () =>
+		await TestTaskExtensions.WaitUntil(async () =>
 		{
 			var remoteClient = new TcpClient();
 			try
@@ -461,7 +461,7 @@ public class PortForwardingTests : IDisposable
 			var localClient = await acceptTask.WithTimeout(Timeout);
 			var localStream = localClient.GetStream();
 
-			await TaskExtensions.WaitUntil(() =>
+			await TestTaskExtensions.WaitUntil(() =>
 			{
 				return clientForwardingChannel != null && serverForwardingChannel != null;
 			}).WithTimeout(Timeout);
@@ -472,7 +472,7 @@ public class PortForwardingTests : IDisposable
 			await AssertSocketStreamClosedAsync(remoteEnd ? localStream : remoteStream);
 
 			// The channel will be closed asynchronously.
-			await TaskExtensions.WaitUntil(() => clientForwardingChannel.IsClosed)
+			await TestTaskExtensions.WaitUntil(() => clientForwardingChannel.IsClosed)
 				.WithTimeout(Timeout);
 		}
 		finally
@@ -584,7 +584,7 @@ public class PortForwardingTests : IDisposable
 		await localClient.ConnectAsync(IPAddress.Loopback, TestPort1);
 		var localStream = localClient.GetStream();
 
-		await TaskExtensions.WaitUntil(() => forwardingChannel != null);
+		await TestTaskExtensions.WaitUntil(() => forwardingChannel != null);
 
 		var ioex = await Assert.ThrowsAsync<IOException>(async () =>
 		{
@@ -594,7 +594,7 @@ public class PortForwardingTests : IDisposable
 		Assert.IsType<SocketException>(ioex.InnerException);
 
 		// The channel will be closed asynchronously.
-		await TaskExtensions.WaitUntil(() => forwardingChannel.IsClosed).WithTimeout(Timeout);
+		await TestTaskExtensions.WaitUntil(() => forwardingChannel.IsClosed).WithTimeout(Timeout);
 	}
 
 	[Theory]
@@ -737,7 +737,7 @@ public class PortForwardingTests : IDisposable
 			Assert.Equal(0, count);
 
 			// The channel will be closed asynchronously.
-			await TaskExtensions.WaitUntil(() => forwardingChannel.IsClosed).WithTimeout(Timeout);
+			await TestTaskExtensions.WaitUntil(() => forwardingChannel.IsClosed).WithTimeout(Timeout);
 		}
 		finally
 		{
@@ -783,7 +783,7 @@ public class PortForwardingTests : IDisposable
 			var remoteClient = await acceptTask.WithTimeout(Timeout);
 			var remoteStream = remoteClient.GetStream();
 
-			await TaskExtensions.WaitUntil(() =>
+			await TestTaskExtensions.WaitUntil(() =>
 			{
 				return clientForwardingChannel != null && serverForwardingChannel != null;
 			}).WithTimeout(Timeout);
@@ -811,7 +811,7 @@ public class PortForwardingTests : IDisposable
 		forwarder.Dispose();
 
 		// Wait until a connection failure indicates forwarding was successfully cancelled.
-		await TaskExtensions.WaitUntil(async () =>
+		await TestTaskExtensions.WaitUntil(async () =>
 		{
 			var localClient = new TcpClient();
 			try
@@ -877,7 +877,7 @@ public class PortForwardingTests : IDisposable
 			await AssertSocketStreamClosedAsync(remoteEnd ? localStream : remoteStream);
 
 			// The channel will be closed asynchronously.
-			await TaskExtensions.WaitUntil(() => forwardingChannel.IsClosed).WithTimeout(Timeout);
+			await TestTaskExtensions.WaitUntil(() => forwardingChannel.IsClosed).WithTimeout(Timeout);
 		}
 		finally
 		{
@@ -1311,9 +1311,9 @@ public class PortForwardingTests : IDisposable
 			localServer.Stop();
 		}
 
-		await TaskExtensions.WaitUntil(() => serverRemoteChannelRemovedEvent != null)
+		await TestTaskExtensions.WaitUntil(() => serverRemoteChannelRemovedEvent != null)
 			.WithTimeout(Timeout);
-		await TaskExtensions.WaitUntil(() => clientLocalChannelRemovedEvent != null)
+		await TestTaskExtensions.WaitUntil(() => clientLocalChannelRemovedEvent != null)
 			.WithTimeout(Timeout);
 
 		var clientLocalForwardedPort2 = clientPfs.LocalForwardedPorts.Single();
@@ -1333,9 +1333,9 @@ public class PortForwardingTests : IDisposable
 
 		forwarder.Dispose();
 
-		await TaskExtensions.WaitUntil(() => clientLocalPortRemovedEvent != null)
+		await TestTaskExtensions.WaitUntil(() => clientLocalPortRemovedEvent != null)
 			.WithTimeout(Timeout);
-		await TaskExtensions.WaitUntil(() => serverRemotePortRemovedEvent != null)
+		await TestTaskExtensions.WaitUntil(() => serverRemotePortRemovedEvent != null)
 			.WithTimeout(Timeout);
 
 		Assert.Empty(clientPfs.LocalForwardedPorts);
@@ -1470,7 +1470,7 @@ public class PortForwardingTests : IDisposable
 		forwarder1.Dispose();
 
 		// Wait until a connection failure indicates forwarding was successfully cancelled.
-		await TaskExtensions.WaitUntil(async () =>
+		await TestTaskExtensions.WaitUntil(async () =>
 		{
 			var remoteClient = new TcpClient();
 			try

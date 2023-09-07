@@ -774,7 +774,7 @@ public class InteropTests
 			var acceptTask = clientListener.AcceptTcpClientAsync();
 
 			using var serverConnection = new TcpClient();
-			await TaskExtensions.WaitUntil(async () =>
+			await TestTaskExtensions.WaitUntil(async () =>
 			{
 				try
 				{
@@ -814,14 +814,14 @@ public class InteropTests
 		SshClientSession session = client.Sessions.Single();
 
 		// Reconnect is not enabled until a few messages are exchanged.
-		await TaskExtensions.WaitUntil(() =>
+		await TestTaskExtensions.WaitUntil(() =>
 			session.ProtocolExtensions?.ContainsKey(
 				SshProtocolExtensionNames.SessionReconnect) == true).WithTimeout(Timeout);
 
 		client.Disconnect();
 
 		// Wait for async processing of the disconnection.
-		await TaskExtensions.WaitUntil(() => !session.IsConnected).WithTimeout(Timeout);
+		await TestTaskExtensions.WaitUntil(() => !session.IsConnected).WithTimeout(Timeout);
 
 		Assert.False(session.IsConnected);
 

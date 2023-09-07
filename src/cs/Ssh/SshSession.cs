@@ -1151,12 +1151,6 @@ public class SshSession : IDisposable
 		request.WantReply = true;
 
 		var requestHandler = new RequestHandler<TSuccess, TFailure>();
-		if (cancellation.CanBeCanceled)
-		{
-			cancellation.Register(requestHandler.Cancel);
-			cancellation.ThrowIfCancellationRequested();
-		}
-
 		await sessionRequestSemaphore.WaitAsync(cancellation).ConfigureAwait(false);
 		try
 		{
@@ -1168,7 +1162,7 @@ public class SshSession : IDisposable
 			sessionRequestSemaphore.TryRelease();
 		}
 
-		return await requestHandler.CompletionSource.Task.ConfigureAwait(false);
+		return await requestHandler.WaitForCompletionAsync(cancellation).ConfigureAwait(false);
 	}
 
 	internal Task HandleMessageAsync(
@@ -1300,12 +1294,6 @@ public class SshSession : IDisposable
 		var completionSource = new TaskCompletionSource<SshChannel>(
 			TaskCreationOptions.RunContinuationsAsynchronously);
 
-		if (cancellation.CanBeCanceled)
-		{
-			cancellation.Register(() => completionSource.TrySetCanceled());
-			cancellation.ThrowIfCancellationRequested();
-		}
-
 		uint channelId = await connectionService!.OpenChannelAsync(
 			openMessage,
 			completionSource,
@@ -1329,12 +1317,6 @@ public class SshSession : IDisposable
 			openMessage,
 			completionSource,
 			cancellation).ConfigureAwait(false);
-
-		if (cancellation.CanBeCanceled)
-		{
-			cancellation.Register(() => completionSource.TrySetCanceled());
-			cancellation.ThrowIfCancellationRequested();
-		}
 
 		SshChannel channel;
 		bool requestResult;
@@ -1766,8 +1748,8 @@ public class SshSession : IDisposable
 			SessionRequestSuccessMessage? success,
 			SessionRequestFailureMessage? failure,
 			Exception? ex);
+
 		public void Cancel();
-		public bool IsCancelled { get; }
 	}
 
 	private class RequestHandler<TSuccess, TFailure> : IRequestHandler
@@ -1808,10 +1790,13 @@ public class SshSession : IDisposable
 			CompletionSource.TrySetCanceled();
 		}
 
-		public TaskCompletionSource<(TSuccess? Success, TFailure? Failure)> CompletionSource
-		{ get; } = new (TaskCreationOptions.RunContinuationsAsynchronously);
+		public Task<(TSuccess? Success, TFailure? Failure)> WaitForCompletionAsync(CancellationToken cancellation) =>
+			CompletionSource.Task.WaitAsync(cancellation);
 
-		public bool IsCancelled { get; private set; }
+		private TaskCompletionSource<(TSuccess? Success, TFailure? Failure)> CompletionSource { get; } =
+			new TaskCompletionSource<(TSuccess? Success, TFailure? Failure)>(TaskCreationOptions.RunContinuationsAsynchronously);
+
+		private bool IsCancelled { get; set; }
 	}
 
 	private void InvokeRequestHandler(

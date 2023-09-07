@@ -143,7 +143,7 @@ public class MetricsTests : IDisposable
 		await this.clientSession.CloseAsync(SshDisconnectReason.ByApplication);
 		await this.serverSession.CloseAsync(SshDisconnectReason.ByApplication);
 
-		await TaskExtensions.WaitUntil(() =>
+		await TestTaskExtensions.WaitUntil(() =>
 			this.clientSession.Metrics.LatencyCurrentMs == 0 &&
 			this.serverSession.Metrics.LatencyCurrentMs == 0).WithTimeout(Timeout);
 	}

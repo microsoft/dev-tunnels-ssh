@@ -130,15 +130,11 @@ public class SshClientSession : SshSession
 	{
 		var completionSource = new TaskCompletionSource<bool>(
 			TaskCreationOptions.RunContinuationsAsynchronously);
-		if (cancellation.CanBeCanceled)
-		{
-			cancellation.Register(() => completionSource.TrySetCanceled());
-			cancellation.ThrowIfCancellationRequested();
-		}
 
 		await AuthenticateClientAsync(clientCredentials, completionSource, cancellation)
 			.ConfigureAwait(false);
-		return await completionSource.Task.ConfigureAwait(false);
+
+		return await completionSource.Task.WaitAsync(cancellation).ConfigureAwait(false);
 	}
 
 	/// <summary>
@@ -172,16 +168,6 @@ public class SshClientSession : SshSession
 		}
 
 		this.clientAuthCompletionSource = completion;
-
-		if (cancellation.CanBeCanceled)
-		{
-			if (completion != null)
-			{
-				cancellation.Register(() => completion.TrySetCanceled());
-			}
-
-			cancellation.ThrowIfCancellationRequested();
-		}
 
 		var authService = GetService<AuthenticationService>();
 		if (authService == null)
