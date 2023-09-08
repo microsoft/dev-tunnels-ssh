@@ -116,7 +116,7 @@ public class ReconnectTests : IDisposable
 		if (waitUntilDisconnected)
 		{
 			// Avoid test timing problems by waiting until the sessions are fully disconnected.
-			await TaskExtensions.WaitUntil(() =>
+			await TestTaskExtensions.WaitUntil(() =>
 				!this.clientSession.IsConnected &&
 				!this.serverSession.IsConnected).WithTimeout(Timeout);
 		}
@@ -167,13 +167,13 @@ public class ReconnectTests : IDisposable
 		Assert.True(this.clientSession.IsConnected);
 
 		// Reconnect is not enabled until a few messages are exchanged.
-		await TaskExtensions.WaitUntil(() =>
+		await TestTaskExtensions.WaitUntil(() =>
 			this.serverSession.ProtocolExtensions?.ContainsKey(
 				SshProtocolExtensionNames.SessionReconnect) == true &&
 			this.clientSession.ProtocolExtensions?.ContainsKey(
 				SshProtocolExtensionNames.SessionReconnect) == true);
 
-		await TaskExtensions.WaitUntil(() =>
+		await TestTaskExtensions.WaitUntil(() =>
 		{
 			lock (this.reconnectableSessions)
 			{
@@ -623,7 +623,7 @@ public class ReconnectTests : IDisposable
 		await this.serverDisconnectedCompletion.Task.WithTimeout(Timeout);
 
 		// Avoid test timing problems by waiting until the sessions are fully disconnected.
-		await TaskExtensions.WaitUntil(() =>
+		await TestTaskExtensions.WaitUntil(() =>
 			!this.clientSession.IsConnected &&
 			!this.serverSession.IsConnected).WithTimeout(Timeout);
 
@@ -664,7 +664,7 @@ public class ReconnectTests : IDisposable
 		await this.serverDisconnectedCompletion.Task.WithTimeout(Timeout);
 
 		// Avoid test timing problems by waiting until the sessions are fully disconnected.
-		await TaskExtensions.WaitUntil(() =>
+		await TestTaskExtensions.WaitUntil(() =>
 			!this.clientSession.IsConnected &&
 			!this.serverSession.IsConnected).WithTimeout(Timeout);
 
@@ -764,7 +764,7 @@ public class ReconnectTests : IDisposable
 		this.sessionPair.ServerStream.Dispose();
 		this.sessionPair.ClientStream.MockDisconnect(new Exception("Mock disconnect."), 36);
 
-		await TaskExtensions.WaitUntil(() =>
+		await TestTaskExtensions.WaitUntil(() =>
 			!this.clientSession.IsConnected &&
 			!this.serverSession.IsConnected).WithTimeout(Timeout);
 
@@ -774,7 +774,7 @@ public class ReconnectTests : IDisposable
 		await ReconnectAsync(mockLatency: 10);
 
 		// Verify some messages were received after reconnection.
-		await TaskExtensions.WaitUntil(() =>
+		await TestTaskExtensions.WaitUntil(() =>
 			 serverChannel.Metrics.BytesReceived > serverBytesReceivedBeforeReconnect &&
 				clientChannel.Metrics.BytesReceived > clientBytesReceivedBeforeReconnect)
 			.WithTimeout(Timeout);

@@ -574,13 +574,6 @@ public class PortForwardingService : SshService
 			waitCompletion.TrySetException(new ObjectDisposedException("The session was closed."));
 		};
 
-		CancellationTokenRegistration? cancellationRegistration = null;
-		if (cancellation.CanBeCanceled)
-		{
-			cancellation.ThrowIfCancellationRequested();
-			cancellationRegistration = cancellation.Register(() => waitCompletion.TrySetCanceled());
-		}
-
 		try
 		{
 			RemoteForwardedPorts.PortAdded += portForwardedHandler;
@@ -592,13 +585,12 @@ public class PortForwardingService : SshService
 				waitCompletion.TrySetResult(true);
 			}
 
-			await waitCompletion.Task.ConfigureAwait(false);
+			await waitCompletion.Task.WaitAsync(cancellation).ConfigureAwait(false);
 		}
 		finally
 		{
 			RemoteForwardedPorts.PortAdded -= portForwardedHandler;
 			Session.Closed -= sessionClosedHandler;
-			cancellationRegistration?.Dispose();
 		}
 	}
 

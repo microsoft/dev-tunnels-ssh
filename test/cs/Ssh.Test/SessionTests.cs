@@ -521,7 +521,7 @@ public class SessionTests : IDisposable
 		Assert.True(ex is SshConnectionException || ex is ObjectDisposedException);
 
 		// The sessions should both be closed (not merely disconnected).
-		await TaskExtensions.WaitUntil(() =>
+		await TestTaskExtensions.WaitUntil(() =>
 			!this.clientSession.IsConnected && this.clientSession.IsClosed &&
 			!this.serverSession.IsConnected && this.serverSession.IsClosed)
 			.WithTimeout(Timeout);

@@ -5,7 +5,8 @@ using System.Threading.Tasks;
 
 namespace Microsoft.DevTunnels.Ssh.Test;
 
-static class TaskExtensions
+static class TestTaskExtensions
+
 {
 	public static async Task WithTimeout(this Task t, TimeSpan timeout)
 	{
