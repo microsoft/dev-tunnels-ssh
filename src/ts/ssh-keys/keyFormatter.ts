@@ -68,3 +68,11 @@ export function getKeyEncryptionAlgorithm(algorithm: string): EncryptionAlgorith
 			throw new Error(`Key cipher not supported: ${algorithm}`);
 	}
 }
+
+/**
+ * Use web crypto when in a browser and the crypto.subtle API is available.
+ * Otherwise use Node.js crypto.
+ */
+export function useWebCrypto(): boolean {
+	return typeof window !== 'undefined' && !!(typeof crypto === 'object' && crypto.subtle);
+}
