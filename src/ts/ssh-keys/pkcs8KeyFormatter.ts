@@ -17,7 +17,7 @@ import {
 	ECParameters,
 	ECDsa,
 } from '@microsoft/dev-tunnels-ssh';
-import { KeyFormatter } from './keyFormatter';
+import { KeyFormatter, useWebCrypto } from './keyFormatter';
 import { KeyData } from './keyData';
 
 const enum Oids {
@@ -516,8 +516,7 @@ export class Pkcs8KeyFormatter implements KeyFormatter {
 		iterations: number,
 		keyLength: number,
 	): Promise<Buffer> {
-		const useWebCrypto = !!(typeof crypto === 'object' && crypto.subtle);
-		if (useWebCrypto) {
+		if (useWebCrypto()) {
 			const passphraseKey = await crypto.subtle.importKey(
 				'raw',
 				passphrase,

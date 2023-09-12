@@ -9,6 +9,7 @@ import {
 	SshChannel,
 	SshRpcMessageStream,
 	SshChannelClosedEventArgs,
+	PromiseCompletionSource,
 } from '@microsoft/dev-tunnels-ssh';
 import {
 	Emitter,
@@ -18,6 +19,7 @@ import {
 	ConnectionErrors,
 } from 'vscode-jsonrpc';
 import { ChannelTests } from './channelTests';
+import { withTimeout } from './promiseUtils';
 
 function formatJsonRpc(message: Message): string {
 	const messageJson = JSON.stringify(message);
@@ -237,18 +239,19 @@ export class RpcTests {
 		const clientMessageStream = new SshRpcMessageStream(clientChannel);
 		const serverMessageStream = new SshRpcMessageStream(serverChannel);
 
-		let receivedMessages: Message[] = [];
+		const messageCompletions: PromiseCompletionSource<void>[] = [];
+		const receivedMessages: Message[] = [];
 		clientMessageStream.reader.listen((message) => {
 			receivedMessages.push(message);
+			messageCompletions.shift()!.resolve();
 		});
 
 		for (let i = 0; i < count; i++) {
 			const testMessage = { jsonrpc: '2.0', test: '#'.repeat(size) };
+			const messageCompletion = new PromiseCompletionSource<void>();
+			messageCompletions.push(messageCompletion);
 			serverMessageStream.writer.write(testMessage);
-
-			for (let w = 0; w < 100 && receivedMessages.length < i + 1; w++) {
-				await new Promise((c) => setImmediate(c));
-			}
+			await withTimeout(messageCompletion.promise, 5000);
 
 			assert.equal(receivedMessages.length, i + 1);
 			assert.equal((<any>receivedMessages[i]).test, testMessage.test);

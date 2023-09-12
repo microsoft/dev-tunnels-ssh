@@ -12,7 +12,7 @@ import {
 	DerWriter,
 	DerType,
 } from '@microsoft/dev-tunnels-ssh';
-import { KeyFormatter, getKeyEncryptionAlgorithm } from './keyFormatter';
+import { KeyFormatter, getKeyEncryptionAlgorithm, useWebCrypto } from './keyFormatter';
 import { KeyData } from './keyData';
 
 /** Provides import/export of the PKCS#1 key format. */
@@ -206,8 +206,7 @@ export class Pkcs1KeyFormatter implements KeyFormatter {
 		iv: Buffer,
 		keyLength: number,
 	): Buffer {
-		const useWebCrypto = !!(typeof crypto === 'object' && crypto.subtle);
-		if (useWebCrypto) {
+		if (useWebCrypto()) {
 			// Web crypto does not provide an MD5 implementation. An external lib could be used here,
 			// but it's not worth it to support an insecure encryption format. Use PKCS#8 instead.
 			throw new Error('PKCS#1 decryption not implemented.');
