@@ -206,7 +206,11 @@ export class Pkcs1KeyFormatter implements KeyFormatter {
 		iv: Buffer,
 		keyLength: number,
 	): Buffer {
-		const useWebCrypto = !!(typeof crypto === 'object' && crypto.subtle);
+		//console.dir(crypto);
+		//console.dir(crypto?.subtle);
+
+		const useWebCrypto = typeof window !== 'undefined' &&
+			!!(typeof crypto === 'object' && crypto.subtle);
 		if (useWebCrypto) {
 			// Web crypto does not provide an MD5 implementation. An external lib could be used here,
 			// but it's not worth it to support an insecure encryption format. Use PKCS#8 instead.

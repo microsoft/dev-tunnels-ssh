@@ -36,7 +36,8 @@ export {
 };
 
 // Swap imports to node crypto implementations when web crypto is not available.
-const useWebCrypto = !!(typeof crypto === 'object' && crypto.subtle);
+const useWebCrypto = typeof window !== 'undefined' &&
+	!!(typeof crypto === 'object' && crypto.subtle);
 
 import { WebDiffieHellman, WebECDiffieHellman } from './web/webKeyExchange';
 import { WebRsa } from './web/webRsa';

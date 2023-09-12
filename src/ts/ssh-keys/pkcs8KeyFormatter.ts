@@ -516,7 +516,8 @@ export class Pkcs8KeyFormatter implements KeyFormatter {
 		iterations: number,
 		keyLength: number,
 	): Promise<Buffer> {
-		const useWebCrypto = !!(typeof crypto === 'object' && crypto.subtle);
+		const useWebCrypto = typeof window !== 'undefined' &&
+			!!(typeof crypto === 'object' && crypto.subtle);
 		if (useWebCrypto) {
 			const passphraseKey = await crypto.subtle.importKey(
 				'raw',
