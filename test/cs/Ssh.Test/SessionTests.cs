@@ -212,6 +212,53 @@ public class SessionTests : IDisposable
 	}
 
 	[Theory]
+	[InlineData(true)]
+	[InlineData(false)]
+	public async Task AuthenticateClientPublicKeyQuery(bool result)
+	{
+		var queryEventCompletion = new TaskCompletionSource<SshAuthenticatingEventArgs>();
+		this.serverSession.Authenticating += (sender, e) =>
+		{
+			e.AuthenticationTask = Task.FromResult(result ? new ClaimsPrincipal() : null);
+			queryEventCompletion.SetResult(e);
+		};
+
+		await this.sessionPair.ConnectAsync(authenticate: false).WithTimeout(Timeout);
+
+		var keyAlgorithm = SshAlgorithms.PublicKey.ECDsaSha2Nistp384;
+		var keyPair = keyAlgorithm.GenerateKeyPair();
+		var publicKeyQueryMessage = new PublicKeyRequestMessage(
+			serviceName: "ssh-connection",
+			username: "test",
+			keyAlgorithm,
+			keyPair,
+			signature: Buffer.Empty);
+
+		// The library doesn't have a public API for sending a PublicKeyQuery message.
+		// Use the protected SendMessageAsync method.
+		var bindingFlags = BindingFlags.NonPublic | BindingFlags.Instance;
+		var sendMessageAsync = typeof(SshSession).GetMethod("SendMessageAsync", bindingFlags);
+
+		var serviceRequestMessage = new ServiceRequestMessage { ServiceName = "ssh-userauth" };
+		await (Task)sendMessageAsync.Invoke(
+			this.clientSession, new object[] { serviceRequestMessage, CancellationToken.None });
+		await (Task)sendMessageAsync.Invoke(
+			this.clientSession, new object[] { publicKeyQueryMessage, CancellationToken.None });
+
+		var args = await queryEventCompletion.Task.WithTimeout(Timeout);
+		Assert.Equal("test", args.Username);
+		Assert.NotNull(args.PublicKey);
+		Assert.False(args.PublicKey.HasPrivateKey);
+		Assert.True(args.PublicKey.GetPublicKeyBytes().Equals(keyPair.GetPublicKeyBytes()));
+
+		// A public-key query message should not have set a principal.
+		Assert.Null(this.serverSession.Principal);
+
+		// The session should not be disconnected after a (successful or failed) PK query.
+		Assert.True(this.serverSession.IsConnected);
+	}
+
+	[Theory]
 	[InlineData(ECDsa.ECDsaSha2Nistp256)]
 	[InlineData(ECDsa.ECDsaSha2Nistp384)]
 	[InlineData(Rsa.RsaWithSha256, 2048)]

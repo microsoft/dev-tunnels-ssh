@@ -90,7 +90,6 @@ export class AuthenticationService extends SshService {
 			SshTraceEventIds.sessionAuthenticating,
 			`Authentication request: ${message.methodName}`,
 		);
-		this.setCurrentRequest(message);
 
 		let methodName: AuthenticationMethod | null = message.methodName!;
 		if (!this.session.config.authenticationMethods.includes(methodName)) {
@@ -101,18 +100,18 @@ export class AuthenticationService extends SshService {
 			methodName === AuthenticationMethod.publicKey ||
 			methodName === AuthenticationMethod.hostBased
 		) {
-			return this.handlePublicKeyRequestMessage(
-				message.convertTo(new PublicKeyRequestMessage()),
-				cancellation,
-			);
+			const publicKeymessage = message.convertTo(new PublicKeyRequestMessage());
+			this.setCurrentRequest(publicKeymessage);
+			return this.handlePublicKeyRequestMessage(publicKeymessage, cancellation);
 		} else if (methodName === AuthenticationMethod.password) {
-			return this.handlePasswordRequestMessage(
-				message.convertTo(new PasswordRequestMessage()),
-				cancellation,
-			);
+			const passwordMessage = message.convertTo(new PasswordRequestMessage());
+			this.setCurrentRequest(passwordMessage);
+			return this.handlePasswordRequestMessage(passwordMessage, cancellation);
 		} else if (methodName === AuthenticationMethod.keyboardInteractive) {
+			this.setCurrentRequest(message);
 			return this.beginInteractiveAuthentication(message, cancellation);
 		} else if (methodName === AuthenticationMethod.none) {
+			this.setCurrentRequest(message);
 			return this.handleAuthenticating(
 				new SshAuthenticatingEventArgs(SshAuthenticationType.clientNone, {
 					username: message.username,

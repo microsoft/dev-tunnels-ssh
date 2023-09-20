@@ -46,6 +46,9 @@ export {
 	SessionRequestFailureMessage,
 	SshDisconnectReason,
 	SshReconnectFailureReason,
+	ServiceRequestMessage,
+	ServiceAcceptMessage,
+	SessionChannelRequestMessage,
 } from './messages/transportMessages';
 export {
 	SshChannelOpenFailureReason,
