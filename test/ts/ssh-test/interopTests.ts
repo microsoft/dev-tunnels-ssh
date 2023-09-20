@@ -351,6 +351,8 @@ export class InteropTests {
 				'-o',
 				'AuthorizedKeysFile=' + authorizedKeysFile,
 				'-o',
+				'StrictModes=no', // Do not check permissions on key file/dir
+				'-o',
 				'PidFile=' + pidFile,
 				'-o',
 				'HostKey=' + hostKeyFile,

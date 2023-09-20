@@ -383,6 +383,7 @@ public class InteropTests
 				$" -p {TestPort}" +
 				$" -f \"{configFile}\"" +
 				$" -o \"AuthorizedKeysFile={authorizedKeysFile}\"" +
+				$" -o \"StrictModes=no\"" + // Do not check permissions on key file/dir
 				$" -o \"PidFile={pidFile}\"" +
 				$" -o \"HostKey={hostKeyFile}\"";
 			TestTS.TraceInformation($"{exePath} {args}");
@@ -534,6 +535,7 @@ public class InteropTests
 				$" -p {TestPort}" +
 				$" -f \"{configFile}\"" +
 				$" -o \"AuthorizedKeysFile={authorizedKeysFile}\"" +
+				$" -o \"StrictModes=no\"" + // Do not check permissions on key file/dir
 				$" -o \"PidFile={pidFile}\"" +
 				$" -o \"HostKey={hostKeyFile}\"";
 			TestTS.TraceInformation($"{sshdExePath} {args}");
