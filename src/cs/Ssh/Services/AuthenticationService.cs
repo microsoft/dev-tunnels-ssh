@@ -64,8 +64,6 @@ internal class AuthenticationService : SshService
 	private async Task HandleMessageAsync(
 		AuthenticationRequestMessage message, CancellationToken cancellation)
 	{
-		SetCurrentRequest(message);
-
 		var methodName = message.MethodName!;
 		if (!Session.Config.AuthenticationMethods.Contains(methodName))
 		{
@@ -77,18 +75,24 @@ internal class AuthenticationService : SshService
 		{
 			case AuthenticationMethods.HostBased:
 			case AuthenticationMethods.PublicKey:
-				await HandleMessageAsync(message.ConvertTo<PublicKeyRequestMessage>(), cancellation)
+				var publicKeyMessage = message.ConvertTo<PublicKeyRequestMessage>();
+				SetCurrentRequest(publicKeyMessage);
+				await HandleMessageAsync(publicKeyMessage, cancellation)
 					.ConfigureAwait(false);
 				break;
 			case AuthenticationMethods.Password:
-				await HandleMessageAsync(message.ConvertTo<PasswordRequestMessage>(), cancellation)
+				var passwordMessage = message.ConvertTo<PasswordRequestMessage>();
+				SetCurrentRequest(passwordMessage);
+				await HandleMessageAsync(passwordMessage, cancellation)
 					.ConfigureAwait(false);
 				break;
 			case AuthenticationMethods.KeyboardInteractive:
+				SetCurrentRequest(message);
 				await BeginInteractiveAuthenticationAsync(message, cancellation)
 					.ConfigureAwait(false);
 				break;
 			case AuthenticationMethods.None:
+				SetCurrentRequest(message);
 				await HandleAuthenticatingAsync(
 					new SshAuthenticatingEventArgs(SshAuthenticationType.ClientNone, message.Username),
 					cancellation).ConfigureAwait(false);
@@ -336,6 +340,7 @@ internal class AuthenticationService : SshService
 		string message,
 		CancellationToken cancellation)
 	{
+		// TODO: Move this up and skip for PK query
 		this.authenticationFailureCount++;
 
 		Session.Trace.TraceEvent(

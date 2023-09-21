@@ -24,6 +24,9 @@ import {
 	SessionRequestMessage,
 	AuthenticationInfoRequestMessage,
 	AuthenticationInfoResponseMessage,
+	SshAuthenticatingEventArgs,
+	PublicKeyRequestMessage,
+	ServiceRequestMessage,
 } from '@microsoft/dev-tunnels-ssh';
 import { DuplexStream, shutdownWebSocketServer } from './duplexStream';
 import { createSessionPair, connectSessionPair } from './sessionPair';
@@ -214,6 +217,48 @@ export class SessionTests {
 			authenticatedServerKey!.keyAlgorithmName,
 		);
 		assert(Object.is(serverPrincipal, clientSession.principal));
+	}
+
+	@test
+	@params({ result: true })
+	@params({ result: false })
+	@params.naming((p) => `authenticateClientPublicKeyQuery(${p.result})`)
+	public async authenticateClientPublicKeyQuery({ result }: { result: boolean }) {
+		const [clientSession, serverSession] = await this.createSessions();
+
+		const queryEventCompletion = new PromiseCompletionSource<SshAuthenticatingEventArgs>();
+		serverSession.onAuthenticating((e) => {
+			e.authenticationPromise = Promise.resolve(result ? {} : null);
+			queryEventCompletion.resolve(e);
+		});
+
+		await connectSessionPair(clientSession, serverSession, undefined, false);
+
+		const keyAlgorithm = SshAlgorithms.publicKey.ecdsaSha2Nistp384!;
+		const keyPair = await keyAlgorithm.generateKeyPair();
+		const publicKeyQueryMessage = new PublicKeyRequestMessage();
+		publicKeyQueryMessage.serviceName = 'ssh-connection';
+		publicKeyQueryMessage.username = 'test';
+		publicKeyQueryMessage.keyAlgorithmName = keyAlgorithm.name;
+		publicKeyQueryMessage.publicKey = (await keyPair.getPublicKeyBytes())!;
+
+		const serviceRequestMessage = new ServiceRequestMessage();
+		serviceRequestMessage.serviceName = 'ssh-userauth';
+		await clientSession.sendMessage(serviceRequestMessage);
+		await clientSession.sendMessage(publicKeyQueryMessage);
+
+		const args = await withTimeout(queryEventCompletion.promise, 5000);
+		assert.strictEqual(args.username, 'test');
+		assert(args.publicKey);
+		assert(!args.publicKey.hasPrivateKey);
+		const argsPublicKeyBytes = (await args.publicKey.getPublicKeyBytes())!;
+		assert(argsPublicKeyBytes.equals((await keyPair.getPublicKeyBytes())!));
+
+		// A public-key query message should not have set a principal.
+		assert(!serverSession.principal);
+
+		// The session should not be disconnected after a (successful or failed) PK query.
+		assert(serverSession.isConnected);
 	}
 
 	@test
