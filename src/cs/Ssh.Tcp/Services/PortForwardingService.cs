@@ -899,6 +899,11 @@ public class PortForwardingService : SshService
 					remotePort: (int)portForwardMessage.Port,
 					Session.Trace,
 					cancellation).ConfigureAwait(false);
+
+				if (request.FailureReason != SshChannelOpenFailureReason.None)
+				{
+					await request.Channel.CloseAsync(cancellation).ConfigureAwait(false);
+				}
 			}
 		}
 	}

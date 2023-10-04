@@ -131,8 +131,8 @@ public class RemotePortForwarder : RemotePortConnector
 		}
 		catch (SocketException sockex)
 		{
-			var traceErrorMessage = $"{nameof(PortForwardingService)} forwarded channel " +
-				$"#{channel.ChannelId} connection to {localHost}:{localPort} failed: {sockex.Message}";
+			var traceErrorMessage = $"{nameof(PortForwardingService)} connection " +
+				$" to {localHost}:{localPort} failed: {sockex.Message}";
 			trace.TraceEvent(
 				TraceEventType.Warning,
 				SshTraceEventIds.PortForwardConnectionFailed,
@@ -157,8 +157,7 @@ public class RemotePortForwarder : RemotePortConnector
 		}
 		catch (ObjectDisposedException ex)
 		{
-			// The TCP connection was closed immediately after it was opened. Close the channel.
-			await channel.CloseAsync(cancellation).ConfigureAwait(false);
+			// The TCP connection was closed immediately after it was opened.
 			request.FailureReason = SshChannelOpenFailureReason.ConnectFailed;
 			request.FailureDescription = ex.Message;
 			return;
@@ -218,7 +217,7 @@ public class RemotePortForwarder : RemotePortConnector
 			connectTask, Task.Delay(connectionAttemptDelay, cancellation)).ConfigureAwait(false);
 		if (completedOrFaultedTask == connectTask)
 		{
-			if (completedOrFaultedTask.IsCompleted)
+			if (!completedOrFaultedTask.IsFaulted)
 			{
 				// The first connection attempt succeeded before the attempt delay elapsed.
 				// There's no need to try the second TCP client.
@@ -251,7 +250,7 @@ public class RemotePortForwarder : RemotePortConnector
 				.ConfigureAwait(false);
 			if (completedOrFaultedTask == connectTask)
 			{
-				if (completedOrFaultedTask.IsCompleted)
+				if (!completedOrFaultedTask.IsFaulted)
 				{
 					// The first connection attempt succeeded before the second one.
 					tcpClient2.Dispose();
@@ -268,7 +267,7 @@ public class RemotePortForwarder : RemotePortConnector
 			}
 			else
 			{
-				if (completedOrFaultedTask.IsCompleted)
+				if (!completedOrFaultedTask.IsFaulted)
 				{
 					// The second connection attempt succeeded before the first one.
 					tcpClient.Dispose();

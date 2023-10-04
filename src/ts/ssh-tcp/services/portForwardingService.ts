@@ -864,6 +864,10 @@ export class PortForwardingService extends SshService {
 					this.trace,
 					cancellation,
 				);
+
+				if (request.failureReason !== SshChannelOpenFailureReason.none) {
+					await request.channel.close(cancellation);
+				}
 			}
 		}
 	}
