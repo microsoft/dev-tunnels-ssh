@@ -123,10 +123,10 @@ export class RemotePortForwarder extends RemotePortConnector {
 			}
 
 			trace(
-				TraceLevel.Error,
+				TraceLevel.Warning,
 				SshTraceEventIds.portForwardConnectionFailed,
-				`${channel.session} PortForwardingService forwarded channel #${channel.channelId} ` +
-					`connection to ${localHost}:${localPort} failed: ${e.message}`,
+				`PortForwardingService connection ` +
+					`to ${localHost}:${localPort} failed: ${e.message}`,
 				e,
 			);
 			request.failureReason = SshChannelOpenFailureReason.connectFailed;
