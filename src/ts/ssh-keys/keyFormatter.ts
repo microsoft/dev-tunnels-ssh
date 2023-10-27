@@ -74,5 +74,5 @@ export function getKeyEncryptionAlgorithm(algorithm: string): EncryptionAlgorith
  * Otherwise use Node.js crypto.
  */
 export function useWebCrypto(): boolean {
-	return typeof window !== 'undefined' && !!(typeof crypto === 'object' && crypto.subtle);
+	return typeof self === 'object' && !!(typeof crypto === 'object' && crypto.subtle);
 }
