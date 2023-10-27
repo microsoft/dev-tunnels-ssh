@@ -36,8 +36,10 @@ export {
 };
 
 // Swap imports to node crypto implementations when web crypto is not available.
-const useWebCrypto = typeof window !== 'undefined' &&
-	!!(typeof crypto === 'object' && crypto.subtle);
+// The 'self' variable is defined in browser environments (including web workers)
+// but not in Node.js (or Node.js web workers).
+// https://developer.mozilla.org/en-US/docs/Web/API/Window/self
+const useWebCrypto = typeof self === 'object' && !!(typeof crypto === 'object' && crypto.subtle);
 
 import { WebDiffieHellman, WebECDiffieHellman } from './web/webKeyExchange';
 import { WebRsa } from './web/webRsa';
