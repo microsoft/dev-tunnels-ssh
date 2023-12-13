@@ -22,6 +22,7 @@ import {
 	CancellationError,
 	CancellationToken,
 	SshChannelError,
+	Progress,
 } from '@microsoft/dev-tunnels-ssh';
 import { Duplex } from 'stream';
 import { Disposable, Emitter } from 'vscode-jsonrpc';
@@ -681,6 +682,7 @@ export class PortForwardingService extends SshService {
 					// requested port in the response, unless the request was for a random port.
 					const forwardedPort =
 						portForwardRequest.port === 0 ? localPort : portForwardRequest.port;
+					this.reportProgress(Progress.SendingPortForwardSuccessMessage);
 					const portResponse = await this.messageFactory.createSuccessMessageAsync(
 						forwardedPort,
 					);
@@ -699,6 +701,7 @@ export class PortForwardingService extends SshService {
 		// Add to the collection (and raise event) after sending the response,
 		// to ensure event-handlers can immediately open a channel.
 		if (response instanceof PortForwardSuccessMessage) {
+			this.reportProgress(Progress.ReceivingPortForwardSuccessMessage);
 			const forwardedPort = new ForwardedPort(localPort ?? response.port, response.port, true);
 			this.remoteForwardedPorts.addOrUpdatePort(forwardedPort);
 		}
@@ -711,6 +714,7 @@ export class PortForwardingService extends SshService {
 	): Promise<number | null> {
 		if (typeof remotePort !== 'number') throw new TypeError('Remote port must be an integer.');
 		if (this.acceptLocalConnectionsForForwardedPorts) {
+			this.reportProgress(Progress.StartingPortForwarding);
 			// The local port is initially set to the remote port, but it may change
 			// when starting forwarding, if there was a conflict.
 			let localPort = remotePort;
@@ -750,6 +754,7 @@ export class PortForwardingService extends SshService {
 				this.localForwarders.delete(remotePort);
 			});
 
+			this.reportProgress(Progress.CompletedPortForwarding);
 			return localPort;
 		} else if (remotePort !== 0) {
 			return remotePort;
@@ -792,6 +797,7 @@ export class PortForwardingService extends SshService {
 			return;
 		}
 
+		this.reportProgress(Progress.ReceivingPortForwardChannelOpenMessage);
 		let remoteConnector: RemotePortConnector | null = null;
 		const portForwardMessage =
 			request.request instanceof PortForwardChannelOpenMessage
@@ -892,6 +898,7 @@ export class PortForwardingService extends SshService {
 			}
 		}
 
+		this.reportProgress(Progress.SendingPortForwardChannelOpenMessage);
 		const openMessage = await this.messageFactory.createChannelOpenMessageAsync(port);
 		openMessage.channelType = channelType;
 		openMessage.originatorIPAddress = originatorIPAddress ?? '';
@@ -900,6 +907,7 @@ export class PortForwardingService extends SshService {
 		openMessage.port = port;
 
 		const trace = this.session.trace;
+		const reportProgress = this.session.reportProgress;
 
 		let channel: SshChannel;
 		try {
@@ -909,6 +917,7 @@ export class PortForwardingService extends SshService {
 				SshTraceEventIds.portForwardChannelOpened,
 				`PortForwardingService opened ${channelType} channel #${channel.channelId} for ${host}:${port}.`,
 			);
+			reportProgress(Progress.PortForwardingChannelOpened);
 		} catch (e) {
 			if (!(e instanceof Error)) throw e;
 			trace(

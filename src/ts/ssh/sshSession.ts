@@ -21,6 +21,11 @@ import {
 	ConnectionMessage,
 	ChannelRequestMessage,
 	ChannelOpenMessage,
+	ChannelCloseMessage,
+	ChannelOpenConfirmationMessage,
+	ChannelOpenFailureMessage,
+	ChannelSuccessMessage,
+	ChannelFailureMessage,
 } from './messages/connectionMessages';
 import { AuthenticationMessage } from './messages/authenticationMessages';
 import {
@@ -44,12 +49,13 @@ import { SshSessionClosedEventArgs } from './events/sshSessionClosedEventArgs';
 import { SshChannelOpeningEventArgs } from './events/sshChannelOpeningEventArgs';
 import { SshRequestEventArgs } from './events/sshRequestEventArgs';
 import { SshSessionAlgorithms } from './sshSessionAlgorithms';
-import { algorithmNames, KeyExchangeAlgorithm } from './algorithms/sshAlgorithms';
+import { algorithmNames } from './algorithms/sshAlgorithms';
 import { withCancellation, CancellationError } from './util/cancellation';
 import { SshConnectionError, ObjectDisposedError } from './errors';
 import { Semaphore } from './util/semaphore';
 import { PipeExtensions } from './pipeExtensions';
 import { Queue } from './util/queue';
+import { Progress, ReportProgress, reportReceivingProgress, reportSendingProgress } from './progress';
 
 declare type SessionRequestResponseMessage =
 	| SessionRequestSuccessMessage
@@ -168,6 +174,16 @@ export class SshSession implements Disposable {
 	 * @param msg Message (non-localized) describing the event.
 	 */
 	public trace: Trace = (level, eventId, msg, err) => {};
+
+	/**
+	 * Gets or sets a function that reports connection progress events associated with the session.
+	 *
+	 * By default, no events are reported. To enable reporting, set this property to a function
+	 * that routes the progress to console.log, a file, or telemetry.
+	 *
+	 * @param progress Progress of connections
+	 */
+	public reportProgress: ReportProgress = (progress) => {};
 
 	public constructor(public readonly config: SshSessionConfiguration, isClientSession?: boolean) {
 		this.isClientSession = isClientSession;
@@ -317,9 +333,13 @@ export class SshSession implements Disposable {
 			`${this} ${this.reconnecting ? 're' : ''}connecting...`,
 		);
 
-		this.protocol = new SshProtocol(stream, this.config, this.metrics, this.trace);
+		this.reportProgress(Progress.OpeningSshSessionConnection);
+
+		this.protocol = new SshProtocol(
+			stream, this.config, this.metrics, this.trace, this.reportProgress);
 		this.protocol.kexService = this.kexService;
 
+		this.reportProgress(Progress.SendingProtocolVersionExchange);
 		await this.exchangeVersions(cancellation);
 
 		if (this.kexService) {
@@ -332,6 +352,7 @@ export class SshSession implements Disposable {
 			// When encrypting, the key-exchange step will wait on the version-exchange.
 			// When not encrypting, it must be directly awaited.
 			await withCancellation(this.versionExchangePromise!, cancellation);
+			this.reportProgress(Progress.ReceivingProtocolVersionExchange);
 			this.connected = true;
 		}
 
@@ -343,6 +364,8 @@ export class SshSession implements Disposable {
 				e,
 			);
 		});
+
+		this.reportProgress(Progress.OpenedSshSessionConnection);
 	}
 
 	private async exchangeVersions(cancellation?: CancellationToken): Promise<void> {
@@ -394,8 +417,11 @@ export class SshSession implements Disposable {
 
 		// Ensure the protocol version has been received before receiving any messages.
 		await withCancellation(this.versionExchangePromise!, cancellation);
+		this.reportProgress(Progress.ReceivingProtocolVersionExchange);
+
 		this.connected = true;
 
+		this.reportProgress(Progress.StartingKeyExchange);
 		let message: SshMessage | null = null;
 		while (
 			!this.isClosed &&
@@ -410,6 +436,8 @@ export class SshSession implements Disposable {
 			await this.handleMessage(message, cancellation);
 		}
 
+		this.reportProgress(Progress.CompletedKeyExchange);
+
 		if (!this.protocol?.algorithms) {
 			throw new SshConnectionError(
 				'Session closed while encrypting.',
@@ -417,6 +445,7 @@ export class SshSession implements Disposable {
 			);
 		} else if (this.protocol.algorithms.cipher) {
 			this.trace(TraceLevel.Info, SshTraceEventIds.sessionEncrypted, `${this} encrypted.`);
+			this.reportProgress(Progress.SessionEncrypted);
 		}
 	}
 
@@ -778,6 +807,7 @@ export class SshSession implements Disposable {
 			SshTraceEventIds.sessionAuthenticating,
 			`${this} Authenticating(${args})`,
 		);
+		this.reportProgress(Progress.StartingSessionAuthentication);
 
 		this.authenticatingEmitter.fire(args);
 
@@ -787,6 +817,7 @@ export class SshSession implements Disposable {
 		}
 
 		const principal = await authPromise;
+		this.reportProgress(Progress.CompletedSessionAuthentication);
 		return principal;
 	}
 
@@ -990,6 +1021,7 @@ export class SshSession implements Disposable {
 		initialRequestOrCancellation?: ChannelRequestMessage | null | CancellationToken,
 		cancellation?: CancellationToken,
 	): Promise<SshChannel> {
+		this.reportProgress(Progress.StartingOpenChannel);
 		let openMessage: ChannelOpenMessage;
 		if (
 			typeof channelTypeOrOpenMessageOrCancellation === 'string' ||
@@ -1020,7 +1052,9 @@ export class SshSession implements Disposable {
 
 		const completionSource = new PromiseCompletionSource<SshChannel>();
 		await this.connectionService!.openChannel(openMessage, completionSource, cancellation);
-		return await completionSource.promise;
+		const channel = await completionSource.promise;
+		this.reportProgress(Progress.CompletedOpenChannel);
+		return channel;
 	}
 
 	private async openChannelWithInitialRequest(

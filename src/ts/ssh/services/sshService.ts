@@ -11,6 +11,7 @@ import { SessionRequestMessage } from '../messages/transportMessages';
 import { ChannelRequestMessage } from '../messages/connectionMessages';
 import { SshMessage } from '../messages/sshMessage';
 import { Trace } from '../trace';
+import { ReportProgress } from '../progress';
 
 /**
  * An `SshService` subclass must provide a constructor that takes an `SshSession`
@@ -55,6 +56,10 @@ export class SshService implements Disposable {
 
 	protected get trace(): Trace {
 		return this.session.trace;
+	}
+
+	protected get reportProgress(): ReportProgress {
+		return this.session.reportProgress;
 	}
 
 	public dispose(): void {

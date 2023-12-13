@@ -108,3 +108,4 @@ export { MultiChannelStream } from './multiChannelStream';
 export { SecureStream } from './secureStream';
 
 export { Trace, TraceLevel, SshTraceEventIds } from './trace';
+export { Progress, ReportProgress } from './progress';

@@ -9,7 +9,7 @@ import { Queue } from '../util/queue';
 import { Semaphore } from '../util/semaphore';
 import { KeyExchangeService } from '../services/keyExchangeService';
 import { SshMessage } from '../messages/sshMessage';
-import { SshDataWriter, SshDataReader, formatBuffer } from '../io/sshData';
+import { SshDataWriter, SshDataReader } from '../io/sshData';
 import {
 	SshDisconnectReason,
 	DisconnectMessage,
@@ -27,6 +27,7 @@ import { SshConnectionError } from '../errors';
 import { SshSessionAlgorithms } from '../sshSessionAlgorithms';
 import { SshSessionConfiguration } from '../sshSessionConfiguration';
 import { Trace, TraceLevel, SshTraceEventIds } from '../trace';
+import { ReportProgress, reportReceivingProgress, reportSendingProgress } from '../progress';
 
 class SequencedMessage {
 	public constructor(public readonly sequence: number, public readonly message: SshMessage) {}
@@ -64,6 +65,7 @@ export class SshProtocol implements Disposable {
 		private readonly config: SshSessionConfiguration,
 		private readonly metrics: SessionMetrics,
 		private readonly trace: Trace,
+		private readonly reportProgress: ReportProgress
 	) {
 		this.stream = stream;
 		this.traceChannelData = config.traceChannelData;
@@ -437,6 +439,7 @@ export class SshProtocol implements Disposable {
 					SshTraceEventIds.sendingMessage,
 					`Sending #${this.outboundPacketSequence} ${message}`,
 				);
+				reportSendingProgress(message, this.reportProgress);
 			} else if (this.traceChannelData) {
 				this.trace(
 					TraceLevel.Verbose,
@@ -646,6 +649,7 @@ export class SshProtocol implements Disposable {
 				SshTraceEventIds.receivingMessage,
 				`Receiving #${this.inboundPacketSequence} ${message}`,
 			);
+			reportReceivingProgress(message, this.reportProgress);
 		} else if (this.traceChannelData) {
 			this.trace(
 				TraceLevel.Verbose,

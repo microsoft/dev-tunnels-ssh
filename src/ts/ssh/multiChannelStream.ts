@@ -15,6 +15,7 @@ import { SshChannelOpeningEventArgs } from './events/sshChannelOpeningEventArgs'
 import { ConnectionService } from './services/connectionService';
 import { Trace, TraceLevel, SshTraceEventIds } from './trace';
 import { ChannelOpenMessage } from './messages/connectionMessages';
+import { ReportProgress } from './progress';
 
 /**
  * Multiplexes multiple virtual streams (channels) over a single transport stream, using the
@@ -52,6 +53,14 @@ export class MultiChannelStream implements Disposable {
 
 	public set trace(trace: Trace) {
 		this.session.trace = trace;
+	}
+
+	public get reportProgress(): ReportProgress {
+		return this.session.reportProgress;
+	}
+
+	public set reportProgress(progress: ReportProgress) {
+		this.session.reportProgress = progress;
 	}
 
 	/**

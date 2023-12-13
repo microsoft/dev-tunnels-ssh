@@ -29,6 +29,7 @@ import { SshChannelOpeningEventArgs } from '../events/sshChannelOpeningEventArgs
 import { serviceActivation } from './serviceActivation';
 import { TraceLevel, SshTraceEventIds } from '../trace';
 import { SshExtendedDataEventArgs } from '../events/sshExtendedDataEventArgs';
+import { Progress } from '../progress';
 
 interface PendingChannel {
 	openMessage: ChannelOpenMessage;
