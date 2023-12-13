@@ -66,7 +66,8 @@ export enum Progress {
 
 	// Port forwarding messages
 	StartingPortForwarding = "StartingPortForwarding",
-	CompletedPortForwarding = "CompletedPortForwarding",
+	CompletedLocalPortForwarding = "CompletedLocalPortForwarding",
+	CompletedRemotePortForwarding = "CompletedRemotePortForwarding",
 	PortForwardingChannelOpened = "PortForwardingChannelOpened",
 	SendingPortForwardSuccessMessage = "SendingPortForwardSuccessMessage",
 	ReceivingPortForwardSuccessMessage = "ReceivingPortForwardSuccessMessage",

@@ -712,9 +712,9 @@ export class PortForwardingService extends SshService {
 		remotePort: number,
 		cancellation?: CancellationToken,
 	): Promise<number | null> {
+		this.reportProgress(Progress.StartingPortForwarding);
 		if (typeof remotePort !== 'number') throw new TypeError('Remote port must be an integer.');
 		if (this.acceptLocalConnectionsForForwardedPorts) {
-			this.reportProgress(Progress.StartingPortForwarding);
 			// The local port is initially set to the remote port, but it may change
 			// when starting forwarding, if there was a conflict.
 			let localPort = remotePort;
@@ -754,9 +754,10 @@ export class PortForwardingService extends SshService {
 				this.localForwarders.delete(remotePort);
 			});
 
-			this.reportProgress(Progress.CompletedPortForwarding);
+			this.reportProgress(Progress.CompletedLocalPortForwarding);
 			return localPort;
 		} else if (remotePort !== 0) {
+			this.reportProgress(Progress.CompletedRemotePortForwarding);
 			return remotePort;
 		} else {
 			return null;
@@ -907,7 +908,6 @@ export class PortForwardingService extends SshService {
 		openMessage.port = port;
 
 		const trace = this.session.trace;
-		const reportProgress = this.session.reportProgress;
 
 		let channel: SshChannel;
 		try {
@@ -917,7 +917,7 @@ export class PortForwardingService extends SshService {
 				SshTraceEventIds.portForwardChannelOpened,
 				`PortForwardingService opened ${channelType} channel #${channel.channelId} for ${host}:${port}.`,
 			);
-			reportProgress(Progress.PortForwardingChannelOpened);
+			this.reportProgress(Progress.PortForwardingChannelOpened);
 		} catch (e) {
 			if (!(e instanceof Error)) throw e;
 			trace(
