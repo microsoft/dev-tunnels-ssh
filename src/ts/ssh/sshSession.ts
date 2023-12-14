@@ -44,12 +44,13 @@ import { SshSessionClosedEventArgs } from './events/sshSessionClosedEventArgs';
 import { SshChannelOpeningEventArgs } from './events/sshChannelOpeningEventArgs';
 import { SshRequestEventArgs } from './events/sshRequestEventArgs';
 import { SshSessionAlgorithms } from './sshSessionAlgorithms';
-import { algorithmNames, KeyExchangeAlgorithm } from './algorithms/sshAlgorithms';
+import { algorithmNames } from './algorithms/sshAlgorithms';
 import { withCancellation, CancellationError } from './util/cancellation';
 import { SshConnectionError, ObjectDisposedError } from './errors';
 import { Semaphore } from './util/semaphore';
 import { PipeExtensions } from './pipeExtensions';
 import { Queue } from './util/queue';
+import { Progress } from './progress';
 
 declare type SessionRequestResponseMessage =
 	| SessionRequestSuccessMessage
@@ -156,6 +157,15 @@ export class SshSession implements Disposable {
 	private readonly requestEmitter = new Emitter<SshRequestEventArgs<SessionRequestMessage>>();
 	public readonly onRequest: Event<SshRequestEventArgs<SessionRequestMessage>> =
 		this.requestEmitter.event;
+
+	private readonly reportProgressEmitter = new Emitter<Progress>();
+
+	/**
+	 * Event that is raised to report connection progress.
+	 *
+	 * See `Progress` for a description of the different progress events that can be reported.
+	 */
+	public readonly onReportProgress: Event<Progress> = this.reportProgressEmitter.event;
 
 	/**
 	 * Gets or sets a function that handles trace messages associated with the session.
@@ -317,9 +327,13 @@ export class SshSession implements Disposable {
 			`${this} ${this.reconnecting ? 're' : ''}connecting...`,
 		);
 
-		this.protocol = new SshProtocol(stream, this.config, this.metrics, this.trace);
+		this.raiseReportProgress(Progress.OpeningSshSessionConnection);
+
+		this.protocol = new SshProtocol(
+			stream, this.config, this.metrics, this.trace);
 		this.protocol.kexService = this.kexService;
 
+		this.raiseReportProgress(Progress.StartingProtocolVersionExchange);
 		await this.exchangeVersions(cancellation);
 
 		if (this.kexService) {
@@ -332,6 +346,7 @@ export class SshSession implements Disposable {
 			// When encrypting, the key-exchange step will wait on the version-exchange.
 			// When not encrypting, it must be directly awaited.
 			await withCancellation(this.versionExchangePromise!, cancellation);
+			this.raiseReportProgress(Progress.CompletedProtocolVersionExchange);
 			this.connected = true;
 		}
 
@@ -343,6 +358,8 @@ export class SshSession implements Disposable {
 				e,
 			);
 		});
+
+		this.raiseReportProgress(Progress.OpenedSshSessionConnection);
 	}
 
 	private async exchangeVersions(cancellation?: CancellationToken): Promise<void> {
@@ -394,8 +411,11 @@ export class SshSession implements Disposable {
 
 		// Ensure the protocol version has been received before receiving any messages.
 		await withCancellation(this.versionExchangePromise!, cancellation);
+		this.raiseReportProgress(Progress.CompletedProtocolVersionExchange);
+
 		this.connected = true;
 
+		this.raiseReportProgress(Progress.StartingKeyExchange);
 		let message: SshMessage | null = null;
 		while (
 			!this.isClosed &&
@@ -409,6 +429,8 @@ export class SshSession implements Disposable {
 
 			await this.handleMessage(message, cancellation);
 		}
+
+		this.raiseReportProgress(Progress.CompletedKeyExchange);
 
 		if (!this.protocol?.algorithms) {
 			throw new SshConnectionError(
@@ -683,6 +705,11 @@ export class SshSession implements Disposable {
 	}
 
 	/* @internal */
+	public raiseReportProgress(progress: Progress) {
+		this.reportProgressEmitter.fire(progress);
+	}
+
+	/* @internal */
 	public raiseSessionRequest(args: SshRequestEventArgs<SessionRequestMessage>) {
 		this.requestEmitter.fire(args);
 	}
@@ -778,6 +805,7 @@ export class SshSession implements Disposable {
 			SshTraceEventIds.sessionAuthenticating,
 			`${this} Authenticating(${args})`,
 		);
+		this.raiseReportProgress(Progress.StartingSessionAuthentication);
 
 		this.authenticatingEmitter.fire(args);
 
@@ -787,6 +815,7 @@ export class SshSession implements Disposable {
 		}
 
 		const principal = await authPromise;
+		this.raiseReportProgress(Progress.CompletedSessionAuthentication);
 		return principal;
 	}
 

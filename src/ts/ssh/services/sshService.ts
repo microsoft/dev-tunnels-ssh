@@ -2,7 +2,7 @@
 //  Copyright (c) Microsoft Corporation. All rights reserved.
 //
 
-import { CancellationToken, Disposable, Emitter } from 'vscode-jsonrpc';
+import { CancellationToken, Disposable, Emitter, Event } from 'vscode-jsonrpc';
 import { SshSession } from '../sshSession';
 import { SshChannel } from '../sshChannel';
 import { SshRequestEventArgs } from '../events/sshRequestEventArgs';
@@ -11,6 +11,7 @@ import { SessionRequestMessage } from '../messages/transportMessages';
 import { ChannelRequestMessage } from '../messages/connectionMessages';
 import { SshMessage } from '../messages/sshMessage';
 import { Trace } from '../trace';
+import { Progress } from '../progress';
 
 /**
  * An `SshService` subclass must provide a constructor that takes an `SshSession`
@@ -55,6 +56,10 @@ export class SshService implements Disposable {
 
 	protected get trace(): Trace {
 		return this.session.trace;
+	}
+
+	protected raiseReportProgress(progress: Progress) {
+		this.session.raiseReportProgress(progress);
 	}
 
 	public dispose(): void {

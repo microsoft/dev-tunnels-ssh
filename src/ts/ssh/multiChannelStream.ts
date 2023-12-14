@@ -2,7 +2,7 @@
 //  Copyright (c) Microsoft Corporation. All rights reserved.
 //
 
-import { CancellationToken, Disposable, Emitter } from 'vscode-jsonrpc';
+import { CancellationToken, Disposable, Emitter, Event } from 'vscode-jsonrpc';
 import { Stream } from './streams';
 import { SshChannel } from './sshChannel';
 import { SshStream } from './sshStream';
@@ -12,9 +12,9 @@ import { SshSessionConfiguration } from './sshSessionConfiguration';
 import { SshDisconnectReason } from './messages/transportMessages';
 import { SshSessionClosedEventArgs } from './events/sshSessionClosedEventArgs';
 import { SshChannelOpeningEventArgs } from './events/sshChannelOpeningEventArgs';
-import { ConnectionService } from './services/connectionService';
 import { Trace, TraceLevel, SshTraceEventIds } from './trace';
 import { ChannelOpenMessage } from './messages/connectionMessages';
+import { Progress } from './progress';
 
 /**
  * Multiplexes multiple virtual streams (channels) over a single transport stream, using the
@@ -33,6 +33,15 @@ export class MultiChannelStream implements Disposable {
 	private disposed: boolean = false;
 	private disposables: Disposable[] = [];
 
+	private readonly reportProgressEmitter = new Emitter<Progress>();
+
+	/**
+	 * Event that is raised to report connection progress.
+	 *
+	 * See `Progress` for a description of the different progress events that can be reported.
+	 */
+	public readonly onReportProgress: Event<Progress> = this.reportProgressEmitter.event;
+
 	/**
 	 * Creates a new multi-channel stream over an underlying transport stream.
 	 * @param transportStream Stream that is used to multiplex all the channels.
@@ -42,6 +51,7 @@ export class MultiChannelStream implements Disposable {
 
 		const noSecurityConfig = new SshSessionConfiguration(false);
 		this.session = new SshSession(noSecurityConfig);
+		this.session.onReportProgress(this.raiseReportProgress, this, this.disposables);
 		this.session.onClosed(this.onSessionClosed, this, this.disposables);
 		this.session.onChannelOpening(this.onSessionChannelOpening, this, this.disposables);
 	}
@@ -52,6 +62,10 @@ export class MultiChannelStream implements Disposable {
 
 	public set trace(trace: Trace) {
 		this.session.trace = trace;
+	}
+
+	protected raiseReportProgress(progress: Progress) {
+		this.reportProgressEmitter.fire(progress);
 	}
 
 	/**

@@ -9,7 +9,7 @@ import { Queue } from '../util/queue';
 import { Semaphore } from '../util/semaphore';
 import { KeyExchangeService } from '../services/keyExchangeService';
 import { SshMessage } from '../messages/sshMessage';
-import { SshDataWriter, SshDataReader, formatBuffer } from '../io/sshData';
+import { SshDataWriter, SshDataReader } from '../io/sshData';
 import {
 	SshDisconnectReason,
 	DisconnectMessage,
@@ -63,7 +63,7 @@ export class SshProtocol implements Disposable {
 		stream: Stream,
 		private readonly config: SshSessionConfiguration,
 		private readonly metrics: SessionMetrics,
-		private readonly trace: Trace,
+		private readonly trace: Trace
 	) {
 		this.stream = stream;
 		this.traceChannelData = config.traceChannelData;
