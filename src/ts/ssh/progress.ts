@@ -17,23 +17,10 @@ export enum Progress {
 	// SSH Session Connection
 	OpeningSshSessionConnection = "OpeningSshSessionConnection",
 	OpenedSshSessionConnection = "OpenedSshSessionConnection",
-	SendingProtocolVersionExchange = "SendingProtocolVersionExchange",
-	ReceivingProtocolVersionExchange = "ReceivingProtocolVersionExchange",
+	StartingProtocolVersionExchange = "StartingProtocolVersionExchange",
+	CompletedProtocolVersionExchange = "CompletedProtocolVersionExchange",
 	StartingKeyExchange = "StartingKeyExchange",
 	CompletedKeyExchange = "CompletedKeyExchange",
 	StartingSessionAuthentication = "StartingSessionAuthentication",
 	CompletedSessionAuthentication = "CompletedSessionAuthentication",
-
-	// Port forwarding messages
-	StartingPortForwarding = "StartingPortForwarding",
-	CompletedLocalPortForwarding = "CompletedLocalPortForwarding",
-	CompletedRemotePortForwarding = "CompletedRemotePortForwarding",
-	OpeningChannelPortForwarding = "OpeningChannelPortForwarding",
-	OpenedChannelPortForwarding = "OpenedChannelPortForwarding",
-	StartingWaitForForwardedPort = "StartingWaitForForwardedPort",
-	CompletedWaitForForwardedPort = "CompletedWaitForForwardedPort",
-
-	// Channel opening messages
-	StartingOpenChannel = "StartingOpenChannel",
-	CompletedOpenChannel = "CompletedOpenChannel",
 }

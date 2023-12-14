@@ -333,7 +333,7 @@ export class SshSession implements Disposable {
 			stream, this.config, this.metrics, this.trace);
 		this.protocol.kexService = this.kexService;
 
-		this.raiseReportProgress(Progress.SendingProtocolVersionExchange);
+		this.raiseReportProgress(Progress.StartingProtocolVersionExchange);
 		await this.exchangeVersions(cancellation);
 
 		if (this.kexService) {
@@ -346,7 +346,7 @@ export class SshSession implements Disposable {
 			// When encrypting, the key-exchange step will wait on the version-exchange.
 			// When not encrypting, it must be directly awaited.
 			await withCancellation(this.versionExchangePromise!, cancellation);
-			this.raiseReportProgress(Progress.ReceivingProtocolVersionExchange);
+			this.raiseReportProgress(Progress.CompletedProtocolVersionExchange);
 			this.connected = true;
 		}
 
@@ -411,7 +411,7 @@ export class SshSession implements Disposable {
 
 		// Ensure the protocol version has been received before receiving any messages.
 		await withCancellation(this.versionExchangePromise!, cancellation);
-		this.raiseReportProgress(Progress.ReceivingProtocolVersionExchange);
+		this.raiseReportProgress(Progress.CompletedProtocolVersionExchange);
 
 		this.connected = true;
 
@@ -1019,7 +1019,6 @@ export class SshSession implements Disposable {
 		initialRequestOrCancellation?: ChannelRequestMessage | null | CancellationToken,
 		cancellation?: CancellationToken,
 	): Promise<SshChannel> {
-		this.raiseReportProgress(Progress.StartingOpenChannel);
 		let openMessage: ChannelOpenMessage;
 		if (
 			typeof channelTypeOrOpenMessageOrCancellation === 'string' ||
@@ -1050,9 +1049,7 @@ export class SshSession implements Disposable {
 
 		const completionSource = new PromiseCompletionSource<SshChannel>();
 		await this.connectionService!.openChannel(openMessage, completionSource, cancellation);
-		const channel = await completionSource.promise;
-		this.raiseReportProgress(Progress.CompletedOpenChannel);
-		return channel;
+		return await completionSource.promise;
 	}
 
 	private async openChannelWithInitialRequest(

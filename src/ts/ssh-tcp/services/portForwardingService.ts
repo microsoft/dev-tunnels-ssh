@@ -22,7 +22,6 @@ import {
 	CancellationError,
 	CancellationToken,
 	SshChannelError,
-	Progress,
 } from '@microsoft/dev-tunnels-ssh';
 import { Duplex } from 'stream';
 import { Disposable, Emitter } from 'vscode-jsonrpc';
@@ -586,10 +585,8 @@ export class PortForwardingService extends SshService {
 		forwardedPort: number,
 		cancellation?: CancellationToken,
 	): Promise<void> {
-		this.raiseReportProgress(Progress.StartingWaitForForwardedPort);
 		if (this.remoteForwardedPorts.find((p) => p.remotePort === forwardedPort)) {
 			// It's already forwarded, so there's no need to wait.
-			this.raiseReportProgress(Progress.CompletedWaitForForwardedPort);
 			return;
 		}
 
@@ -615,7 +612,6 @@ export class PortForwardingService extends SshService {
 			});
 
 			await waitCompletion.promise;
-			this.raiseReportProgress(Progress.CompletedWaitForForwardedPort);
 		} finally {
 			portAddedRegistration?.dispose();
 			sessionClosedRegistration?.dispose();
@@ -713,7 +709,6 @@ export class PortForwardingService extends SshService {
 		remotePort: number,
 		cancellation?: CancellationToken,
 	): Promise<number | null> {
-		this.raiseReportProgress(Progress.StartingPortForwarding);
 		if (typeof remotePort !== 'number') throw new TypeError('Remote port must be an integer.');
 		if (this.acceptLocalConnectionsForForwardedPorts) {
 			// The local port is initially set to the remote port, but it may change
@@ -755,10 +750,8 @@ export class PortForwardingService extends SshService {
 				this.localForwarders.delete(remotePort);
 			});
 
-			this.raiseReportProgress(Progress.CompletedLocalPortForwarding);
 			return localPort;
 		} else if (remotePort !== 0) {
-			this.raiseReportProgress(Progress.CompletedRemotePortForwarding);
 			return remotePort;
 		} else {
 			return null;
@@ -889,7 +882,6 @@ export class PortForwardingService extends SshService {
 		port: number,
 		cancellation?: CancellationToken,
 	): Promise<SshChannel> {
-		this.raiseReportProgress(Progress.OpeningChannelPortForwarding);
 		let forwardedPort: ForwardedPort | undefined = undefined;
 		if (channelType === PortForwardingService.portForwardChannelType) {
 			forwardedPort = this.remoteForwardedPorts.find(
@@ -917,7 +909,6 @@ export class PortForwardingService extends SshService {
 				SshTraceEventIds.portForwardChannelOpened,
 				`PortForwardingService opened ${channelType} channel #${channel.channelId} for ${host}:${port}.`,
 			);
-			this.raiseReportProgress(Progress.OpenedChannelPortForwarding);
 		} catch (e) {
 			if (!(e instanceof Error)) throw e;
 			trace(
