@@ -586,8 +586,10 @@ export class PortForwardingService extends SshService {
 		forwardedPort: number,
 		cancellation?: CancellationToken,
 	): Promise<void> {
+		this.raiseReportProgress(Progress.StartingWaitForForwardedPort);
 		if (this.remoteForwardedPorts.find((p) => p.remotePort === forwardedPort)) {
 			// It's already forwarded, so there's no need to wait.
+			this.raiseReportProgress(Progress.CompletedWaitForForwardedPort);
 			return;
 		}
 
@@ -613,6 +615,7 @@ export class PortForwardingService extends SshService {
 			});
 
 			await waitCompletion.promise;
+			this.raiseReportProgress(Progress.CompletedWaitForForwardedPort);
 		} finally {
 			portAddedRegistration?.dispose();
 			sessionClosedRegistration?.dispose();
@@ -682,7 +685,6 @@ export class PortForwardingService extends SshService {
 					// requested port in the response, unless the request was for a random port.
 					const forwardedPort =
 						portForwardRequest.port === 0 ? localPort : portForwardRequest.port;
-					this.reportProgress(Progress.SendingPortForwardSuccessMessage);
 					const portResponse = await this.messageFactory.createSuccessMessageAsync(
 						forwardedPort,
 					);
@@ -701,7 +703,6 @@ export class PortForwardingService extends SshService {
 		// Add to the collection (and raise event) after sending the response,
 		// to ensure event-handlers can immediately open a channel.
 		if (response instanceof PortForwardSuccessMessage) {
-			this.reportProgress(Progress.ReceivingPortForwardSuccessMessage);
 			const forwardedPort = new ForwardedPort(localPort ?? response.port, response.port, true);
 			this.remoteForwardedPorts.addOrUpdatePort(forwardedPort);
 		}
@@ -712,7 +713,7 @@ export class PortForwardingService extends SshService {
 		remotePort: number,
 		cancellation?: CancellationToken,
 	): Promise<number | null> {
-		this.reportProgress(Progress.StartingPortForwarding);
+		this.raiseReportProgress(Progress.StartingPortForwarding);
 		if (typeof remotePort !== 'number') throw new TypeError('Remote port must be an integer.');
 		if (this.acceptLocalConnectionsForForwardedPorts) {
 			// The local port is initially set to the remote port, but it may change
@@ -754,10 +755,10 @@ export class PortForwardingService extends SshService {
 				this.localForwarders.delete(remotePort);
 			});
 
-			this.reportProgress(Progress.CompletedLocalPortForwarding);
+			this.raiseReportProgress(Progress.CompletedLocalPortForwarding);
 			return localPort;
 		} else if (remotePort !== 0) {
-			this.reportProgress(Progress.CompletedRemotePortForwarding);
+			this.raiseReportProgress(Progress.CompletedRemotePortForwarding);
 			return remotePort;
 		} else {
 			return null;
@@ -798,7 +799,6 @@ export class PortForwardingService extends SshService {
 			return;
 		}
 
-		this.reportProgress(Progress.ReceivingPortForwardChannelOpenMessage);
 		let remoteConnector: RemotePortConnector | null = null;
 		const portForwardMessage =
 			request.request instanceof PortForwardChannelOpenMessage
@@ -889,6 +889,7 @@ export class PortForwardingService extends SshService {
 		port: number,
 		cancellation?: CancellationToken,
 	): Promise<SshChannel> {
+		this.raiseReportProgress(Progress.OpeningChannelPortForwarding);
 		let forwardedPort: ForwardedPort | undefined = undefined;
 		if (channelType === PortForwardingService.portForwardChannelType) {
 			forwardedPort = this.remoteForwardedPorts.find(
@@ -899,7 +900,6 @@ export class PortForwardingService extends SshService {
 			}
 		}
 
-		this.reportProgress(Progress.SendingPortForwardChannelOpenMessage);
 		const openMessage = await this.messageFactory.createChannelOpenMessageAsync(port);
 		openMessage.channelType = channelType;
 		openMessage.originatorIPAddress = originatorIPAddress ?? '';
@@ -917,7 +917,7 @@ export class PortForwardingService extends SshService {
 				SshTraceEventIds.portForwardChannelOpened,
 				`PortForwardingService opened ${channelType} channel #${channel.channelId} for ${host}:${port}.`,
 			);
-			this.reportProgress(Progress.PortForwardingChannelOpened);
+			this.raiseReportProgress(Progress.OpenedChannelPortForwarding);
 		} catch (e) {
 			if (!(e instanceof Error)) throw e;
 			trace(

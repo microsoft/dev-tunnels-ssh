@@ -24,12 +24,11 @@ import { CancellationToken, Disposable } from 'vscode-jsonrpc';
 import { PromiseCompletionSource } from '../util/promiseCompletionSource';
 import { SshChannel } from '../sshChannel';
 import { CancellationError } from '../util/cancellation';
-import { ObjectDisposedError, SshChannelError, SshConnectionError } from '../errors';
+import { ObjectDisposedError, SshChannelError } from '../errors';
 import { SshChannelOpeningEventArgs } from '../events/sshChannelOpeningEventArgs';
 import { serviceActivation } from './serviceActivation';
 import { TraceLevel, SshTraceEventIds } from '../trace';
 import { SshExtendedDataEventArgs } from '../events/sshExtendedDataEventArgs';
-import { Progress } from '../progress';
 
 interface PendingChannel {
 	openMessage: ChannelOpenMessage;

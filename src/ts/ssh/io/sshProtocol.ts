@@ -27,7 +27,6 @@ import { SshConnectionError } from '../errors';
 import { SshSessionAlgorithms } from '../sshSessionAlgorithms';
 import { SshSessionConfiguration } from '../sshSessionConfiguration';
 import { Trace, TraceLevel, SshTraceEventIds } from '../trace';
-import { ReportProgress, reportReceivingProgress, reportSendingProgress } from '../progress';
 
 class SequencedMessage {
 	public constructor(public readonly sequence: number, public readonly message: SshMessage) {}
@@ -64,8 +63,7 @@ export class SshProtocol implements Disposable {
 		stream: Stream,
 		private readonly config: SshSessionConfiguration,
 		private readonly metrics: SessionMetrics,
-		private readonly trace: Trace,
-		private readonly reportProgress: ReportProgress
+		private readonly trace: Trace
 	) {
 		this.stream = stream;
 		this.traceChannelData = config.traceChannelData;
@@ -439,7 +437,6 @@ export class SshProtocol implements Disposable {
 					SshTraceEventIds.sendingMessage,
 					`Sending #${this.outboundPacketSequence} ${message}`,
 				);
-				reportSendingProgress(message, this.reportProgress);
 			} else if (this.traceChannelData) {
 				this.trace(
 					TraceLevel.Verbose,
@@ -649,7 +646,6 @@ export class SshProtocol implements Disposable {
 				SshTraceEventIds.receivingMessage,
 				`Receiving #${this.inboundPacketSequence} ${message}`,
 			);
-			reportReceivingProgress(message, this.reportProgress);
 		} else if (this.traceChannelData) {
 			this.trace(
 				TraceLevel.Verbose,
