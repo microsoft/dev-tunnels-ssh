@@ -21,6 +21,7 @@ export {
 	SshAuthenticatingEventArgs,
 } from './events/sshAuthenticatingEventArgs';
 export { SshRequestEventArgs } from './events/sshRequestEventArgs';
+export { SshReportProgressEventArgs } from './events/sshReportProgressEventArgs';
 export { SshChannelOpeningEventArgs } from './events/sshChannelOpeningEventArgs';
 export { SshSessionClosedEventArgs } from './events/sshSessionClosedEventArgs';
 export { SshChannelClosedEventArgs } from './events/sshChannelClosedEventArgs';
