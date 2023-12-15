@@ -71,10 +71,10 @@ interface RequestHandler {
 }
 
 /**
- * Allows SSH Server sessions to keep track of the session number for progress
+ * Allows SSH sessions to keep track of the session number for progress
  * reporting purposes.
  */
-let serverSessionCounter = 0;
+let sessionCounter = 0;
 
 /**
  * Base class for an SSH server or client connection; coordinates high-level SSH
@@ -96,8 +96,8 @@ export class SshSession implements Disposable {
 	private readonly blockedMessagesSemaphore = new Semaphore(1);
 	private connected: boolean = false;
 	private disposed: boolean = false;
+	private sessionNumber: number;
 	private closedError?: Error;
-	private serverSessionNumber?: number;
 
 	public get algorithms(): SshSessionAlgorithms | null {
 		return this.protocol ? this.protocol.algorithms : null;
@@ -190,10 +190,7 @@ export class SshSession implements Disposable {
 
 	public constructor(public readonly config: SshSessionConfiguration, isClientSession?: boolean) {
 		this.isClientSession = isClientSession;
-
-		if (this.isClientSession === false) {
-			this.serverSessionNumber = ++serverSessionCounter;
-		}
+		this.sessionNumber = ++sessionCounter;
 
 		if (!config) throw new TypeError('Session configuration is required.');
 
@@ -719,7 +716,7 @@ export class SshSession implements Disposable {
 
 	/* @internal */
 	public raiseReportProgress(progress: Progress) {
-		const args = new SshReportProgressEventArgs(progress, this.serverSessionNumber);
+		const args = new SshReportProgressEventArgs(progress, this.sessionNumber);
 		this.reportProgressEmitter.fire(args);
 	}
 

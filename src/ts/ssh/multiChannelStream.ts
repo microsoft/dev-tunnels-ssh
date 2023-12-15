@@ -54,7 +54,7 @@ export class MultiChannelStream implements Disposable {
 		const noSecurityConfig = new SshSessionConfiguration(false);
 		this.session = new SshSession(noSecurityConfig);
 		this.session.onReportProgress(
-			(args) => this.raiseReportProgress(args.progress, args.serverSessionNumber),
+			(args) => this.raiseReportProgress(args.progress, args.sessionNumber),
 			this,
 			this.disposables);
 		this.session.onClosed(this.onSessionClosed, this, this.disposables);
@@ -69,8 +69,8 @@ export class MultiChannelStream implements Disposable {
 		this.session.trace = trace;
 	}
 
-	protected raiseReportProgress(progress: Progress, serverSessionNumber?: number) {
-		const args = new SshReportProgressEventArgs(progress, serverSessionNumber);
+	protected raiseReportProgress(progress: Progress, sessionNumber?: number) {
+		const args = new SshReportProgressEventArgs(progress, sessionNumber);
 		this.reportProgressEmitter.fire(args);
 	}
 

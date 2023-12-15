@@ -7,11 +7,11 @@ import { Progress } from '../progress';
 export class SshReportProgressEventArgs {
 	public constructor(
 		public readonly progress: Progress,
-		public readonly serverSessionNumber?: number
+		public readonly sessionNumber?: number
 	) {}
 
 	public toString() {
 		return `Progress: ${this.progress}` +
-			this.serverSessionNumber ? ` Server session number: ${this.serverSessionNumber}` : '';
+			this.sessionNumber ? ` Session number: ${this.sessionNumber}` : '';
 	}
 }
