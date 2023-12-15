@@ -15,6 +15,7 @@ import { SshChannelOpeningEventArgs } from './events/sshChannelOpeningEventArgs'
 import { Trace, TraceLevel, SshTraceEventIds } from './trace';
 import { ChannelOpenMessage } from './messages/connectionMessages';
 import { Progress } from './progress';
+import { SshReportProgressEventArgs } from './events/sshReportProgressEventArgs';
 
 /**
  * Multiplexes multiple virtual streams (channels) over a single transport stream, using the
@@ -33,14 +34,15 @@ export class MultiChannelStream implements Disposable {
 	private disposed: boolean = false;
 	private disposables: Disposable[] = [];
 
-	private readonly reportProgressEmitter = new Emitter<Progress>();
+	private readonly reportProgressEmitter = new Emitter<SshReportProgressEventArgs>();
 
 	/**
 	 * Event that is raised to report connection progress.
 	 *
 	 * See `Progress` for a description of the different progress events that can be reported.
 	 */
-	public readonly onReportProgress: Event<Progress> = this.reportProgressEmitter.event;
+	public readonly onReportProgress: Event<SshReportProgressEventArgs> =
+		this.reportProgressEmitter.event;
 
 	/**
 	 * Creates a new multi-channel stream over an underlying transport stream.
@@ -51,7 +53,10 @@ export class MultiChannelStream implements Disposable {
 
 		const noSecurityConfig = new SshSessionConfiguration(false);
 		this.session = new SshSession(noSecurityConfig);
-		this.session.onReportProgress(this.raiseReportProgress, this, this.disposables);
+		this.session.onReportProgress(
+			(args) => this.raiseReportProgress(args.progress, args.sessionNumber),
+			this,
+			this.disposables);
 		this.session.onClosed(this.onSessionClosed, this, this.disposables);
 		this.session.onChannelOpening(this.onSessionChannelOpening, this, this.disposables);
 	}
@@ -64,8 +69,9 @@ export class MultiChannelStream implements Disposable {
 		this.session.trace = trace;
 	}
 
-	protected raiseReportProgress(progress: Progress) {
-		this.reportProgressEmitter.fire(progress);
+	protected raiseReportProgress(progress: Progress, sessionNumber?: number) {
+		const args = new SshReportProgressEventArgs(progress, sessionNumber);
+		this.reportProgressEmitter.fire(args);
 	}
 
 	/**

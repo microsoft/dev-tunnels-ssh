@@ -51,6 +51,7 @@ import { Semaphore } from './util/semaphore';
 import { PipeExtensions } from './pipeExtensions';
 import { Queue } from './util/queue';
 import { Progress } from './progress';
+import { SshReportProgressEventArgs } from './events/sshReportProgressEventArgs';
 
 declare type SessionRequestResponseMessage =
 	| SessionRequestSuccessMessage
@@ -68,6 +69,12 @@ interface RequestHandler {
 	/** Flag indicating the request has been cancelled. */
 	isCancelled?: boolean;
 }
+
+/**
+ * Allows SSH sessions to keep track of the session number for progress
+ * reporting purposes.
+ */
+let sessionCounter = 0;
 
 /**
  * Base class for an SSH server or client connection; coordinates high-level SSH
@@ -89,6 +96,7 @@ export class SshSession implements Disposable {
 	private readonly blockedMessagesSemaphore = new Semaphore(1);
 	private connected: boolean = false;
 	private disposed: boolean = false;
+	private sessionNumber: number;
 	private closedError?: Error;
 
 	public get algorithms(): SshSessionAlgorithms | null {
@@ -158,14 +166,15 @@ export class SshSession implements Disposable {
 	public readonly onRequest: Event<SshRequestEventArgs<SessionRequestMessage>> =
 		this.requestEmitter.event;
 
-	private readonly reportProgressEmitter = new Emitter<Progress>();
+	private readonly reportProgressEmitter = new Emitter<SshReportProgressEventArgs>();
 
 	/**
 	 * Event that is raised to report connection progress.
 	 *
 	 * See `Progress` for a description of the different progress events that can be reported.
 	 */
-	public readonly onReportProgress: Event<Progress> = this.reportProgressEmitter.event;
+	public readonly onReportProgress: Event<SshReportProgressEventArgs> =
+		this.reportProgressEmitter.event;
 
 	/**
 	 * Gets or sets a function that handles trace messages associated with the session.
@@ -181,6 +190,7 @@ export class SshSession implements Disposable {
 
 	public constructor(public readonly config: SshSessionConfiguration, isClientSession?: boolean) {
 		this.isClientSession = isClientSession;
+		this.sessionNumber = ++sessionCounter;
 
 		if (!config) throw new TypeError('Session configuration is required.');
 
@@ -706,7 +716,8 @@ export class SshSession implements Disposable {
 
 	/* @internal */
 	public raiseReportProgress(progress: Progress) {
-		this.reportProgressEmitter.fire(progress);
+		const args = new SshReportProgressEventArgs(progress, this.sessionNumber);
+		this.reportProgressEmitter.fire(args);
 	}
 
 	/* @internal */
