@@ -679,7 +679,7 @@ public class SessionTests : IDisposable
 
 		var lastEvent = progressEvents.Last();
 		Assert.NotNull(lastEvent.SessionNumber);
-		Assert.True(lastEvent.Progress == Progress.CompletedSessionAuthentication.ToString());
+		Assert.True(lastEvent.Progress == Progress.CompletedSessionAuthentication);
 	}
 
 	private static T GetAlgorithmByName<T>(Type algorithmClass, string name)

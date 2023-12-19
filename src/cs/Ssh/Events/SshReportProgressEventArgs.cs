@@ -13,7 +13,7 @@ public class SshReportProgressEventArgs : EventArgs
 {
 	public SshReportProgressEventArgs(Progress progress, int? sessionNumber = null)
 	{
-		Progress = progress.ToString();
+		Progress = progress;
 		SessionNumber = sessionNumber;
 	}
 
@@ -21,7 +21,7 @@ public class SshReportProgressEventArgs : EventArgs
 	/// Specifies the progress event that is being reported. See <see cref="Progress"/>
 	/// for a description of the different progress events that can be reported.
 	/// </summary>
-	public string Progress { get; }
+	public Progress Progress { get; }
 
 	/// <summary>
 	/// The session number associated with an SSH session progress event.
