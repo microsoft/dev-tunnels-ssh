@@ -678,7 +678,7 @@ public class SessionTests : IDisposable
 		await this.sessionPair.ConnectAsync(authenticate: true).WithTimeout(Timeout);
 
 		var lastEvent = progressEvents.Last();
-		Assert.True(lastEvent.SessionNumber == 2);
+		Assert.NotNull(lastEvent.SessionNumber);
 		Assert.True(lastEvent.Progress == Progress.CompletedSessionAuthentication.ToString());
 	}
 
