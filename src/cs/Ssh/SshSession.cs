@@ -27,6 +27,11 @@ namespace Microsoft.DevTunnels.Ssh;
 public class SshSession : IDisposable
 #pragma warning restore CA1506
 {
+	/// <summary>
+	/// Allows SSH sessions to keep track of the session number for progress reporting purposes.
+	/// </summary>
+	private static int sessionCounter = 0;
+
 	private readonly ConcurrentQueue<SshMessage> blockedMessages =
 		new ConcurrentQueue<SshMessage>();
 
@@ -45,6 +50,7 @@ public class SshSession : IDisposable
 	private readonly TaskChain taskChain;
 	private Task? versionExchangeTask;
 	private Exception? closedException;
+	private int sessionNumber;
 
 	/// <summary>
 	/// Constructs a new SSH session.
@@ -63,6 +69,7 @@ public class SshSession : IDisposable
 		Config = config;
 		Trace = trace;
 		this.taskChain = new TaskChain(Trace);
+		this.sessionNumber = ++SshSession.sessionCounter;
 
 		if (!Config.KeyExchangeAlgorithms.Any((a) => a != null))
 		{
@@ -147,6 +154,11 @@ public class SshSession : IDisposable
 	/// <see cref="SshSessionConfiguration.Services" /> is instantiated.
 	/// </summary>
 	public event EventHandler<SshService>? ServiceActivated;
+
+	/// <summary>
+	/// Event raised to report connection progress.
+	/// </summary>
+	public event EventHandler<SshReportProgressEventArgs>? ReportProgress;
 
 	/// <summary>
 	/// Event raised when a reconnectable session is disconnected but not closed.
@@ -272,6 +284,7 @@ public class SshSession : IDisposable
 	/// </summary>
 	private async Task ExchangeVersionsAsync(CancellationToken cancellation)
 	{
+		this.OnReportProgress(Progress.StartingProtocolVersionExchange);
 		var writeTask = Protocol!.WriteProtocolVersionAsync(LocalVersion.ToString(), cancellation);
 		var readTask = Protocol!.ReadProtocolVersionAsync(cancellation);
 
@@ -330,8 +343,10 @@ public class SshSession : IDisposable
 
 		// Ensure the protocol version has been received before receiving any messages.
 		await this.versionExchangeTask!.WaitAsync(cancellation).ConfigureAwait(false);
+		this.OnReportProgress(Progress.CompletedProtocolVersionExchange);
 		IsConnected = true;
 
+		this.OnReportProgress(Progress.StartingKeyExchange);
 		SshMessage? message = null;
 		while (!IsClosed && Protocol?.Algorithms == null && !(message is DisconnectMessage))
 		{
@@ -358,6 +373,8 @@ public class SshSession : IDisposable
 				SshTraceEventIds.SessionEncrypted,
 				$"{this} encrypted");
 		}
+
+		this.OnReportProgress(Progress.CompletedKeyExchange);
 	}
 
 	/// <summary>
@@ -406,6 +423,7 @@ public class SshSession : IDisposable
 			SshTraceEventIds.SessionConnecting,
 			$"{this} ConnectAsync");
 
+		this.OnReportProgress(Progress.OpeningSshSessionConnection);
 		this.closedException = null;
 		Protocol = new SshProtocol(stream, Config, Metrics, Trace);
 		Protocol.KeyExchangeService = this.kexService;
@@ -451,11 +469,13 @@ public class SshSession : IDisposable
 					// When encrypting, the key-exchange step will wait on the version-exchange.
 					// When not encrypting, it must be directly awaited.
 					await this.versionExchangeTask!.WaitAsync(connectCts.Token).ConfigureAwait(false);
+					this.OnReportProgress(Progress.CompletedProtocolVersionExchange);
 					IsConnected = true;
 				}
 			}
 
 			this.connectCompletionSource.TrySetResult(true);
+			this.OnReportProgress(Progress.OpenedSshSessionConnection);
 		}
 		catch (OperationCanceledException ocex)
 		{
@@ -1074,6 +1094,8 @@ public class SshSession : IDisposable
 			SshTraceEventIds.SessionAuthenticating,
 			$"{this} {nameof(Authenticating)}({args})");
 
+		this.OnReportProgress(Progress.StartingSessionAuthentication);
+
 		Authenticating?.Invoke(this, args);
 
 		if (args.AuthenticationTask == null)
@@ -1083,7 +1105,9 @@ public class SshSession : IDisposable
 
 		// An event-handler filled in a task on the event. Await the task to get
 		// the principal that is the result of authenticating.
-		return await args.AuthenticationTask.WaitAsync(cancellation).ConfigureAwait(false);
+		var principal = await args.AuthenticationTask.WaitAsync(cancellation).ConfigureAwait(false);
+		this.OnReportProgress(Progress.CompletedSessionAuthentication);
+		return principal;
 	}
 
 	/// <summary>
@@ -1635,6 +1659,12 @@ public class SshSession : IDisposable
 	internal void OnSessionRequest(SshRequestEventArgs<SessionRequestMessage> args)
 	{
 		Request?.Invoke(this, args);
+	}
+
+	internal void OnReportProgress(Progress progress)
+	{
+		var args = new SshReportProgressEventArgs(progress, this.sessionNumber);
+		ReportProgress?.Invoke(this, args);
 	}
 
 	/// <summary>

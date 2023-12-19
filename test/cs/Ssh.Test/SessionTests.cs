@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using System.Security.Claims;
@@ -663,6 +664,22 @@ public class SessionTests : IDisposable
 		Task.WaitAll(firstTask, secondTask);
 		Assert.True(await secondMessageCompletion.Task);
 		Assert.True(await firstMessageCompletion.Task);
+	}
+
+	[Fact]
+	public async Task ReportProgress()
+	{
+		var progressEvents = new List<SshReportProgressEventArgs>();
+		this.clientSession.ReportProgress += (sender, e) =>
+		{
+			progressEvents.Add(e);
+		};
+
+		await this.sessionPair.ConnectAsync(authenticate: true).WithTimeout(Timeout);
+
+		var lastEvent = progressEvents.Last();
+		Assert.NotNull(lastEvent.SessionNumber);
+		Assert.True(lastEvent.Progress == Progress.CompletedSessionAuthentication);
 	}
 
 	private static T GetAlgorithmByName<T>(Type algorithmClass, string name)
