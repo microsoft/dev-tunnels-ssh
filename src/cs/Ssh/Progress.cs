@@ -24,4 +24,18 @@ public enum Progress
 	CompletedKeyExchange,
 	StartingSessionAuthentication,
 	CompletedSessionAuthentication,
+
+	// Port forwarding
+	StartingRefreshPorts,
+	CompletedRefreshPorts,
+
+	// Tunnel service requests
+	StartingRequestUri,
+	StartingRequestConfig,
+	StartingSendTunnelRequest,
+	CompletedSendTunnelRequest,
+	StartingCreateTunnelPort,
+	CompletedCreateTunnelPort,
+	StartingGetTunnelPort,
+	CompletedGetTunnelPort,
 }

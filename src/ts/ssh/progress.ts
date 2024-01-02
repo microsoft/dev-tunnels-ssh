@@ -14,7 +14,7 @@ export enum Progress {
 	OpeningHostConnectionToRelay = "OpeningHostConnectionToRelay",
 	OpenedHostConnectionToRelay = "OpenedHostConnectionToRelay",
 
-	// SSH Session Connection
+	// SSH session connection
 	OpeningSshSessionConnection = "OpeningSshSessionConnection",
 	OpenedSshSessionConnection = "OpenedSshSessionConnection",
 	StartingProtocolVersionExchange = "StartingProtocolVersionExchange",
@@ -23,4 +23,18 @@ export enum Progress {
 	CompletedKeyExchange = "CompletedKeyExchange",
 	StartingSessionAuthentication = "StartingSessionAuthentication",
 	CompletedSessionAuthentication = "CompletedSessionAuthentication",
+
+	// Port forwarding
+	StartingRefreshPorts = "StartingRefreshPorts",
+	CompletedRefreshPorts = "CompletedRefreshPorts",
+
+	// Tunnel service requests
+	StartingRequestUri = "StartingRequestUri",
+	StartingRequestConfig = "StartingRequestConfig",
+	StartingSendTunnelRequest = "StartingSendTunnelRequest",
+	CompletedSendTunnelRequest = "CompletedSendTunnelRequest",
+	StartingCreateTunnelPort = "StartingCreateTunnelPort",
+	CompletedCreateTunnelPort = "CompletedCreateTunnelPort",
+	StartingGetTunnelPort = "StartingGetTunnelPort",
+	CompletedGetTunnelPort = "CompletedGetTunnelPort",
 }
