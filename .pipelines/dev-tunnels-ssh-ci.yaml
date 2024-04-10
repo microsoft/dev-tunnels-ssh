@@ -195,7 +195,7 @@ jobs:
           publishFeedCredentials: 'dev-tunnels-nuget'
           publishPackageMetadata: true
       - task: EsrpRelease@6
-        condition: and(succeeded(), eq('${{ parameters.PublishNugetPackage }}', 'true'))
+        condition: and(succeeded(), eq('${{ parameters.PublishNpmPackage }}', 'true'))
         inputs:
           ConnectedServiceName: 'devtunnels-esrp'
           Intent: 'PackageDistribution'
