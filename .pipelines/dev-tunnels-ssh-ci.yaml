@@ -194,39 +194,20 @@ jobs:
           nuGetFeedType: external
           publishFeedCredentials: 'dev-tunnels-nuget'
           publishPackageMetadata: true
-
-      - task: Npm@1
-        displayName: Publish ssh npm package to public feed
+      - task: EsrpRelease@6
         condition: and(succeeded(), eq('${{ parameters.PublishNpmPackage }}', 'true'))
-        continueOnError: True
         inputs:
-          command: custom
-          verbose: false
-          customCommand: publish out/pkg/dev-tunnels-ssh-$(Build.BuildNumber).tgz --access public
-          customRegistry: useNpmrc
-          customEndpoint: 'dev-tunnels-npm'
-
-      - task: Npm@1
-        displayName: Publish ssh-keys npm package to public feed
-        condition: and(succeeded(), eq('${{ parameters.PublishNpmPackage }}', 'true'))
-        continueOnError: True
-        inputs:
-          command: custom
-          verbose: false
-          customCommand: publish out/pkg/dev-tunnels-ssh-keys-$(Build.BuildNumber).tgz --access public
-          customRegistry: useNpmrc
-          customEndpoint: 'dev-tunnels-npm'
-
-      - task: Npm@1
-        displayName: Publish ssh-tcp npm package to public feed
-        condition: and(succeeded(), eq('${{ parameters.PublishNpmPackage }}', 'true'))
-        continueOnError: True
-        inputs:
-          command: custom
-          verbose: false
-          customCommand: publish out/pkg/dev-tunnels-ssh-tcp-$(Build.BuildNumber).tgz --access public
-          customRegistry: useNpmrc
-          customEndpoint: 'dev-tunnels-npm'
+          ConnectedServiceName: 'devtunnels-esrp'
+          Intent: 'PackageDistribution'
+          ContentType: 'npm'
+          ContentSource: 'Folder'
+          FolderLocation: '$(System.DefaultWorkingDirectory)/out/pkg'
+          WaitForReleaseCompletion: true
+          Owners: 'jfullerton@microsoft.com'
+          Approvers: 'jasongin@microsoft.com, debekoe@microsoft.com, ilbiryuk@microsoft.com'
+          ServiceEndpointUrl: 'https://api.esrp.microsoft.com'
+          MainPublisher: 'ESRPRELPACMAN'
+          DomainTenantId: '72f988bf-86f1-41af-91ab-2d7cd011db47'
 
   - job: mac
     displayName: SSH Mac
