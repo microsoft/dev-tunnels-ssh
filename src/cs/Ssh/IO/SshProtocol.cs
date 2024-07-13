@@ -91,7 +91,7 @@ internal class SshProtocol : IDisposable
 
 	internal bool TraceChannelData { get; set; }
 
-	internal Dictionary<string, string>? Extensions { get; set; }
+	internal IReadOnlyDictionary<string, string>? Extensions { get; set; }
 
 	internal KeyExchangeService? KeyExchangeService { get; set; }
 
