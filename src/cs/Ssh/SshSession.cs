@@ -1475,23 +1475,27 @@ public class SshSession : IDisposable
 			return;
 		}
 
-		Protocol.Extensions = new Dictionary<string, string>();
-
 		var proposedExtensions = message.ExtensionInfo;
 		if (proposedExtensions == null)
 		{
+			Protocol.Extensions = new Dictionary<string, string>();
 			return;
 		}
 
+		// Fill the extensions dictionary with only the extensions that are enabled.
+		// Assign to the Protocol.Extensions property only after it is filled to avoid a race.
+		Dictionary<string, string> extensions = new Dictionary<string, string>();
 		foreach (var extensionName in Config.ProtocolExtensions)
 		{
 			if (proposedExtensions.TryGetValue(extensionName, out var value))
 			{
-				Protocol.Extensions.Add(extensionName, value);
+				extensions.Add(extensionName, value);
 			}
 		}
 
-		if (Protocol.Extensions.ContainsKey(SshProtocolExtensionNames.SessionReconnect))
+		Protocol.Extensions = extensions;
+
+		if (extensions.ContainsKey(SshProtocolExtensionNames.SessionReconnect))
 		{
 			// Reconnect is not enabled until each side sends a special request message.
 			await EnableReconnectAsync(cancellation).ConfigureAwait(false);
