@@ -599,18 +599,34 @@ public class SessionTests : IDisposable
 
 		this.serverSession.Request += (_, e) =>
 		{
+			var success = e.RequestType == "2" || e.RequestType == "4";
+
 			// Use a longer delay for the first message, so it completes after the second one.
-			var delay = TimeSpan.FromSeconds(2 - int.Parse(e.RequestType));
-			e.ResponseTask = AsyncResponse(delay, success: e.RequestType != "1");
+			var delay = success ? TimeSpan.Zero : TimeSpan.FromSeconds(1);
+			e.ResponseTask = AsyncResponse(delay, success);
 		};
 
-		var testRequest1 = new SessionRequestMessage { RequestType = "1", WantReply = true };
-		var testRequest2 = new SessionRequestMessage { RequestType = "2", WantReply = true };
-		var request1Task = this.clientSession.RequestAsync(testRequest1).WithTimeout(Timeout);
-		var request2Task = this.clientSession.RequestAsync(testRequest2).WithTimeout(Timeout);
+		var request1Task = this.clientSession.RequestAsync(
+				new SessionRequestMessage { RequestType = "1", WantReply = true }
+				).WithTimeout(Timeout);
+
+		var request2Task = this.clientSession.RequestAsync(
+			new SessionRequestMessage { RequestType = "2", WantReply = true }
+			).WithTimeout(Timeout);
 
 		Assert.False(await request1Task);
 		Assert.True(await request2Task);
+
+		var request3Task = this.clientSession.RequestAsync(
+			new SessionRequestMessage { RequestType = "3", WantReply = true }
+			).WithTimeout(Timeout);
+
+		var request4Task = this.clientSession.RequestAsync(
+			new SessionRequestMessage { RequestType = "4", WantReply = true }
+			).WithTimeout(Timeout);
+
+		Assert.False(await request3Task);
+		Assert.True(await request4Task);
 	}
 
 	[Fact]
