@@ -31,4 +31,8 @@ public class PortForwardChannelOpenMessage : ChannelOpenMessage
 		writer.Write(OriginatorIPAddress ?? string.Empty, Encoding.ASCII);
 		writer.Write(OriginatorPort);
 	}
+
+	public override string ToString() =>
+		$"{GetType().Name} ChannelType: {ChannelType}, SenderChannel: {SenderChannel}, " +
+		$"Host: {Host}, Port: {Port}, OriginatorIPAddress: {OriginatorIPAddress}, OriginatorPort: {OriginatorPort}";
 }

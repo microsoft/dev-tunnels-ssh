@@ -7,7 +7,10 @@ using System.Threading.Tasks;
 
 namespace Microsoft.DevTunnels.Ssh;
 
-internal class TaskChain : IDisposable
+/// <summary>
+/// Helper class to run tasks in sequence.
+/// </summary>
+public sealed class TaskChain : IDisposable
 {
 	private Task? runInSequenceTask;
 
@@ -18,9 +21,14 @@ internal class TaskChain : IDisposable
 	private bool isDisposed;
 	private readonly TraceSource trace;
 
+	/// <summary>
+	/// Create a new instance of <see cref="TaskChain"/>"/> class.
+	/// </summary>
+	/// <param name="trace">Trace source to use for errors.</param>
+	/// <exception cref="ArgumentNullException">Thrown if <paramref name="trace"/> is null.</exception>
 	public TaskChain(TraceSource trace)
 	{
-		this.trace = trace;
+		this.trace = trace ?? throw new ArgumentNullException(nameof(trace));
 	}
 
 	/// <summary>
@@ -41,8 +49,12 @@ internal class TaskChain : IDisposable
 	/// <param name="onError">Called when an error happens while running the task or scheduling the task</param>
 	/// <param name="preTask">A task which has to be called right after adding task to the queue. And pre task has to be completed before running the task.</param>
 	/// <param name="cancellation">Cancellation Token for adding a task to the queue. And note that it does not cancel the task once added.</param>
+	/// <exception cref="ArgumentNullException">Throw if <paramref name="task"/> or <paramref name="onError"/> is null.</exception>
 	public async Task RunInSequence(Func<Task> task, Action<Exception> onError, Func<Task>? preTask, CancellationToken cancellation)
 	{
+		if (task == null) throw new ArgumentNullException(nameof(task));
+		if (onError == null) throw new ArgumentNullException(nameof(onError));
+
 		if (isDisposed)
 		{
 			onError(new ObjectDisposedException(GetType().Name));
@@ -62,41 +74,31 @@ internal class TaskChain : IDisposable
 				runInSequenceTask = null;
 			}
 
+			async Task RunTaskAsync()
+			{
+				try
+				{
+					await completionSource.Task.ConfigureAwait(false);
+					await task.Invoke().ConfigureAwait(false);
+				}
+				catch (Exception ex)
+				{
+					onError(ex);
+				}
+			}
+
 			if (runInSequenceTask == null)
 			{
-				runInSequenceTask = Task.Run(
-					async () =>
-					{
-						try
-						{
-							await completionSource.Task.ConfigureAwait(false);
-							await task.Invoke().ConfigureAwait(false);
-						}
-						catch (Exception ex)
-						{
-							onError(ex);
-						}
-					},
-					cancellation);
+				runInSequenceTask = Task.Run(RunTaskAsync, cancellation);
 			}
 			else
 			{
 				runInSequenceTask = runInSequenceTask.ContinueWith(
-					async (_) =>
-					{
-						try
-						{
-							await completionSource.Task.ConfigureAwait(false);
-							await task.Invoke().ConfigureAwait(false);
-						}
-						catch (Exception ex)
-						{
-							onError(ex);
-						}
-					},
+					(_) => RunTaskAsync(),
 					cancellation,
 					TaskContinuationOptions.None,
-					TaskScheduler.Default);
+					TaskScheduler.Default)
+					.Unwrap();
 			}
 		}
 		catch (Exception ex)
@@ -126,6 +128,10 @@ internal class TaskChain : IDisposable
 		}
 	}
 
+	/// <summary>
+	/// Wait for all scheduled tasks.
+	/// </summary>
+	/// <param name="cancellationToken">Cancellation token for waiting for all the tasks.</param>
 	public async Task WaitForAllCurrentTasks(CancellationToken cancellationToken)
 	{
 		using (var semaphore = new SemaphoreSlim(0))
@@ -149,6 +155,7 @@ internal class TaskChain : IDisposable
 		}
 	}
 
+	/// <inheritdoc/>
 	public void Dispose()
 	{
 		isDisposed = true;
