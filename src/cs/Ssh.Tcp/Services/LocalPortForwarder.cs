@@ -76,8 +76,12 @@ public class LocalPortForwarder : SshService
 		{
 			var trace = this.pfs.Session.Trace;
 			this.listener = await this.pfs.TcpListenerFactory.CreateTcpListenerAsync(
-				listenAddress, LocalPort, canChangePort: true, trace, cancellation)
-				.ConfigureAwait(false);
+				RemotePort,
+				listenAddress,
+				LocalPort,
+				canChangeLocalPort: true,
+				trace,
+				cancellation).ConfigureAwait(false);
 
 			LocalPort = ((IPEndPoint)this.listener.LocalEndpoint).Port;
 
@@ -94,8 +98,12 @@ public class LocalPortForwarder : SshService
 				try
 				{
 					this.listener2 = await this.pfs.TcpListenerFactory.CreateTcpListenerAsync(
-						listenAddress, LocalPort, canChangePort: false, trace, cancellation)
-						.ConfigureAwait(false);
+						RemotePort,
+						listenAddress,
+						LocalPort,
+						canChangeLocalPort: false,
+						trace,
+						cancellation).ConfigureAwait(false);
 				}
 				catch (SocketException sockex)
 				when (sockex.SocketErrorCode == SocketError.AddressNotAvailable)

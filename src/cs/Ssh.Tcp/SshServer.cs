@@ -79,9 +79,10 @@ public class SshServer : IDisposable
 		try
 		{
 			listener = await TcpListenerFactory.CreateTcpListenerAsync(
+				remotePort: null,
 				localAddress,
 				localPort,
-				canChangePort: false,
+				canChangeLocalPort: false,
 				this.trace,
 				CancellationToken.None)
 				.ConfigureAwait(false);

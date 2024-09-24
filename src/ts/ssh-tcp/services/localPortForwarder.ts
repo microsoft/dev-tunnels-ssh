@@ -77,6 +77,7 @@ export class LocalPortForwarder extends SshService {
 		let listenAddress = this.localIPAddress;
 		try {
 			this.tcpListener = await this.pfs.tcpListenerFactory.createTcpListener(
+				this.remotePort,
 				listenAddress,
 				this.port,
 				true,
@@ -97,6 +98,7 @@ export class LocalPortForwarder extends SshService {
 				listenAddress = this.localIPAddress === '0.0.0.0' ? '::' : '::1';
 				try {
 					this.tcpListener2 = await this.pfs.tcpListenerFactory.createTcpListener(
+						this.remotePort,
 						listenAddress,
 						this.port,
 						false,

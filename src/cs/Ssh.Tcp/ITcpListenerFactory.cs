@@ -18,11 +18,13 @@ public interface ITcpListenerFactory
 	/// Creates and starts a TCP listener for the specified local network address and port
 	/// number.
 	/// </summary>
+	/// <param name="remotePort">The remote port that this local port will connect to (if known).
+	/// </param>
 	/// <param name="localIPAddress">Local IP address to listen on.</param>
 	/// <param name="localPort">Requested local port to listen on, or 0 to use a random
 	/// available port number.</param>
-	/// <param name="canChangePort">True if the factory is allowed to select a different
-	/// port number than the one that was requested; if false then the factory must either
+	/// <param name="canChangeLocalPort">True if the factory is allowed to select a different
+	/// local port number than the one that was requested; if false then the factory must either
 	/// use the requested port or throw an exception.</param>
 	/// <param name="trace">Trace source.</param>
 	/// <param name="cancellation">Cancellation token.</param>
@@ -43,9 +45,10 @@ public interface ITcpListenerFactory
 	/// <see cref="TcpListener.LocalEndpoint"/> property.
 	/// </remarks>
 	Task<TcpListener> CreateTcpListenerAsync(
+		int? remotePort,
 		IPAddress localIPAddress,
 		int localPort,
-		bool canChangePort,
+		bool canChangeLocalPort,
 		TraceSource trace,
 		CancellationToken cancellation);
 }

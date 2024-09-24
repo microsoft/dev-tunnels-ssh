@@ -50,6 +50,7 @@ class TestTcpListenerFactory implements TcpListenerFactory {
 	public constructor(public readonly localPortOverride: number) { }
 
 	public async createTcpListener(
+		remotePort: number | undefined,
 		localIPAddress: string,
 		localPort: number,
 		canChangePort: boolean,
