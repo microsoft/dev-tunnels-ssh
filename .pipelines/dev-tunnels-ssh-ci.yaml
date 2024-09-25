@@ -125,18 +125,11 @@ jobs:
           customCommand: run test-ts -- --release --serial --coverage
 
       - task: Npm@1
-        displayName: Test (.NET Core 3.1)
+        displayName: Test (.NET 8)
         inputs:
           command: custom
           verbose: false
-          customCommand: run test-cs -- --release --serial --coverage --framework netcoreapp3.1
-
-      - task: Npm@1
-        displayName: Test (.NET 6)
-        inputs:
-          command: custom
-          verbose: false
-          customCommand: run test-cs -- --release --serial --coverage --framework net6.0
+          customCommand: run test-cs -- --release --serial --coverage --framework net8.0
 
       - task: Npm@1
         displayName: Test (.NET Framework 4.8)
@@ -217,30 +210,30 @@ jobs:
     variables:
       - name: Codeql.SkipTaskAutoInjection
         value: true
+      - name: DYLD_FALLBACK_LIBRARY_PATH
+        value: $(DYLD_FALLBACK_LIBRARY_PATH):/usr/local/lib
     steps:
       - checkout: self
         fetchDepth: -1
         clean: true
         fetchTags: false
 
-      # On the Mac build machines, libssl 1.1 is installed
-      # but not linked in the path expected by .NET. Fix it now.
+      # On the Mac build machines, openssl v3 is installed but
+      # dylibs are not linked in a path that can be found by .NET.
       - task: CmdLine@2
         displayName: Link libssl
         inputs:
-          script: ln -sn /usr/local/opt/openssl@1.1/lib/libssl.1.1.dylib /usr/local/lib/libssl.1.1.dylib
+          script: |
+            sudo mkdir -p /usr/local/lib
+            export OPENSSL3_VERSION=$(brew list --versions openssl@3 | head -n 1 | sed "s/.* //")
+            sudo ln -sfn $(brew --prefix)/Cellar/openssl\@3/$OPENSSL3_VERSION/lib/libssl.3.dylib /usr/local/lib/libssl.3.dylib
+            sudo ln -sfn $(brew --prefix)/Cellar/openssl\@3/$OPENSSL3_VERSION/lib/libcrypto.3.dylib /usr/local/lib/libcrypto.3.dylib
 
       - task: UseDotNet@2
-        displayName: Install .NET Core 3.1 Runtime
+        displayName: Install .NET 8 Runtime
         inputs:
           packageType: runtime
-          version: 3.1.x
-
-      - task: UseDotNet@2
-        displayName: Install .NET 6 Runtime
-        inputs:
-          packageType: runtime
-          version: 6.0.x
+          version: 8.0.x
 
       - task: UseDotNet@2
         displayName: Use .NET SDK specified by global.json
@@ -275,16 +268,8 @@ jobs:
           customCommand: run test-ts -- --release --serial
 
       - task: Npm@1
-        displayName: Test (.NET Core 3.1)
-        enabled: False
+        displayName: Test (.NET 8)
         inputs:
           command: custom
           verbose: false
-          customCommand: run test-cs -- --release --serial --framework netcoreapp3.1
-
-      - task: Npm@1
-        displayName: Test (.NET 6)
-        inputs:
-          command: custom
-          verbose: false
-          customCommand: run test-cs -- --release --serial --framework net6.0
+          customCommand: run test-cs -- --release --serial --framework net8.0

@@ -21,7 +21,7 @@ public class CryptoTests
 	{
 		var alg = GetAlgorithmByName<KeyExchangeAlgorithm>(
 			typeof(SshAlgorithms.KeyExchange), kexAlg);
-		Assert.True(alg.IsAvailable);
+		Assert.True(alg.IsAvailable, $"Algorithm not available: {kexAlg}");
 
 		using var kexA = alg.CreateKeyExchange();
 		using var kexB = alg.CreateKeyExchange();
@@ -46,7 +46,7 @@ public class CryptoTests
 	{
 		var alg = GetAlgorithmByName<PublicKeyAlgorithm>(
 			typeof(SshAlgorithms.PublicKey), pkAlg);
-		Assert.True(alg.IsAvailable);
+		Assert.True(alg.IsAvailable, $"Algorithm not available: {pkAlg}");
 
 		var keyPair = alg.GenerateKeyPair(keySize);
 
@@ -71,7 +71,7 @@ public class CryptoTests
 	{
 		var alg = GetAlgorithmByName<EncryptionAlgorithm>(
 			typeof(SshAlgorithms.Encryption), encAlg);
-		Assert.True(alg.IsAvailable);
+		Assert.True(alg.IsAvailable, $"Algorithm not available: {encAlg}");
 
 		var key = new Buffer(alg.KeyLength);
 		var iv = new Buffer(alg.BlockLength);
@@ -116,7 +116,7 @@ public class CryptoTests
 	{
 		var alg = GetAlgorithmByName<HmacAlgorithm>(
 			typeof(SshAlgorithms.Hmac), hmacAlg);
-		Assert.True(alg.IsAvailable);
+		Assert.True(alg.IsAvailable, $"Algorithm not available: {hmacAlg}");
 
 		var key = new Buffer(alg.KeyLength);
 

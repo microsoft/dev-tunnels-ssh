@@ -12,6 +12,11 @@ on:
         required: false
         default: false
 
+permissions:
+  contents: read
+  actions: read
+  checks: write # Required by test-reporter
+
 jobs:
   builds:
     strategy:
@@ -21,30 +26,35 @@ jobs:
 
     name: Build SSH on ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
+    env:
+      DYLD_FALLBACK_LIBRARY_PATH: $DYLD_FALLBACK_LIBRARY_PATH:/usr/local/lib
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      # On the Mac build machines, libssl 1.1 is installed
-      # but not linked in the path expected by .NET. Fix it now.
+      # On the Mac build machines, openssl v3 is installed but
+      # dylibs are not linked in a path that can be found by .NET.
       - name: Link libssl on Mac OS
-        run: ln -sn /usr/local/opt/openssl@1.1/lib/libssl.1.1.dylib /usr/local/lib/libssl.1.1.dylib
+        run: |
+          sudo mkdir -p /usr/local/lib
+          export OPENSSL3_VERSION=$(brew list --versions openssl@3 | head -n 1 | sed "s/.* //")
+          sudo ln -sfn $(brew --prefix)/Cellar/openssl\@3/$OPENSSL3_VERSION/lib/libssl.3.dylib /usr/local/lib/libssl.3.dylib
+          sudo ln -sfn $(brew --prefix)/Cellar/openssl\@3/$OPENSSL3_VERSION/lib/libcrypto.3.dylib /usr/local/lib/libcrypto.3.dylib
         if: matrix.os == 'macOS-latest'
 
       - name: Install dotnet versions
-        uses: actions/setup-dotnet@v2
+        uses: actions/setup-dotnet@v4
         with:
           dotnet-version: |
-            3.1.x
-            6.0.x
+            8.0.x
 
       - name: Use global.json dotnet version
-        uses: actions/setup-dotnet@v2
+        uses: actions/setup-dotnet@v4
         with:
           global-json-file: global.json
 
-      - uses: actions/setup-node@v3
+      - uses: actions/setup-node@v4
         with:
           node-version: '20.x'
 
@@ -70,12 +80,8 @@ jobs:
         run: npm run test-ts
         continue-on-error: true
 
-      - name: Test .NET Core 3.1
-        run: npm run test-cs -- --release --serial --framework netcoreapp3.1
-        continue-on-error: true
-
-      - name: Test .NET 6
-        run: npm run test-cs -- --release --serial --framework net6.0
+      - name: Test .NET 8
+        run: npm run test-cs -- --release --serial --framework net8.0
         continue-on-error: true
 
       - name: Test .NET Framework 4.8

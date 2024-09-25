@@ -3,7 +3,7 @@
 	<Import Project="../../Directory.Build.props" />
 
 	<PropertyGroup>
-		<TargetFrameworks>netcoreapp3.1;net6.0</TargetFrameworks>
+		<TargetFrameworks>net8.0</TargetFrameworks>
 		<TargetFrameworks Condition=" '$(OS)' == 'Windows_NT' ">net48;$(TargetFrameworks)</TargetFrameworks>
 
 		<IsPackable>false</IsPackable>
@@ -25,12 +25,12 @@
 
 	<PropertyGroup>
 		<!-- AltCover properties -->
-		<AltCover Condition=" '$(CodeCoverage)' == 'true' AND '$(TargetFramework)' == 'netcoreapp3.1' ">true</AltCover>
+		<AltCover Condition=" '$(CodeCoverage)' == 'true' AND '$(TargetFramework)' == 'net8.0' ">true</AltCover>
 		<AltCoverXmlReport>$(TestResultsDirectory)/$(MSBuildProjectName)-coverage.xml</AltCoverXmlReport>
 		<AltCoverAssemblyExcludeFilter>Test|xunit|AltCover</AltCoverAssemblyExcludeFilter>
 		<AltCoverTypeFilter>System.Runtime|CodeAnalysis|ThisAssembly</AltCoverTypeFilter>
 
-		<ReportGeneratorTool>$(NuGetPackageRoot)ReportGenerator\4.6.7\tools\netcoreapp3.0\ReportGenerator.exe</ReportGeneratorTool>
+		<ReportGeneratorTool>$(NuGetPackageRoot)ReportGenerator\4.6.7\tools\net8.0\ReportGenerator.exe</ReportGeneratorTool>
 	</PropertyGroup>
 
 </Project>

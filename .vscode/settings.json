@@ -20,7 +20,7 @@
 	  "editor.formatOnSave": true
 	},
 	"files.insertFinalNewline": false,
-	"dotnetCoreExplorer.searchpatterns": "out/bin/Debug/*/netcoreapp3.1/*.Test.dll",
+	"dotnetCoreExplorer.searchpatterns": "out/bin/Debug/*/net8.0/*.Test.dll",
 	"typescript.tsdk": "node_modules/typescript/lib",
 	"mochaExplorer.debuggerConfig": "Attach Debugger",
 	"mochaExplorer.env": {
