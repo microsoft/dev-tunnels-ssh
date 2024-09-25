@@ -36,7 +36,7 @@ yargs.option('release', {
 });
 yargs.option('framework', {
 	desc: 'Specify .net application framework',
-	choices: ['net48', 'netcoreapp2.1', 'netcoreapp3.1', 'net6.0', 'netstandard2.1'],
+	choices: ['net48', 'net8.0', 'netstandard2.1'],
 	group: buildGroup,
 });
 yargs.option('msbuild', {
@@ -358,9 +358,9 @@ async function linkLib(packageName, dirName) {
 }
 
 function getTargetAppFramework(framework) {
-	if (!framework || framework == 'netstandard2.1' || framework == 'netcoreapp3.1') {
-		return 'netcoreapp3.1';
-	} else if (framework == 'net6.0' || framework == 'net48') {
+	if (!framework || framework == 'netstandard2.1') {
+		return 'net8.0';
+	} else if (framework == 'net8.0' || framework == 'net48') {
 		return framework;
 	} else {
 		throw new Error('Invalid target framework: ' + framework);

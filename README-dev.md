@@ -37,7 +37,7 @@ npm run test-cs
 To run/debug an individual test case or subset of test cases matching a
 substring, use a command similar to the following:
 ```
-npm run test-cs --framework netcoreapp3.1 --filter crypto
+npm run test-cs --framework net8.0 --filter crypto
 ```
 Or open `SSH.sln` in Visual Studio 2019 and use the Test Explorer.
 
