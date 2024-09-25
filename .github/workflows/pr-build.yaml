@@ -26,17 +26,21 @@ jobs:
 
     name: Build SSH on ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
+    env:
+      DYLD_FALLBACK_LIBRARY_PATH: $DYLD_FALLBACK_LIBRARY_PATH:/usr/local/lib
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      # On the Mac build machines, libssl 1.1 is installed
-      # but not linked in the path expected by .NET. Fix it now.
+      # On the Mac build machines, openssl v3 is installed but
+      # dylibs are not linked in a path that can be found by .NET.
       - name: Link libssl on Mac OS
         run: |
           sudo mkdir -p /usr/local/lib
-          sudo ln -sn /usr/local/opt/openssl@1.1/lib/libssl.1.1.dylib /usr/local/lib/libssl.1.1.dylib
+          export OPENSSL3_VERSION=$(brew list --versions openssl@3 | head -n 1 | sed "s/.* //")
+          sudo ln -sfn $(brew --prefix)/Cellar/openssl\@3/$OPENSSL3_VERSION/lib/libssl.3.dylib /usr/local/lib/libssl.3.dylib
+          sudo ln -sfn $(brew --prefix)/Cellar/openssl\@3/$OPENSSL3_VERSION/lib/libcrypto.3.dylib /usr/local/lib/libcrypto.3.dylib
         if: matrix.os == 'macOS-latest'
 
       - name: Install dotnet versions

@@ -210,20 +210,24 @@ jobs:
     variables:
       - name: Codeql.SkipTaskAutoInjection
         value: true
+      - name: DYLD_FALLBACK_LIBRARY_PATH
+        value: $(DYLD_FALLBACK_LIBRARY_PATH):/usr/local/lib
     steps:
       - checkout: self
         fetchDepth: -1
         clean: true
         fetchTags: false
 
-      # On the Mac build machines, libssl 1.1 is installed
-      # but not linked in the path expected by .NET. Fix it now.
+      # On the Mac build machines, openssl v3 is installed but
+      # dylibs are not linked in a path that can be found by .NET.
       - task: CmdLine@2
         displayName: Link libssl
         inputs:
           script: |
             sudo mkdir -p /usr/local/lib
-            sudo ln -sn /usr/local/opt/openssl@1.1/lib/libssl.1.1.dylib /usr/local/lib/libssl.1.1.dylib
+            export OPENSSL3_VERSION=$(brew list --versions openssl@3 | head -n 1 | sed "s/.* //")
+            sudo ln -sfn $(brew --prefix)/Cellar/openssl\@3/$OPENSSL3_VERSION/lib/libssl.3.dylib /usr/local/lib/libssl.3.dylib
+            sudo ln -sfn $(brew --prefix)/Cellar/openssl\@3/$OPENSSL3_VERSION/lib/libcrypto.3.dylib /usr/local/lib/libcrypto.3.dylib
 
       - task: UseDotNet@2
         displayName: Install .NET 8 Runtime
