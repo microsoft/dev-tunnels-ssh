@@ -31,6 +31,15 @@ jobs:
         with:
           fetch-depth: 0
 
+      # On the Mac build machines, libssl 1.1 is not installed
+      # but is required for some .NET crypto algorithms.
+      - name: Install libssl on Mac OS
+        run: |
+          brew install openssl@1.1
+          brew info openssl
+          ln -sfn $(brew --prefix)/opt/openssl@1.1/lib/libssl.1.1.dylib /usr/local/lib/libssl.1.1.dylib
+        if: matrix.os == 'macOS-latest'
+
       - name: Install dotnet versions
         uses: actions/setup-dotnet@v2
         with:
