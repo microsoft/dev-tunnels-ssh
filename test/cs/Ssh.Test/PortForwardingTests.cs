@@ -159,9 +159,10 @@ public class PortForwardingTests : IDisposable
 		}
 
 		public Task<TcpListener> CreateTcpListenerAsync(
+			int? remotePort,
 			IPAddress localIPAddress,
 			int localPort,
-			bool canChangePort,
+			bool canChangeLocalPort,
 			TraceSource trace,
 			CancellationToken cancellation)
 		{

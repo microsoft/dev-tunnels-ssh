@@ -10,11 +10,12 @@ export interface TcpListenerFactory {
 	 * Creates and starts a TCP listener for the specified local network address and port
 	 * number.
 	 *
+	 * @param remotePort The remote port that this local port will connect to (if known).
 	 * @param localIPAddress Local IP address to listen on.
 	 * @param localPort Requested local port to listen on, or 0 to use a random
 	 * available port number.
-	 * @param canChangePort True if the factory is allowed to select a different
-	 * port number than the one that was requested; if false then the factory must either
+	 * @param canChangeLocalPort True if the factory is allowed to select a different
+	 * local port number than the one that was requested; if false then the factory must either
 	 * use the requested port or throw an exception.</param>
 	 * @param cancellation">Cancellation token.</param>
 	 * @returns TCP listener object that has started listening.</returns>
@@ -33,18 +34,20 @@ export interface TcpListenerFactory {
 	 * obtain the actual port from the returned listener's `localEndpoint` property.
 	 */
 	createTcpListener(
+		remotePort: number | undefined,
 		localIPAddress: string,
 		localPort: number,
-		canChangePort: boolean,
+		canChangeLocalPort: boolean,
 		cancellation?: CancellationToken,
 	): Promise<net.Server>;
 }
 
 export class DefaultTcpListenerFactory implements TcpListenerFactory {
 	public async createTcpListener(
+		remotePort: number | undefined,
 		localIPAddress: string,
 		localPort: number,
-		canChangePort: boolean,
+		canChangeLocalPort: boolean,
 		cancellation?: CancellationToken,
 	): Promise<net.Server> {
 		if (!localIPAddress) throw new TypeError('Local IP address is required.');

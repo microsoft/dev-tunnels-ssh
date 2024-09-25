@@ -81,6 +81,7 @@ export class SshServer implements Disposable {
 
 		try {
 			this.tcpListener = await this.tcpListenerFactory.createTcpListener(
+				undefined, // remotePort
 				localAddress,
 				localPort,
 				false,
