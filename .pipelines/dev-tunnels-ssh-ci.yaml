@@ -216,15 +216,14 @@ jobs:
         clean: true
         fetchTags: false
 
-      # On the Mac build machines, libssl 1.1 is not installed
-      # but is required for some .NET crypto algorithms.
+      # On the Mac build machines, libssl 1.1 is installed
+      # but not linked in the path expected by .NET. Fix it now.
       - task: CmdLine@2
-        displayName: Install libssl
+        displayName: Link libssl
         inputs:
           script: |
-            brew install openssl@1.1
-            brew info openssl
-            ln -sfn $(brew --prefix)/opt/openssl@1.1/lib/libssl.1.1.dylib /usr/local/lib/libssl.1.1.dylib
+            sudo mkdir -p /usr/local/lib
+            ln -sn /usr/local/opt/openssl@1.1/lib/libssl.1.1.dylib /usr/local/lib/libssl.1.1.dylib
 
       - task: UseDotNet@2
         displayName: Install .NET 8 Runtime
