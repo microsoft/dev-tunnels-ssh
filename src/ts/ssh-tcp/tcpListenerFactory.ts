@@ -37,7 +37,7 @@ export interface TcpListenerFactory {
 		remotePort: number | undefined,
 		localIPAddress: string,
 		localPort: number,
-		canChangePort: boolean,
+		canChangeLocalPort: boolean,
 		cancellation?: CancellationToken,
 	): Promise<net.Server>;
 }
@@ -47,7 +47,7 @@ export class DefaultTcpListenerFactory implements TcpListenerFactory {
 		remotePort: number | undefined,
 		localIPAddress: string,
 		localPort: number,
-		canChangePort: boolean,
+		canChangeLocalPort: boolean,
 		cancellation?: CancellationToken,
 	): Promise<net.Server> {
 		if (!localIPAddress) throw new TypeError('Local IP address is required.');

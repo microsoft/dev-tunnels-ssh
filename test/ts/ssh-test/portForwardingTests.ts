@@ -53,7 +53,7 @@ class TestTcpListenerFactory implements TcpListenerFactory {
 		remotePort: number | undefined,
 		localIPAddress: string,
 		localPort: number,
-		canChangePort: boolean,
+		canChangeLocalPort: boolean,
 	): Promise<net.Server> {
 		const listener = net.createServer();
 		await new Promise((resolve, reject) => {

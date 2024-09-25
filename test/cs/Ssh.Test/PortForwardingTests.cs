@@ -162,7 +162,7 @@ public class PortForwardingTests : IDisposable
 			int? remotePort,
 			IPAddress localIPAddress,
 			int localPort,
-			bool canChangePort,
+			bool canChangeLocalPort,
 			TraceSource trace,
 			CancellationToken cancellation)
 		{
