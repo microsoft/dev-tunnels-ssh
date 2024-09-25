@@ -27,7 +27,7 @@ jobs:
     name: Build SSH on ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
@@ -41,17 +41,17 @@ jobs:
         if: matrix.os == 'macOS-latest'
 
       - name: Install dotnet versions
-        uses: actions/setup-dotnet@v2
+        uses: actions/setup-dotnet@v4
         with:
           dotnet-version: |
             8.0.x
 
       - name: Use global.json dotnet version
-        uses: actions/setup-dotnet@v2
+        uses: actions/setup-dotnet@v4
         with:
           global-json-file: global.json
 
-      - uses: actions/setup-node@v3
+      - uses: actions/setup-node@v4
         with:
           node-version: '20.x'
 
