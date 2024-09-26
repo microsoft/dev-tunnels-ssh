@@ -163,7 +163,7 @@ jobs:
           testResultsFiles: '*.xml'
           searchFolder: out/testresults
 
-      - task: PublishCodeCoverageResults@1
+      - task: PublishCodeCoverageResults@2
         displayName: Publish code coverage
         inputs:
           codeCoverageTool: Cobertura
