@@ -15,22 +15,22 @@
 	</PropertyGroup>
 
 	<ItemGroup>
-		<PackageReference Include="Microsoft.NET.Test.Sdk" Version="16.8.0-preview-20200812-03" />
+		<PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />
 		<PackageReference Include="xunit" Version="2.4.1" />
 		<PackageReference Include="xunit.runner.visualstudio" Version="2.4.3" />
 		<PackageReference Include="Xunit.SkippableFact" Version="1.3.12" />
-		<PackageReference Include="altcover" Version="7.1.782" />
-		<PackageReference Include="ReportGenerator" Version="4.6.7" />
+		<PackageReference Include="altcover" Version="8.9.3" />
+		<PackageReference Include="ReportGenerator" Version="5.3.9" />
 	</ItemGroup>
 
 	<PropertyGroup>
 		<!-- AltCover properties -->
 		<AltCover Condition=" '$(CodeCoverage)' == 'true' AND '$(TargetFramework)' == 'net8.0' ">true</AltCover>
-		<AltCoverXmlReport>$(TestResultsDirectory)/$(MSBuildProjectName)-coverage.xml</AltCoverXmlReport>
+		<AltCoverReport>$(TestResultsDirectory)/$(MSBuildProjectName)-coverage.xml</AltCoverReport>
 		<AltCoverAssemblyExcludeFilter>Test|xunit|AltCover</AltCoverAssemblyExcludeFilter>
 		<AltCoverTypeFilter>System.Runtime|CodeAnalysis|ThisAssembly</AltCoverTypeFilter>
 
-		<ReportGeneratorTool>$(NuGetPackageRoot)ReportGenerator\4.6.7\tools\net8.0\ReportGenerator.exe</ReportGeneratorTool>
+		<ReportGeneratorTool>$(NuGetPackageRoot)ReportGenerator\5.3.9\tools\net8.0\ReportGenerator.exe</ReportGeneratorTool>
 	</PropertyGroup>
 
 </Project>
