@@ -510,7 +510,7 @@ public class SshSession : IDisposable
 				{
 					try
 					{
-						if (this.CanAcceptRequests)
+						if (this.CanAcceptRequests && !IsClosed)
 						{
 							this.keepAliveResponseReceived = false;
 							await SendMessageAsync(
