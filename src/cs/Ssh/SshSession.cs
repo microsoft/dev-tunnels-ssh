@@ -478,7 +478,7 @@ public class SshSession : IDisposable
 				}
 
 				// Implement KeepAlive
-				ImplementKeepAlive(connectCts.Token);
+				StartKeepAliveTimer(this.disposeCancellationSource.Token);
 			}
 
 			this.connectCompletionSource.TrySetResult(true);
@@ -501,27 +501,37 @@ public class SshSession : IDisposable
 		await this.connectCompletionSource.Task.ConfigureAwait(false);
 	}
 
-	internal void ImplementKeepAlive(CancellationToken cancellation)
+	internal void StartKeepAliveTimer(CancellationToken cancellation)
 	{
 		if (Config.KeepAliveTimeoutInSeconds > 0)
 		{
 			keepAliveTimer = new (
 				async (state) =>
 				{
-					if (this.CanAcceptRequests)
+					try
 					{
-						this.keepAliveResponseReceived = false;
-						await SendMessageAsync(
-								new SessionRequestMessage() { RequestType = "keepalive@openssh.com", WantReply = true },
-								cancellation)
-							.ConfigureAwait(true);
-
-						// wait for 1 second and check if a response received by then
-						await Task.Delay(KeepAliveResponceTimeoutInMilliSeconds, cancellation).ConfigureAwait(false);
-						if (!keepAliveResponseReceived)
+						if (this.CanAcceptRequests)
 						{
-							Trace.TraceInformation("Keep alive response not received.");
+							this.keepAliveResponseReceived = false;
+							await SendMessageAsync(
+									new SessionRequestMessage() { RequestType = "keepalive@openssh.com", WantReply = true },
+									cancellation)
+								.ConfigureAwait(true);
+
+							// wait for 1 second and check if a response received by then
+							await Task.Delay(KeepAliveResponceTimeoutInMilliSeconds, cancellation).ConfigureAwait(false);
+							if (!keepAliveResponseReceived)
+							{
+								Trace.TraceInformation("Keep alive response not received.");
+							}
 						}
+					}
+					catch (Exception ex)
+					{
+						Trace.TraceEvent(
+							TraceEventType.Error,
+							SshTraceEventIds.KeepAliveFailed,
+							ex.ToString());
 					}
 				},
 				null,
@@ -566,9 +576,17 @@ public class SshSession : IDisposable
 				}
 
 				// Reset the keepAlive timer on any message received.
-				keepAliveTimer?.Change(
-					TimeSpan.FromSeconds(Config.KeepAliveTimeoutInSeconds),
-					TimeSpan.FromMilliseconds(Timeout.Infinite));
+				try
+				{
+					keepAliveTimer?.Change(
+						TimeSpan.FromSeconds(Config.KeepAliveTimeoutInSeconds),
+						TimeSpan.FromMilliseconds(Timeout.Infinite));
+				}
+				catch (ObjectDisposedException)
+				{
+					// ignore if the timer is disposed
+				}
+
 				this.keepAliveResponseReceived = true;
 			}
 

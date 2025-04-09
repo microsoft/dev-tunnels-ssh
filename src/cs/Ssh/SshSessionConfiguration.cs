@@ -33,7 +33,7 @@ public class SshSessionConfiguration
 	private bool locked;
 	private bool enableKeyExchangeGuess;
 	private int maxClientAuthenticationAttempts = 5;
-	private int keepAliveTimeoutInSeconds = 0;
+	private int keepAliveTimeoutInSeconds;
 
 	public SshSessionConfiguration(
 		bool useSecurity = true,
