@@ -27,6 +27,8 @@ namespace Microsoft.DevTunnels.Ssh;
 public class SshSession : IDisposable
 #pragma warning restore CA1506
 {
+	private const int KeepAliveResponceTimeoutInMilliSeconds = 1000;
+
 	/// <summary>
 	/// Allows SSH sessions to keep track of the session number for progress reporting purposes.
 	/// </summary>
@@ -51,6 +53,8 @@ public class SshSession : IDisposable
 	private Task? versionExchangeTask;
 	private Exception? closedException;
 	private int sessionNumber;
+	private Timer? keepAliveTimer;
+	private bool keepAliveResponseReceived = false;
 
 	/// <summary>
 	/// Constructs a new SSH session.
@@ -472,6 +476,9 @@ public class SshSession : IDisposable
 					this.OnReportProgress(Progress.CompletedProtocolVersionExchange);
 					IsConnected = true;
 				}
+
+				// Implement KeepAlive
+				ImplementKeepAlive(connectCts.Token);
 			}
 
 			this.connectCompletionSource.TrySetResult(true);
@@ -492,6 +499,35 @@ public class SshSession : IDisposable
 
 		// Await the completion source in case it got set to an exception by Dispose().
 		await this.connectCompletionSource.Task.ConfigureAwait(false);
+	}
+
+	internal void ImplementKeepAlive(CancellationToken cancellation)
+	{
+		if (Config.KeepAliveTimeoutnSeconds > 0)
+		{
+			keepAliveTimer = new (
+				async (state) =>
+				{
+					if (this.CanAcceptRequests)
+					{
+						this.keepAliveResponseReceived = false;
+						await SendMessageAsync(
+								new SessionRequestMessage() { RequestType = "keepalive@openssh.com", WantReply = true },
+								cancellation)
+							.ConfigureAwait(true);
+
+						// wait for 1 second and check if a response received by then
+						await Task.Delay(KeepAliveResponceTimeoutInMilliSeconds, cancellation).ConfigureAwait(false);
+						if (!keepAliveResponseReceived)
+						{
+							Trace.TraceInformation("Keep alive response not received.");
+						}
+					}
+				},
+				null,
+				TimeSpan.FromSeconds(Config.KeepAliveTimeoutnSeconds),
+				TimeSpan.FromMilliseconds(Timeout.Infinite));
+		}
 	}
 
 	/// <summary>
@@ -528,6 +564,12 @@ public class SshSession : IDisposable
 				{
 					break;
 				}
+
+				// Reset the keepAlive timer on any message received.
+				keepAliveTimer?.Change(
+					TimeSpan.FromSeconds(Config.KeepAliveTimeoutnSeconds),
+					TimeSpan.FromMilliseconds(Timeout.Infinite));
+				this.keepAliveResponseReceived = true;
 			}
 
 			IsConnected = false;
@@ -772,6 +814,7 @@ public class SshSession : IDisposable
 			}
 
 			this.kexService?.Dispose();
+			this.keepAliveTimer?.Dispose();
 
 			Protocol?.Dispose();
 			Protocol = null;

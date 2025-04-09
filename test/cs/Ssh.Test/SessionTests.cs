@@ -698,6 +698,43 @@ public class SessionTests : IDisposable
 		Assert.True(lastEvent.Progress == Progress.CompletedSessionAuthentication);
 	}
 
+	[Fact]
+	public async Task TestKeepAliveOneMessage()
+	{
+		var clientConfig = new SshSessionConfiguration();
+		clientConfig.KeepAliveTimeoutnSeconds = 1;
+		var serverConfig = new SshSessionConfiguration();
+
+		var sessionPair2 = new SessionPair(serverConfig, clientConfig);
+		await sessionPair2.ConnectAsync(authenticate: false).WithTimeout(Timeout);
+		sessionPair2.ServerSession.Authenticating += (sender, e) =>
+		{
+			e.AuthenticationTask = Task.FromResult(new ClaimsPrincipal());
+		};
+		var authenticatedServer = await sessionPair2.ClientSession.AuthenticateServerAsync();
+		var authenticated = await sessionPair2.ClientSession.AuthenticateClientAsync(
+			new SshClientCredentials(TestUsername, TestPassword)).WithTimeout(Timeout);
+		Assert.True(authenticated);
+		bool keepAliveCalled = false;
+		var responseTask = async (SshRequestEventArgs<SessionRequestMessage> e) =>
+		{
+			if (e.Request.RequestType == "keepalive@openssh.com")
+			{
+				keepAliveCalled = true;
+				return new SessionRequestFailureMessage() as SshMessage;
+			}
+			return new SessionRequestSuccessMessage() as SshMessage;
+		};
+		sessionPair2.ServerSession.Request += (sender, e) =>
+		{
+			e.ResponseTask = responseTask(e);
+		};
+
+		// Wait for the keep-alive to be sent.
+		await Task.Delay(TimeSpan.FromMilliseconds(1500)).WithTimeout(Timeout);
+		Assert.True(keepAliveCalled);
+	}
+
 	private static T GetAlgorithmByName<T>(Type algorithmClass, string name)
 		where T : SshAlgorithm
 	{

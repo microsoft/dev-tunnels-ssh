@@ -33,6 +33,7 @@ public class SshSessionConfiguration
 	private bool locked;
 	private bool enableKeyExchangeGuess;
 	private int maxClientAuthenticationAttempts = 5;
+	private int keepAliveTimeoutInSeconds = 0;
 
 	public SshSessionConfiguration(
 		bool useSecurity = true,
@@ -516,6 +517,16 @@ public class SshSessionConfiguration
 	{
 		get => this.enableKeyExchangeGuess;
 		set => EnsureUnlocked().enableKeyExchangeGuess = value;
+	}
+
+	/// <summary>
+	/// Gets or sets the timeout duration for keeping a connection alive in seconds. Ensures the connection is unlocked
+	/// before setting the value.
+	/// </summary>
+	public int KeepAliveTimeoutInSeconds
+	{
+		get => this.keepAliveTimeoutInSeconds;
+		set => EnsureUnlocked().keepAliveTimeoutInSeconds = value;
 	}
 
 	/// <summary>
