@@ -503,7 +503,7 @@ public class SshSession : IDisposable
 
 	internal void ImplementKeepAlive(CancellationToken cancellation)
 	{
-		if (Config.KeepAliveTimeoutnSeconds > 0)
+		if (Config.KeepAliveTimeoutInSeconds > 0)
 		{
 			keepAliveTimer = new (
 				async (state) =>
@@ -525,7 +525,7 @@ public class SshSession : IDisposable
 					}
 				},
 				null,
-				TimeSpan.FromSeconds(Config.KeepAliveTimeoutnSeconds),
+				TimeSpan.FromSeconds(Config.KeepAliveTimeoutInSeconds),
 				TimeSpan.FromMilliseconds(Timeout.Infinite));
 		}
 	}
@@ -567,7 +567,7 @@ public class SshSession : IDisposable
 
 				// Reset the keepAlive timer on any message received.
 				keepAliveTimer?.Change(
-					TimeSpan.FromSeconds(Config.KeepAliveTimeoutnSeconds),
+					TimeSpan.FromSeconds(Config.KeepAliveTimeoutInSeconds),
 					TimeSpan.FromMilliseconds(Timeout.Infinite));
 				this.keepAliveResponseReceived = true;
 			}

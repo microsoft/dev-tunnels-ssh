@@ -702,7 +702,7 @@ public class SessionTests : IDisposable
 	public async Task TestKeepAliveOneMessage()
 	{
 		var clientConfig = new SshSessionConfiguration();
-		clientConfig.KeepAliveTimeoutnSeconds = 1;
+		clientConfig.KeepAliveTimeoutInSeconds = 1;
 		var serverConfig = new SshSessionConfiguration();
 
 		var sessionPair2 = new SessionPair(serverConfig, clientConfig);
