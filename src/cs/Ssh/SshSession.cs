@@ -552,12 +552,12 @@ public class SshSession : IDisposable
 					{
 						keepAliveTimer?.Change(
 							TimeSpan.FromSeconds(Config.KeepAliveTimeoutInSeconds),
-							TimeSpan.FromMilliseconds(Timeout.Infinite));
+							Timeout.InfiniteTimeSpan);
 					}
 				},
 				null,
 				TimeSpan.FromSeconds(Config.KeepAliveTimeoutInSeconds),
-				TimeSpan.FromMilliseconds(Timeout.Infinite));
+				Timeout.InfiniteTimeSpan);
 		}
 	}
 
@@ -601,7 +601,7 @@ public class SshSession : IDisposable
 				{
 					keepAliveTimer?.Change(
 						TimeSpan.FromSeconds(Config.KeepAliveTimeoutInSeconds),
-						TimeSpan.FromMilliseconds(Timeout.Infinite));
+						Timeout.InfiniteTimeSpan);
 				}
 				catch (ObjectDisposedException)
 				{
