@@ -726,6 +726,80 @@ public class SessionTests : IDisposable
 		Assert.True(keepAliveCalled);
 	}
 
+	[Fact]
+	public async Task TestNoKeepAliveWhenActive()
+	{
+		var clientConfig = new SshSessionConfiguration();
+		clientConfig.KeepAliveTimeoutInSeconds = 1;
+		var serverConfig = new SshSessionConfiguration();
+
+		var sessionPair2 = new SessionPair(serverConfig, clientConfig);
+		await sessionPair2.ConnectAsync(authenticate: false).WithTimeout(Timeout);
+		sessionPair2.ServerSession.Authenticating += (sender, e) =>
+		{
+			e.AuthenticationTask = Task.FromResult(new ClaimsPrincipal());
+		};
+		var authenticatedServer = await sessionPair2.ClientSession.AuthenticateServerAsync();
+		var authenticated = await sessionPair2.ClientSession.AuthenticateClientAsync(
+			new SshClientCredentials(TestUsername, TestPassword)).WithTimeout(Timeout);
+		Assert.True(authenticated);
+		bool keepAliveCalled = false;
+		sessionPair2.ServerSession.KeepAliveRequestReceived += (sender, e) =>
+		{
+			keepAliveCalled = true;
+		};
+
+		// Send messages to keep the session alive.
+		for (int i = 0; i < 5; i++)
+		{
+			await sessionPair2.ServerSession.RequestAsync(
+				new SessionRequestMessage { RequestType = "test" }).WithTimeout(Timeout);
+			await Task.Delay(TimeSpan.FromMilliseconds(500)).WithTimeout(Timeout);
+		}
+		Assert.False(keepAliveCalled);
+	}
+
+	[Fact]
+	public async Task TestKeepAliveFailureEvent()
+	{
+		var clientConfig = new SshSessionConfiguration();
+		clientConfig.KeepAliveTimeoutInSeconds = 1;
+		var serverConfig = new SshSessionConfiguration();
+
+		var sessionPair2 = new SessionPair(serverConfig, clientConfig);
+		await sessionPair2.ConnectAsync(authenticate: false).WithTimeout(Timeout);
+		sessionPair2.ServerSession.Authenticating += (sender, e) =>
+		{
+			e.AuthenticationTask = Task.FromResult(new ClaimsPrincipal());
+		};
+		var authenticatedServer = await sessionPair2.ClientSession.AuthenticateServerAsync();
+		var authenticated = await sessionPair2.ClientSession.AuthenticateClientAsync(
+			new SshClientCredentials(TestUsername, TestPassword)).WithTimeout(Timeout);
+		Assert.True(authenticated);
+		int keepAliveFailedCount = 0;
+
+		var firstRequest = new SessionRequestMessage { RequestType = "first", WantReply = true };
+		sessionPair2.ClientSession.KeepAliveRequestFailed += (sender, e) =>
+		{
+			keepAliveFailedCount = e.Count;
+		};
+		var responseTask = async (SshRequestEventArgs<SessionRequestMessage> e) =>
+		{
+			if (e.Request.RequestType == "first")
+			{
+				await Task.Delay(TimeSpan.FromMilliseconds(3500)).WithTimeout(Timeout);
+			}
+			return new SessionRequestSuccessMessage() as SshMessage;
+		};
+		sessionPair2.ServerSession.Request += (sender, e) =>
+		{
+			e.ResponseTask = responseTask(e);
+		};
+
+		await sessionPair2.ClientSession.RequestAsync(firstRequest).WithTimeout(Timeout);
+		Assert.Equal(2, keepAliveFailedCount);
+	}
+
 	private static T GetAlgorithmByName<T>(Type algorithmClass, string name)
 		where T : SshAlgorithm
 	{

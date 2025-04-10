@@ -535,10 +535,20 @@ public class SshSession : IDisposable
 							}
 
 							this.keepAliveResponseReceived = false;
-							await SendMessageAsync(
+
+							var requestHandler = new RequestHandler<SessionRequestSuccessMessage, SessionRequestFailureMessage>();
+							await sessionRequestSemaphore.WaitAsync(cancellation).ConfigureAwait(false);
+							try
+							{
+								this.requestHandlers.Enqueue(requestHandler);
+								await SendMessageAsync(
 									new SessionRequestMessage() { RequestType = ExtensionRequestTypes.KeepAliveRequest, WantReply = true },
-									cancellation)
-								.ConfigureAwait(true);
+									cancellation).ConfigureAwait(false);
+							}
+							finally
+							{
+								sessionRequestSemaphore.TryRelease();
+							}
 						}
 					}
 					catch (Exception ex)
