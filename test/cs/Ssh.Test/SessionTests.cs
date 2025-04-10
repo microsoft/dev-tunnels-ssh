@@ -716,18 +716,9 @@ public class SessionTests : IDisposable
 			new SshClientCredentials(TestUsername, TestPassword)).WithTimeout(Timeout);
 		Assert.True(authenticated);
 		bool keepAliveCalled = false;
-		var responseTask = async (SshRequestEventArgs<SessionRequestMessage> e) =>
+		sessionPair2.ServerSession.KeepAliveRequestReceived += (sender, e) =>
 		{
-			if (e.Request.RequestType == "keepalive@openssh.com")
-			{
-				keepAliveCalled = true;
-				return new SessionRequestFailureMessage() as SshMessage;
-			}
-			return new SessionRequestSuccessMessage() as SshMessage;
-		};
-		sessionPair2.ServerSession.Request += (sender, e) =>
-		{
-			e.ResponseTask = responseTask(e);
+			keepAliveCalled = true;
 		};
 
 		// Wait for the keep-alive to be sent.

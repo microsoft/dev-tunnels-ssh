@@ -520,8 +520,7 @@ public class SshSessionConfiguration
 	}
 
 	/// <summary>
-	/// Gets or sets the timeout duration for keeping a connection alive in seconds. Ensures the connection is unlocked
-	/// before setting the value.
+	/// Gets or sets the timeout duration for keeping a connection alive in seconds.
 	/// </summary>
 	public int KeepAliveTimeoutInSeconds
 	{
