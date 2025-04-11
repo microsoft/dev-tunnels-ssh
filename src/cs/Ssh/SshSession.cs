@@ -51,6 +51,9 @@ public class SshSession : IDisposable
 	private Task? versionExchangeTask;
 	private Exception? closedException;
 	private int sessionNumber;
+	private Timer? keepAliveTimer;
+	private bool keepAliveResponseReceived = false;
+	private int keepAliveFailureCount;
 
 	/// <summary>
 	/// Constructs a new SSH session.
@@ -170,6 +173,11 @@ public class SshSession : IDisposable
 	/// is not enabled or the connection failed too early for reconnection to be set up).
 	/// </remarks>
 	public event EventHandler<EventArgs>? Disconnected;
+
+	/// <summary>
+	/// Event is raised when a keep-alive request is sent but no response is received
+	/// </summary>
+	public event EventHandler<SshKeepAliveEventArgs>? KeepAliveRequestFailed;
 
 	/// <summary>
 	/// Gets the set of protocol extensions (and their values) enabled for the current session.
@@ -472,6 +480,9 @@ public class SshSession : IDisposable
 					this.OnReportProgress(Progress.CompletedProtocolVersionExchange);
 					IsConnected = true;
 				}
+
+				// Implement KeepAlive
+				StartKeepAliveTimer(this.disposeCancellationSource.Token);
 			}
 
 			this.connectCompletionSource.TrySetResult(true);
@@ -492,6 +503,75 @@ public class SshSession : IDisposable
 
 		// Await the completion source in case it got set to an exception by Dispose().
 		await this.connectCompletionSource.Task.ConfigureAwait(false);
+	}
+
+	internal void StartKeepAliveTimer(CancellationToken cancellation)
+	{
+		if (Config.KeepAliveTimeoutInSeconds > 0)
+		{
+			keepAliveTimer = new (
+				async (state) =>
+				{
+					try
+					{
+						if (this.CanAcceptRequests)
+						{
+							if (!this.keepAliveResponseReceived)
+							{
+								keepAliveFailureCount++;
+								Trace.TraceEvent(
+									TraceEventType.Warning,
+									SshTraceEventIds.KeepAliveResponseNotReceived,
+									"Keep alive response not received.");
+								KeepAliveRequestFailed?.Invoke(
+									this,
+									new SshKeepAliveEventArgs(keepAliveFailureCount));
+							}
+							else
+							{
+								keepAliveFailureCount = 0;
+							}
+
+							this.keepAliveResponseReceived = false;
+
+							var requestHandler =
+								new RequestHandler<SessionRequestSuccessMessage, SessionRequestFailureMessage>();
+							await sessionRequestSemaphore.WaitAsync(cancellation).ConfigureAwait(false);
+							try
+							{
+								this.requestHandlers.Enqueue(requestHandler);
+								await SendMessageAsync(
+									new SessionRequestMessage()
+									{
+										RequestType = ExtensionRequestTypes.KeepAliveRequest,
+										WantReply = true,
+									},
+									cancellation).ConfigureAwait(false);
+							}
+							finally
+							{
+								sessionRequestSemaphore.TryRelease();
+							}
+						}
+					}
+					catch (Exception ex)
+					{
+						Trace.TraceEvent(
+							TraceEventType.Error,
+							SshTraceEventIds.KeepAliveFailed,
+							ex.ToString());
+					}
+					finally
+					{
+						keepAliveTimer?.Change(
+							TimeSpan.FromSeconds(Config.KeepAliveTimeoutInSeconds),
+							Timeout.InfiniteTimeSpan);
+					}
+				},
+				null,
+				TimeSpan.FromSeconds(Config.KeepAliveTimeoutInSeconds),
+				Timeout.InfiniteTimeSpan);
+		}
 	}
 
 	/// <summary>
@@ -528,6 +608,20 @@ public class SshSession : IDisposable
 				{
 					break;
 				}
+
+				// Reset the keepAlive timer on any message received.
+				try
+				{
+					keepAliveTimer?.Change(
+						TimeSpan.FromSeconds(Config.KeepAliveTimeoutInSeconds),
+						Timeout.InfiniteTimeSpan);
+				}
+				catch (ObjectDisposedException)
+				{
+					// ignore if the timer is disposed
+				}
+
+				this.keepAliveResponseReceived = true;
 			}
 
 			IsConnected = false;
@@ -772,6 +866,7 @@ public class SshSession : IDisposable
 			}
 
 			this.kexService?.Dispose();
+			this.keepAliveTimer?.Dispose();
 
 			Protocol?.Dispose();
 			Protocol = null;
@@ -1510,6 +1605,7 @@ public class SshSession : IDisposable
 		public const string InitialChannelRequest = "initial-channel-request@microsoft.com";
 		public const string EnableSessionReconnect = "enable-session-reconnect@microsoft.com";
 		public const string SessionReconnect = "session-reconnect@microsoft.com";
+		public const string KeepAliveRequest = "keepalive@openssh.com";
 	}
 
 	/// <summary>
@@ -1563,6 +1659,14 @@ public class SshSession : IDisposable
 			{
 				result.SetResult(new SessionRequestFailureMessage());
 			}
+		}
+		else if (message.RequestType == ExtensionRequestTypes.KeepAliveRequest)
+		{
+			Trace.TraceEvent(
+				TraceEventType.Verbose,
+				SshTraceEventIds.KeepAliveRequestReceived,
+				"Keep alive request received.");
+			result.SetResult(new SessionRequestFailureMessage());
 		}
 		else if (!CanAcceptRequests)
 		{

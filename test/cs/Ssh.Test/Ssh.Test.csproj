@@ -16,13 +16,13 @@
 	</ItemGroup>
 
 	<ItemGroup>
-	  <Content Include="..\..\data\*" LinkBase="Data">
-	    <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-	  </Content>
+        <Content Include="..\..\data\*" LinkBase="Data">
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        </Content>
 	</ItemGroup>
 
 	<ItemGroup>
-	  <Compile Include="..\..\..\src\cs\Ssh\TaskExtensions.cs" Link="TaskExtensions.cs" />
+		<Compile Include="..\..\..\src\cs\Ssh\TaskExtensions.cs" Link="TaskExtensions.cs" />
 	</ItemGroup>
 
 	<ItemGroup>
