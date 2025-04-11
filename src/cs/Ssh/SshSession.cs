@@ -1662,7 +1662,10 @@ public class SshSession : IDisposable
 		}
 		else if (message.RequestType == ExtensionRequestTypes.KeepAliveRequest)
 		{
-			Trace.TraceEvent(TraceEventType.Verbose, SshTraceEventIds.KeepAliveRequestReceived);
+			Trace.TraceEvent(
+				TraceEventType.Verbose,
+				SshTraceEventIds.KeepAliveRequestReceived,
+				"Keep alive request received.");
 			result.SetResult(new SessionRequestFailureMessage());
 		}
 		else if (!CanAcceptRequests)
