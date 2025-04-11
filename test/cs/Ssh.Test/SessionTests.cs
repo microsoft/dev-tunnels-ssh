@@ -704,8 +704,11 @@ public class SessionTests : IDisposable
 		var clientConfig = new SshSessionConfiguration();
 		clientConfig.KeepAliveTimeoutInSeconds = 1;
 		var serverConfig = new SshSessionConfiguration();
+		var traceListener = new TestTraceListener();
+		traceListener.EventIds.Add(SshTraceEventIds.KeepAliveRequestReceived);
 
 		var sessionPair2 = new SessionPair(serverConfig, clientConfig);
+		sessionPair2.ServerTrace.Listeners.Add(traceListener);
 		await sessionPair2.ConnectAsync(authenticate: false).WithTimeout(Timeout);
 		sessionPair2.ServerSession.Authenticating += (sender, e) =>
 		{
@@ -715,15 +718,13 @@ public class SessionTests : IDisposable
 		var authenticated = await sessionPair2.ClientSession.AuthenticateClientAsync(
 			new SshClientCredentials(TestUsername, TestPassword)).WithTimeout(Timeout);
 		Assert.True(authenticated);
-		bool keepAliveCalled = false;
-		sessionPair2.ServerSession.KeepAliveRequestReceived += (sender, e) =>
-		{
-			keepAliveCalled = true;
-		};
 
 		// Wait for the keep-alive to be sent.
 		await Task.Delay(TimeSpan.FromMilliseconds(1500)).WithTimeout(Timeout);
-		Assert.True(keepAliveCalled);
+		Assert.Collection(traceListener.Events, (item) =>
+		{
+			Assert.Equal(SshTraceEventIds.KeepAliveRequestReceived, item.Key);
+		});
 	}
 
 	[Fact]
@@ -732,8 +733,11 @@ public class SessionTests : IDisposable
 		var clientConfig = new SshSessionConfiguration();
 		clientConfig.KeepAliveTimeoutInSeconds = 1;
 		var serverConfig = new SshSessionConfiguration();
+		var traceListener = new TestTraceListener();
+		traceListener.EventIds.Add(SshTraceEventIds.KeepAliveRequestReceived);
 
 		var sessionPair2 = new SessionPair(serverConfig, clientConfig);
+		sessionPair2.ServerTrace.Listeners.Add(traceListener);
 		await sessionPair2.ConnectAsync(authenticate: false).WithTimeout(Timeout);
 		sessionPair2.ServerSession.Authenticating += (sender, e) =>
 		{
@@ -743,11 +747,6 @@ public class SessionTests : IDisposable
 		var authenticated = await sessionPair2.ClientSession.AuthenticateClientAsync(
 			new SshClientCredentials(TestUsername, TestPassword)).WithTimeout(Timeout);
 		Assert.True(authenticated);
-		bool keepAliveCalled = false;
-		sessionPair2.ServerSession.KeepAliveRequestReceived += (sender, e) =>
-		{
-			keepAliveCalled = true;
-		};
 
 		// Send messages to keep the session alive.
 		for (int i = 0; i < 5; i++)
@@ -756,7 +755,7 @@ public class SessionTests : IDisposable
 				new SessionRequestMessage { RequestType = "test" }).WithTimeout(Timeout);
 			await Task.Delay(TimeSpan.FromMilliseconds(500)).WithTimeout(Timeout);
 		}
-		Assert.False(keepAliveCalled);
+		Assert.Empty(traceListener.Events);
 	}
 
 	[Fact]

@@ -594,7 +594,7 @@ public class PortForwardingService : SshService
 		}
 	}
 
-	protected internal override async Task OnSessionRequestAsync(
+	protected override async Task OnSessionRequestAsync(
 		SshRequestEventArgs<SessionRequestMessage> request,
 		CancellationToken cancellation)
 	{
@@ -796,7 +796,7 @@ public class PortForwardingService : SshService
 		return Task.FromResult(false);
 	}
 
-	protected internal override async Task OnChannelOpeningAsync(
+	protected override async Task OnChannelOpeningAsync(
 		SshChannelOpeningEventArgs request,
 		CancellationToken cancellation)
 	{

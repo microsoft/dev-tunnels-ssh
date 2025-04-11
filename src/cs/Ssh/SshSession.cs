@@ -180,11 +180,6 @@ public class SshSession : IDisposable
 	public event EventHandler<SshKeepAliveEventArgs>? KeepAliveRequestFailed;
 
 	/// <summary>
-	/// Internal event used for testing purposes.
-	/// </summary>
-	internal event EventHandler<EventArgs>? KeepAliveRequestReceived;
-
-	/// <summary>
 	/// Gets the set of protocol extensions (and their values) enabled for the current session.
 	/// </summary>
 	/// <remarks>
@@ -523,8 +518,11 @@ public class SshSession : IDisposable
 						{
 							if (!this.keepAliveResponseReceived)
 							{
-								Trace.TraceInformation("Keep alive response not received.");
 								keepAliveFailureCount++;
+								Trace.TraceEvent(
+									TraceEventType.Warning,
+									SshTraceEventIds.KeepAliveResponseNotReceived,
+									"Keep alive response not received.");
 								KeepAliveRequestFailed?.Invoke(
 									this,
 									new SshKeepAliveEventArgs(keepAliveFailureCount));
@@ -536,13 +534,18 @@ public class SshSession : IDisposable
 
 							this.keepAliveResponseReceived = false;
 
-							var requestHandler = new RequestHandler<SessionRequestSuccessMessage, SessionRequestFailureMessage>();
+							var requestHandler =
+								new RequestHandler<SessionRequestSuccessMessage, SessionRequestFailureMessage>();
 							await sessionRequestSemaphore.WaitAsync(cancellation).ConfigureAwait(false);
 							try
 							{
 								this.requestHandlers.Enqueue(requestHandler);
 								await SendMessageAsync(
-									new SessionRequestMessage() { RequestType = ExtensionRequestTypes.KeepAliveRequest, WantReply = true },
+									new SessionRequestMessage()
+									{
+										RequestType = ExtensionRequestTypes.KeepAliveRequest,
+										WantReply = true,
+									},
 									cancellation).ConfigureAwait(false);
 							}
 							finally
@@ -1659,7 +1662,7 @@ public class SshSession : IDisposable
 		}
 		else if (message.RequestType == ExtensionRequestTypes.KeepAliveRequest)
 		{
-			this.KeepAliveRequestReceived?.Invoke(this, EventArgs.Empty);
+			Trace.TraceEvent(TraceEventType.Verbose, SshTraceEventIds.KeepAliveRequestReceived);
 			result.SetResult(new SessionRequestFailureMessage());
 		}
 		else if (!CanAcceptRequests)

@@ -35,6 +35,8 @@ public static class SshTraceEventIds
 	public const int TaskChainError = BaseEventId + 60;
 	public const int MetricsError = BaseEventId + 61;
 	public const int KeepAliveFailed = BaseEventId + 62;
+	public const int KeepAliveRequestReceived = BaseEventId + 63;
+	public const int KeepAliveResponseNotReceived = BaseEventId + 64;
 
 	#endregion
 

@@ -16,4 +16,8 @@
 	<ItemGroup>
 		<None Remove="Microsoft.DevTunnels.Ssh.Tcp.xml" />
 	</ItemGroup>
+
+	<ItemGroup>
+		<Compile Include="..\Ssh\TaskExtensions.cs" Link="TaskExtensions.cs" />
+	</ItemGroup>
 </Project>

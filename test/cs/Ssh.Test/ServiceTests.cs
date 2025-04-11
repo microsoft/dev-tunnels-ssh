@@ -252,7 +252,7 @@ public class ServiceTests : IDisposable
 
 		public SessionRequestMessage RequestMessage { get; private set; }
 
-		protected internal override async Task OnSessionRequestAsync(
+		protected override async Task OnSessionRequestAsync(
 			SshRequestEventArgs<SessionRequestMessage> request,
 			CancellationToken cancellation)
 		{
@@ -280,7 +280,7 @@ public class ServiceTests : IDisposable
 
 		public SshChannel Channel { get; private set; }
 
-		protected internal override Task OnChannelOpeningAsync(
+		protected override Task OnChannelOpeningAsync(
 			SshChannelOpeningEventArgs args,
 			CancellationToken cancellation)
 		{
@@ -300,7 +300,7 @@ public class ServiceTests : IDisposable
 
 		public SshChannel Channel { get; private set; }
 
-		protected internal override Task OnChannelRequestAsync(
+		protected override Task OnChannelRequestAsync(
 			SshChannel channel,
 			SshRequestEventArgs<ChannelRequestMessage> request,
 			CancellationToken cancellation)
@@ -324,7 +324,7 @@ public class ServiceTests : IDisposable
 
 		public ChannelRequestMessage RequestMessage { get; private set; }
 
-		protected internal override Task OnChannelRequestAsync(
+		protected override Task OnChannelRequestAsync(
 			SshChannel channel,
 			SshRequestEventArgs<ChannelRequestMessage> request,
 			CancellationToken cancellation)
