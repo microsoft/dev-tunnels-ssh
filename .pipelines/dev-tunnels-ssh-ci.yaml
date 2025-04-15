@@ -182,21 +182,18 @@ jobs:
           publishFeedCredentials: 'dev-tunnels-nuget'
           publishPackageMetadata: true
   
-      - task: EsrpRelease@7
+      - task: EsrpRelease@9
         condition: and(succeeded(), eq('${{ parameters.PublishNpmPackage }}', 'true'))
         inputs:
           connectedservicename: 'Devtunnels-esrp-ame-msi'
+          usemanagedidentity: true
           keyvaultname: 'tunnels-ppe-esrp-kv'
-          authcertname: 'esrp-cert'
           signcertname: 'esrp-sign'
           clientid: '142047f4-eda8-4853-8776-c2e81803ea13'
-          intent: 'PackageDistribution'
           contenttype: 'npm'
           folderLocation: '$(System.DefaultWorkingDirectory)/out/pkg'
-          waitforreleasecompletion: true
           owners: 'jfullerton@microsoft.com'
           approvers: 'jasongin@microsoft.com, debekoe@microsoft.com, ilbiryuk@microsoft.com'
-          serviceendpointurl: 'https://api.esrp.microsoft.com'
           mainpublisher: 'ESRPRELPACMAN'
           domaintenantid: '33e01921-4d64-4f8c-a055-5bdaffd5e33d'
 
