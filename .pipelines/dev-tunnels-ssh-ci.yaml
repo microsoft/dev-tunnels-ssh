@@ -32,7 +32,10 @@ jobs:
     displayName: 'SSH Windows'
     timeoutInMinutes: '90'
     pool:
-      name: VSEngSS-MicroBuild2022-1ES
+      type: linux
+      isCustom: true
+      name: DevTunnels1ESHostedPool
+      vmImage: 'tunnels-test-1es-hosted-for-cli-pipeline'
 
     steps:
       - checkout: self

@@ -177,7 +177,7 @@ public class SshSession : IDisposable
 	/// <summary>
 	/// Event is raised when a keep-alive request is sent but no response is received
 	/// </summary>
-	public event EventHandler<SshKeepAliveEventArgs>? KeepAliveRequestFailed;
+	public event EventHandler<SshKeepAliveEventArgs>? KeepAliveFailed;
 
 	/// <summary>
 	/// Gets the set of protocol extensions (and their values) enabled for the current session.
@@ -523,7 +523,7 @@ public class SshSession : IDisposable
 									TraceEventType.Warning,
 									SshTraceEventIds.KeepAliveResponseNotReceived,
 									"Keep alive response not received.");
-								KeepAliveRequestFailed?.Invoke(
+								KeepAliveFailed?.Invoke(
 									this,
 									new SshKeepAliveEventArgs(keepAliveFailureCount));
 							}
