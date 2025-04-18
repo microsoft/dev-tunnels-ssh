@@ -778,7 +778,7 @@ public class SessionTests : IDisposable
 		int keepAliveFailedCount = 0;
 
 		var firstRequest = new SessionRequestMessage { RequestType = "first", WantReply = true };
-		sessionPair2.ClientSession.KeepAliveRequestFailed += (sender, e) =>
+		sessionPair2.ClientSession.KeepAliveFailed += (sender, e) =>
 		{
 			keepAliveFailedCount = e.Count;
 		};
