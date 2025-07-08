@@ -54,6 +54,7 @@ public class SshSession : IDisposable
 	private Timer? keepAliveTimer;
 	private bool keepAliveResponseReceived = false;
 	private int keepAliveFailureCount;
+	private int keepAliveSuccessCount;
 
 	/// <summary>
 	/// Constructs a new SSH session.
@@ -178,6 +179,11 @@ public class SshSession : IDisposable
 	/// Event is raised when a keep-alive request is sent but no response is received
 	/// </summary>
 	public event EventHandler<SshKeepAliveEventArgs>? KeepAliveFailed;
+
+	/// <summary>
+	/// Event is raised when a keep-alive response is received
+	/// </summary>
+	public event EventHandler<SshKeepAliveEventArgs>? KeepAliveSucceeded;
 
 	/// <summary>
 	/// Gets the set of protocol extensions (and their values) enabled for the current session.
@@ -518,6 +524,7 @@ public class SshSession : IDisposable
 						{
 							if (!this.keepAliveResponseReceived)
 							{
+								keepAliveSuccessCount = 0;
 								keepAliveFailureCount++;
 								Trace.TraceEvent(
 									TraceEventType.Warning,
@@ -530,6 +537,10 @@ public class SshSession : IDisposable
 							else
 							{
 								keepAliveFailureCount = 0;
+								keepAliveSuccessCount++;
+								KeepAliveSucceeded?.Invoke(
+									this,
+									new SshKeepAliveEventArgs(keepAliveSuccessCount));
 							}
 
 							this.keepAliveResponseReceived = false;

@@ -718,6 +718,11 @@ public class SessionTests : IDisposable
 		var authenticated = await sessionPair2.ClientSession.AuthenticateClientAsync(
 			new SshClientCredentials(TestUsername, TestPassword)).WithTimeout(Timeout);
 		Assert.True(authenticated);
+		int keepAliveCount = 0;
+		sessionPair2.ClientSession.KeepAliveSucceeded += (sender, e) =>
+		{
+			keepAliveCount++;
+		};
 
 		// Wait for the keep-alive to be sent.
 		await Task.Delay(TimeSpan.FromMilliseconds(1500)).WithTimeout(Timeout);
@@ -725,6 +730,7 @@ public class SessionTests : IDisposable
 		{
 			Assert.Equal(SshTraceEventIds.KeepAliveRequestReceived, item.Key);
 		});
+		Assert.Equal(1, keepAliveCount);
 	}
 
 	[Fact]
