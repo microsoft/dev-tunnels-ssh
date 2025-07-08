@@ -719,7 +719,7 @@ public class SessionTests : IDisposable
 			new SshClientCredentials(TestUsername, TestPassword)).WithTimeout(Timeout);
 		Assert.True(authenticated);
 		int keepAliveCount = 0;
-		sessionPair2.ClientSession.KeepAliveReceived += (sender, e) =>
+		sessionPair2.ClientSession.KeepAliveSucceeded += (sender, e) =>
 		{
 			keepAliveCount++;
 		};

@@ -181,9 +181,9 @@ public class SshSession : IDisposable
 	public event EventHandler<SshKeepAliveEventArgs>? KeepAliveFailed;
 
 	/// <summary>
-	/// Event is raised when a keep-alive request is sent and a response is received
+	/// Event is raised when a keep-alive response is received
 	/// </summary>
-	public event EventHandler<SshKeepAliveEventArgs>? KeepAliveReceived;
+	public event EventHandler<SshKeepAliveEventArgs>? KeepAliveSucceeded;
 
 	/// <summary>
 	/// Gets the set of protocol extensions (and their values) enabled for the current session.
@@ -538,7 +538,7 @@ public class SshSession : IDisposable
 							{
 								keepAliveFailureCount = 0;
 								keepAliveSuccessCount++;
-								KeepAliveReceived?.Invoke(
+								KeepAliveSucceeded?.Invoke(
 									this,
 									new SshKeepAliveEventArgs(keepAliveSuccessCount));
 							}
