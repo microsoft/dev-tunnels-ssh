@@ -730,7 +730,7 @@ public class SessionTests : IDisposable
 		{
 			Assert.Equal(SshTraceEventIds.KeepAliveRequestReceived, item.Key);
 		});
-		Assert.True(keepAliveCount == 1, "No keep-alive messages were received.");
+		Assert.Equal(1, keepAliveCount);
 	}
 
 	[Fact]
