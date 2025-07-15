@@ -92,6 +92,7 @@ jobs:
         displayName: Install Signing Plugin
         inputs:
           signType: 'real'
+          azureSubscription: 'MicroBuild Signing Task (DevDiv)'
           feedSource: 'https://devdiv.pkgs.visualstudio.com/DefaultCollection/_packaging/MicroBuildToolset/nuget/v3/index.json'
         env:
           TeamName: '$(TeamName)'
