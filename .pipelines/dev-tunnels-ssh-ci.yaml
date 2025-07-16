@@ -88,10 +88,6 @@ jobs:
       - task: NuGetAuthenticate@1
         displayName: NuGet Authenticate
 
-      - task: UsePythonVersion@0
-        inputs:
-          versionSpec: '3.11'
-
       - task: MicroBuildSigningPlugin@4
         displayName: Install Signing Plugin
         inputs:
