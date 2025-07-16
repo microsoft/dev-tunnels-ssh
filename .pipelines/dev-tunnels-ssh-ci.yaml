@@ -85,9 +85,6 @@ jobs:
           command: custom
           arguments: 'install Microsoft.DiaSymReader.Pdb2Pdb -version $(Pdb2PdbVersion) -PackageSaveMode nuspec -OutputDirectory $(Agent.TempDirectory) -Source https://pkgs.dev.azure.com/dnceng/public/_packaging/dotnet-tools/nuget/v3/index.json'
 
-      - task: NuGetAuthenticate@1
-        displayName: NuGet Authenticate
-
       - task: MicroBuildSigningPlugin@4
         displayName: Install Signing Plugin
         inputs:
