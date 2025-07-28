@@ -95,12 +95,13 @@ jobs:
           TeamName: '$(TeamName)'
           SYSTEM_ACCESSTOKEN: $(System.AccessToken)
 
-      - task: MSBuild@1
+      - task: DotNetCoreCLI@2
         displayName: Build C#
         inputs:
-          solution: SSH.sln
-          configuration: Release
-          msbuildArguments: '-p:RestorePackages=false -t:Build;Pack -p:EnableSigning=true -p:Pdb2PdbExe="$(Agent.TempDirectory)\Microsoft.DiaSymReader.Pdb2Pdb.$(Pdb2PdbVersion)\tools\Pdb2Pdb.exe"'
+          command: custom
+          projects: SSH.sln
+          custom: msbuild
+          arguments: '-c Release -p:RestorePackages=false -t:Build;Pack -p:EnableSigning=true -p:Pdb2PdbExe="$(Agent.TempDirectory)\Microsoft.DiaSymReader.Pdb2Pdb.$(Pdb2PdbVersion)\tools\Pdb2Pdb.exe"'
 
       - task: Npm@1
         displayName: Build TS

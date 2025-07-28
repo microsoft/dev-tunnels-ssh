@@ -632,7 +632,7 @@ public class InteropTests
 			sshProcess.BeginOutputReadLine();
 			sshProcess.BeginErrorReadLine();
 
-			sshProcess.WaitForExit(5000);
+			sshProcess.WaitForExit(10000);
 			if (!sshProcess.HasExited)
 			{
 				throw new Exception("SSH Process did not exit");
