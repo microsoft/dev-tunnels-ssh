@@ -32,10 +32,7 @@ jobs:
     displayName: 'SSH Windows'
     timeoutInMinutes: '90'
     pool:
-      type: linux
-      isCustom: true
-      name: DevTunnels1ESHostedPool
-      vmImage: 'tunnels-test-1es-hosted-for-cli-pipeline'
+      name: VSEngSS-MicroBuild2022-1ES
 
     steps:
       - checkout: self
@@ -95,13 +92,12 @@ jobs:
           TeamName: '$(TeamName)'
           SYSTEM_ACCESSTOKEN: $(System.AccessToken)
 
-      - task: DotNetCoreCLI@2
+      - task: MSBuild@1
         displayName: Build C#
         inputs:
-          command: custom
-          projects: SSH.sln
-          custom: msbuild
-          arguments: '-p:Configuration=Release -p:RestorePackages=false -t:Build;Pack -p:EnableSigning=true -p:Pdb2PdbExe="$(Agent.TempDirectory)\Microsoft.DiaSymReader.Pdb2Pdb.$(Pdb2PdbVersion)\tools\Pdb2Pdb.exe"'
+          solution: SSH.sln
+          configuration: Release
+          msbuildArguments: '-p:RestorePackages=false -t:Build;Pack -p:EnableSigning=true -p:Pdb2PdbExe="$(Agent.TempDirectory)\Microsoft.DiaSymReader.Pdb2Pdb.$(Pdb2PdbVersion)\tools\Pdb2Pdb.exe"'
 
       - task: Npm@1
         displayName: Build TS
