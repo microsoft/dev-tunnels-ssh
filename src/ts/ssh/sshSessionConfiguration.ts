@@ -290,6 +290,28 @@ export class SshSessionConfiguration {
 	 */
 	public enableKeyExchangeGuess = false;
 
+	/**
+	 * Gets or sets the keep-alive timeout in seconds.
+	 * 
+	 * When set to a value greater than 0, the session will send keep-alive messages
+	 * at the specified interval to detect connection failures. If no response is received
+	 * within the timeout period, the keep-alive failed event will be raised.
+	 * 
+	 * Set to 0 to disable keep-alive messages.
+	 */
+	private keepAliveTimeoutInSecondsValue = 0;
+
+	public get keepAliveTimeoutInSeconds(): number {
+		return this.keepAliveTimeoutInSecondsValue;
+	}
+
+	public set keepAliveTimeoutInSeconds(value: number) {
+		if (this.keepAliveTimeoutInSecondsValue !== value) {
+			this.keepAliveTimeoutInSecondsValue = value;
+			this.configurationChangedEmitter.fire();
+		}
+	}
+
 	/* @internal */
 	public keyRotationThreshold = 512 * 1024 * 1024; // 0.5 GiB;
 }

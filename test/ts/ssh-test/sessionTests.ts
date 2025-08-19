@@ -27,6 +27,7 @@ import {
 	SshAuthenticatingEventArgs,
 	PublicKeyRequestMessage,
 	ServiceRequestMessage,
+	SshTraceEventIds,
 } from '@microsoft/dev-tunnels-ssh';
 import { DuplexStream, shutdownWebSocketServer } from './duplexStream';
 import { createSessionPair, connectSessionPair } from './sessionPair';
@@ -574,5 +575,122 @@ export class SessionTests {
 
 		assert(!(await request1Promise));
 		assert(await request2Promise);
+	}
+
+	@test
+	public async testKeepAliveOneMessage() {
+		const [clientSession, serverSession] = await this.createSessions();
+
+		try {
+			// Configure keep-alive timeout on client
+			clientSession.config.keepAliveTimeoutInSeconds = 1;
+
+			// Track keep-alive success events
+			let keepAliveCount = 0;
+			clientSession.onKeepAliveSucceeded((count) => {
+				keepAliveCount = count;
+			});
+
+			await connectSessionPair(clientSession, serverSession, undefined, true);
+
+			// Wait for keep-alive to be sent
+			await new Promise((resolve) => setTimeout(resolve, 1500));
+
+			// Check that keep-alive success was triggered on client
+			assert.strictEqual(keepAliveCount, 1, 'Should have one keep-alive success event');
+		} finally {
+			await clientSession.close(SshDisconnectReason.none);
+			await serverSession.close(SshDisconnectReason.none);
+		}
+	}
+
+	@test
+	public async testNoKeepAliveWhenActive() {
+		const [clientSession, serverSession] = await this.createSessions();
+
+		try {
+			// Configure keep-alive timeout on client
+			clientSession.config.keepAliveTimeoutInSeconds = 1;
+
+			// Track keep-alive failures (not requests)
+			let keepAliveFailureCount = 0;
+			clientSession.onKeepAliveFailed(() => {
+				keepAliveFailureCount++;
+			});
+
+			await connectSessionPair(clientSession, serverSession, undefined, true);
+
+			// Send NO-REPLY messages from SERVER to CLIENT frequently to keep client's timer reset
+			// Since any received message resets keepAliveResponseReceived = true
+			for (let i = 0; i < 3; i++) {
+				const testRequest = new SessionRequestMessage();
+				testRequest.requestType = 'test';
+				testRequest.wantReply = false; // No reply needed, just incoming traffic to client
+
+				await serverSession.request(testRequest); // Server sends to client
+				await new Promise((resolve) => setTimeout(resolve, 900)); // Send every 900ms (less than 1s timeout)
+			}
+
+			// Wait for one more keep-alive cycle to complete
+			await new Promise((resolve) => setTimeout(resolve, 1100));
+
+			// With constant activity, keep-alives may still be sent but should not fail
+			assert.strictEqual(
+				keepAliveFailureCount,
+				0,
+				'Should not have any keep-alive failures when session is active',
+			);
+		} finally {
+			await clientSession.close(SshDisconnectReason.none);
+			await serverSession.close(SshDisconnectReason.none);
+		}
+	}
+
+	@test
+	public async testKeepAliveFailureEvent() {
+		const [clientSession, serverSession] = await this.createSessions();
+
+		try {
+			// Configure keep-alive timeout on client
+			clientSession.config.keepAliveTimeoutInSeconds = 1;
+
+			// Track keep-alive failure events
+			let keepAliveFailedCount = 0;
+			clientSession.onKeepAliveFailed((count) => {
+				keepAliveFailedCount = count;
+			});
+
+			await connectSessionPair(clientSession, serverSession, undefined, true);
+
+			// Set up server to delay response to first request (simulating network delay/timeout)
+			let isFirstRequest = true;
+			serverSession.onRequest((e) => {
+				if (e.requestType === 'first' && isFirstRequest) {
+					isFirstRequest = false;
+					// Delay response by 3.5 seconds to trigger multiple keep-alive failures
+					e.responsePromise = new Promise((resolve) => {
+						setTimeout(() => {
+							resolve(new SessionRequestSuccessMessage());
+						}, 3500);
+					});
+				} else {
+					// Handle other requests normally (including keep-alive requests)
+					e.responsePromise = Promise.resolve(new SessionRequestSuccessMessage());
+				}
+			});
+
+			// Send the first request that will be delayed
+			const firstRequest = new SessionRequestMessage();
+			firstRequest.requestType = 'first';
+			firstRequest.wantReply = true;
+
+			await clientSession.request(firstRequest);
+
+			// We should have at least 2 keep-alive failures (3.5s delay with 1s timeout)
+			assert.ok(keepAliveFailedCount >= 2, `Expected at least 2 failures, got ${keepAliveFailedCount}`);
+		} finally {
+			await clientSession.close(SshDisconnectReason.none);
+			await serverSession.close(SshDisconnectReason.none);
+		}
 	}
 }
