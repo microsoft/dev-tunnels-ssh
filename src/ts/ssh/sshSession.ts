@@ -61,6 +61,7 @@ export const enum ExtensionRequestTypes {
 	initialChannelRequest = 'initial-channel-request@microsoft.com',
 	enableSessionReconnect = 'enable-session-reconnect@microsoft.com',
 	sessionReconnect = 'session-reconnect@microsoft.com',
+	keepAliveRequest = 'keepalive@openssh.com',
 }
 
 interface RequestHandler {
@@ -98,6 +99,12 @@ export class SshSession implements Disposable {
 	private disposed: boolean = false;
 	private sessionNumber: number;
 	private closedError?: Error;
+
+	// Keep-alive state
+	private keepAliveTimer?: ReturnType<typeof setTimeout>;
+	private keepAliveResponseReceived = false;
+	private keepAliveFailureCount = 0;
+	private keepAliveSuccessCount = 0;
 
 	public get algorithms(): SshSessionAlgorithms | null {
 		return this.protocol ? this.protocol.algorithms : null;
@@ -171,10 +178,25 @@ export class SshSession implements Disposable {
 	/**
 	 * Event that is raised to report connection progress.
 	 *
+	 * Apps may use this to provide progress feedback to users during the initial
+	 * connection or reconnection process.
+	 *
 	 * See `Progress` for a description of the different progress events that can be reported.
 	 */
 	public readonly onReportProgress: Event<SshReportProgressEventArgs> =
 		this.reportProgressEmitter.event;
+
+	private readonly keepAliveFailedEmitter = new Emitter<number>();
+	/**
+	 * Event that is raised when a keep-alive message response is not received.
+	 */
+	public readonly onKeepAliveFailed = this.keepAliveFailedEmitter.event;
+
+	private readonly keepAliveSucceededEmitter = new Emitter<number>();
+	/**
+	 * Event that is raised when a keep-alive message response is received.
+	 */
+	public readonly onKeepAliveSucceeded = this.keepAliveSucceededEmitter.event;
 
 	/**
 	 * Gets or sets a function that handles trace messages associated with the session.
@@ -222,6 +244,11 @@ export class SshSession implements Disposable {
 			const protocol = this.protocol;
 			if (protocol) {
 				protocol.traceChannelData = config.traceChannelData;
+			}
+
+			// Restart keep-alive timer if timeout changed
+			if (this.connected && !this.disposed) {
+				this.startKeepAliveTimer();
 			}
 		});
 	}
@@ -369,6 +396,8 @@ export class SshSession implements Disposable {
 			);
 		});
 
+		this.startKeepAliveTimer();
+
 		this.raiseReportProgress(Progress.OpenedSshSessionConnection);
 	}
 
@@ -486,8 +515,10 @@ export class SshSession implements Disposable {
 				break;
 			}
 
+			let messageSuccess = false;
 			try {
 				await this.handleMessage(message);
+				messageSuccess = true;
 			} catch (e) {
 				if (!(e instanceof Error)) throw e;
 				this.trace(
@@ -497,6 +528,11 @@ export class SshSession implements Disposable {
 					e,
 				);
 				await this.close(SshDisconnectReason.protocolError, e.message, e);
+			}
+
+			if (messageSuccess) {
+				this.keepAliveResponseReceived = true;
+				this.startKeepAliveTimer();
 			}
 		}
 
@@ -659,6 +695,14 @@ export class SshSession implements Disposable {
 				);
 				result = true;
 			}
+		} else if (message.requestType === ExtensionRequestTypes.keepAliveRequest) {
+			// Handle keep-alive request - always succeed and trace
+			this.trace(
+				TraceLevel.Verbose,
+				SshTraceEventIds.keepAliveRequestReceived,
+				`${this} Keep-alive request received`,
+			);
+			result = true;
 		} else if (!this.canAcceptRequests) {
 			this.trace(
 				TraceLevel.Warning,
@@ -804,6 +848,93 @@ export class SshSession implements Disposable {
 				SshTraceEventIds.debugMessage,
 				message.message,
 			);
+		}
+	}
+
+	private startKeepAliveTimer(): void {
+		// Stop existing timer
+		if (this.keepAliveTimer) {
+			clearTimeout(this.keepAliveTimer);
+			this.keepAliveTimer = undefined;
+		}
+
+		// Don't start timer if keep-alive is disabled or session is disposed/not connected
+		const timeoutInSeconds = this.config.keepAliveTimeoutInSeconds;
+		if (!timeoutInSeconds || timeoutInSeconds <= 0 || this.disposed || !this.connected) {
+			return;
+		}
+
+		// Start new timer
+		this.keepAliveTimer = setTimeout(async () => {
+			try {
+				await this.onKeepAliveTimeout();
+			} catch (error) {
+				// Log error but don't let it crash the session
+				this.trace(
+					TraceLevel.Error,
+					SshTraceEventIds.unknownError,
+					`Error in keep-alive timeout: ${error instanceof Error ? error.message : error}`,
+					error instanceof Error ? error : undefined,
+				);
+			}
+		}, timeoutInSeconds * 1000);
+	}
+
+	private async onKeepAliveTimeout(): Promise<void> {
+		// Don't send keep-alive if session is disposed or not connected
+		if (this.disposed || !this.connected) {
+			// Clear the timer to prevent further timeouts
+			if (this.keepAliveTimer) {
+				clearTimeout(this.keepAliveTimer);
+				this.keepAliveTimer = undefined;
+			}
+			return;
+		}
+
+		// Check if we can send keep-alive requests
+		if (!this.canAcceptRequests) {
+			// Schedule next timeout
+			this.startKeepAliveTimer();
+			return;
+		}
+
+		// Check if we received a response to the previous keep-alive request
+		if (!this.keepAliveResponseReceived) {
+			// No response received - this is a failure
+			this.keepAliveSuccessCount = 0;
+			this.keepAliveFailureCount++;
+			this.trace(
+				TraceLevel.Warning,
+				SshTraceEventIds.keepAliveResponseNotReceived,
+				`${this} Keep-alive response not received (failure #${this.keepAliveFailureCount})`,
+			);
+			this.keepAliveFailedEmitter.fire(this.keepAliveFailureCount);
+		} else {
+			// Response was received - success
+			this.keepAliveFailureCount = 0;
+			this.keepAliveSuccessCount++;
+			this.keepAliveSucceededEmitter.fire(this.keepAliveSuccessCount);
+		}
+
+		// Reset response flag for next cycle
+		this.keepAliveResponseReceived = false;
+
+		// Send keep-alive request
+		try {
+			const request = new SessionRequestMessage();
+			request.requestType = ExtensionRequestTypes.keepAliveRequest;
+			request.wantReply = true; // Request reply to detect if connection is alive
+
+			await this.sendMessage(request);
+		} catch (error) {
+			this.keepAliveSuccessCount = 0;
+			this.keepAliveFailureCount++;
+			this.keepAliveFailedEmitter.fire(this.keepAliveFailureCount);
+		}
+
+		// Schedule next timeout only if still connected and not disposed
+		if (!this.disposed && this.connected) {
+			this.startKeepAliveTimer();
 		}
 	}
 
@@ -1286,6 +1417,13 @@ export class SshSession implements Disposable {
 		if (!this.disposed) {
 			this.trace(TraceLevel.Info, SshTraceEventIds.sessionClosing, `${this} disposed.`);
 			this.disposed = true;
+			
+			// Dispose keep-alive timer
+			if (this.keepAliveTimer) {
+				clearTimeout(this.keepAliveTimer);
+				this.keepAliveTimer = undefined;
+			}
+			
 			this.closedEmitter.fire(
 				new SshSessionClosedEventArgs(
 					SshDisconnectReason.none,

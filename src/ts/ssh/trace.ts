@@ -57,6 +57,9 @@ export class SshTraceEventIds {
 	public static readonly portForwardChannelOpenFailed = baseEventId + 54;
 	public static readonly portForwardConnectionFailed = baseEventId + 55;
 	public static readonly metricsError = baseEventId + 61;
+	public static readonly keepAliveFailed = baseEventId + 62;
+	public static readonly keepAliveRequestReceived = baseEventId + 63;
+	public static readonly keepAliveResponseNotReceived = baseEventId + 64;
 
 	// Info / Verbose events
 
