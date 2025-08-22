@@ -88,6 +88,7 @@ jobs:
           signType: 'real'
           azureSubscription: 'MicroBuild Signing Task (DevDiv)'
           feedSource: 'https://devdiv.pkgs.visualstudio.com/DefaultCollection/_packaging/MicroBuildToolset/nuget/v3/index.json'
+          ConnectedPMEServiceName: '6cc74545-d7b9-4050-9dfa-ebefcc8961ea'
         env:
           TeamName: '$(TeamName)'
           SYSTEM_ACCESSTOKEN: $(System.AccessToken)
