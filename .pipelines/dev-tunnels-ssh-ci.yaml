@@ -135,29 +135,49 @@ jobs:
           verbose: false
           customCommand: run test-cs -- --release --serial --coverage --framework net48
 
-      # Internal docs: https://eng.ms/docs/cloud-ai-platform/devdiv/one-engineering-system-1es/1es-docs/azure-artifacts/symbol-service
+      - task: PublishBuildArtifacts@1
+        displayName: Publish symbols to drop artifacts
+        inputs:
+          pathtoPublish: out/sym
+          artifactName: Symbols
+          publishLocation: Container
+
+      # Index symbols only (no cross-org publish)
+      # https://devdiv.visualstudio.com/DevDiv/_wiki/wikis/DevDiv.wiki/34315/Archiving-Symbols
       - task: PublishSymbols@2
-        displayName: Publish symbols to Microsoft Server (https://symweb)
+        displayName: Index symbols (local only)
         inputs:
           SymbolsFolder: '$(System.DefaultWorkingDirectory)\out\sym'
           SearchPattern: '**\*.pdb'
           SymbolServerType: TeamServices
-          # Expiration parameter: https://eng.ms/docs/cloud-ai-platform/devdiv/one-engineering-system-1es/1es-docs/azure-artifacts/symbol-service#how-to-change-the-expiration-date-of-a-symbol-request
-          SymbolExpirationInDays: '1095'
+          PublishSymbols: false
 
-      - task: PublishBuildArtifacts@1
-        displayName: Publish symbols to drop artifacts
+      - task: DownloadBuildArtifacts@0
+        displayName: Download symbols artifact
         inputs:
-          PathtoPublish: out/sym
-          ArtifactName: symbols
-          TargetPath: '\\my\share\$(Build.DefinitionName)\$(Build.BuildNumber)'
+          artifactName: Symbols
+          downloadPath: '$(Pipeline.Workspace)\Symbols'
+
+      # Archive symbols to symweb using WIF service connection
+      # https://devdiv.visualstudio.com/DevDiv/_wiki/wikis/DevDiv.wiki/34315/Archiving-Symbols
+      - task: MicroBuildArchiveSymbols@6
+        displayName: Archive symbols to symweb (internal only)
+        inputs:
+          azureSubscription: 'VSEng-SymbolsUpload-OnlineServices'
+          SymbolsFeatureName: DevTunnelsSsh
+          SymbolsProject: DDE
+          SymbolsAgentPath: '$(Pipeline.Workspace)\Symbols'
+          SubmitToInternet: false
+          ExpirationInDays: 1095
+        env:
+          SYSTEM_ACCESSTOKEN: $(System.AccessToken)  # required by task per WIF migration guidance [1](https://devdiv.visualstudio.com/DevDiv/_wiki/wikis/DevDiv.wiki/49030)
 
       - task: PublishBuildArtifacts@1
         displayName: Publish package artifacts
         inputs:
-          PathtoPublish: out/pkg
-          ArtifactName: packages
-          TargetPath: '\\my\share\$(Build.DefinitionName)\$(Build.BuildNumber)'
+          pathtoPublish: out/pkg
+          artifactName: packages
+          publishLocation: Container
 
       - task: PublishTestResults@2
         displayName: Publish test results
