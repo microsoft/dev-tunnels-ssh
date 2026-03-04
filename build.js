@@ -52,6 +52,7 @@ yargs.option('coverage', {
 	boolean: true,
 	group: testGroup,
 });
+yargs.option('race', { desc: 'Enable Go race detector', boolean: true, group: testGroup });
 
 const namespace = 'Microsoft.DevTunnels.Ssh';
 const srcDir = path.join(__dirname, 'src');
@@ -67,10 +68,11 @@ function getPackageFileName(packageJson, buildVersion) {
 	return `${packageJson.name.replace('@', '').replace('/', '-')}-${buildVersion}.tgz`;
 }
 
-yargs.command('build', 'Build C# and TypeScript code', async () => {
+yargs.command('build', 'Build C#, TypeScript, and Go code', async () => {
 	await forkCommand('build-cs');
 	await forkCommand('build-ts');
 	await forkCommand('build-browsertest');
+	await forkCommand('build-go');
 });
 
 yargs.command('pack', 'Build C# and TypeScript packages', async () => {
@@ -78,9 +80,10 @@ yargs.command('pack', 'Build C# and TypeScript packages', async () => {
 	await forkCommand('pack-ts');
 });
 
-yargs.command('test', 'Test C# and TypeScript code', async () => {
+yargs.command('test', 'Test C#, TypeScript, and Go code', async () => {
 	await forkCommand('test-cs');
 	await forkCommand('test-ts');
+	await forkCommand('test-go');
 });
 
 yargs.command('build-cs', 'Build C# code', async (yargs) => {
@@ -296,6 +299,27 @@ yargs.command('bench-ts', 'Run TypeScript benchmarks', async (yargs) => {
 		args.push(yargs.argv.scenario);
 	}
 	await executeCommand(__dirname, 'node', args);
+});
+
+const goSrcDir = path.join(srcDir, 'go');
+const goTestDir = path.join(__dirname, 'test', 'go', 'ssh-test');
+
+yargs.command('build-go', 'Build Go code', async () => {
+	await executeCommand(goSrcDir, 'go build ./...');
+	await executeCommand(goSrcDir, 'go vet ./...');
+});
+
+yargs.command('test-go', 'Run Go tests', async (yargs) => {
+	let command = 'go test';
+	if (yargs.argv.race) {
+		command += ' -race';
+	}
+	command += ' ./...';
+	if (yargs.argv.filter) {
+		command += ` -run ${yargs.argv.filter}`;
+	}
+	await executeCommand(goSrcDir, command);
+	await executeCommand(goTestDir, command);
 });
 
 function forkCommand(command) {
