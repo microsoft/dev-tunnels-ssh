@@ -171,7 +171,7 @@ jobs:
           ExpirationInDays: 1095
           SuppressSymwebOnlyWarning: true
         env:
-          SYSTEM_ACCESSTOKEN: $(System.AccessToken)  # required by task per WIF migration guidance [1](https://devdiv.visualstudio.com/DevDiv/_wiki/wikis/DevDiv.wiki/49030)
+          SYSTEM_ACCESSTOKEN: $(System.AccessToken)
 
       - task: PublishBuildArtifacts@1
         displayName: Publish package artifacts
