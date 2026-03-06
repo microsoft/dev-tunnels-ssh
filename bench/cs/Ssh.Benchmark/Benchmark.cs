@@ -19,9 +19,14 @@ public abstract class Benchmark : IAsyncDisposable
 	{
 		List<string> nameList = null;
 		int runCount = 7;
+		string jsonPath = null;
 		foreach (var arg in args)
 		{
-			if (int.TryParse(arg, out var runCountArg))
+			if (arg.StartsWith("--json="))
+			{
+				jsonPath = arg.Substring("--json=".Length);
+			}
+			else if (int.TryParse(arg, out var runCountArg))
 			{
 				runCount = runCountArg;
 			}
@@ -34,6 +39,8 @@ public abstract class Benchmark : IAsyncDisposable
 				nameList.Add(arg);
 			}
 		}
+
+		JsonResultWriter jsonWriter = jsonPath != null ? new JsonResultWriter() : null;
 
 		var t = TimeSpan.FromSeconds(1);
 
@@ -54,6 +61,54 @@ public abstract class Benchmark : IAsyncDisposable
 		benchmarks.Add("portforward-ipv6", () => new PortForwardBenchmark(IPAddress.IPv6Loopback, IPAddress.IPv6Loopback.ToString()));
 		benchmarks.Add("portforward-ipv6-localhost", () => new PortForwardBenchmark(IPAddress.IPv6Loopback, "localhost"));
 
+		// Encryption benchmarks
+#if SSH_ENABLE_AESGCM
+		benchmarks.Add("enc-aes256gcm-1024", () => new EncryptionBenchmark(SshAlgorithms.Encryption.Aes256Gcm, 1024));
+		benchmarks.Add("enc-aes256gcm-32768", () => new EncryptionBenchmark(SshAlgorithms.Encryption.Aes256Gcm, 32768));
+		benchmarks.Add("enc-aes256gcm-65536", () => new EncryptionBenchmark(SshAlgorithms.Encryption.Aes256Gcm, 65536));
+#endif
+		benchmarks.Add("enc-aes256cbc-32768", () => new EncryptionBenchmark(SshAlgorithms.Encryption.Aes256Cbc, 32768));
+		benchmarks.Add("enc-aes256ctr-32768", () => new EncryptionBenchmark(SshAlgorithms.Encryption.Aes256Ctr, 32768));
+
+		// HMAC benchmarks
+		benchmarks.Add("hmac-sha256", () => new HmacBenchmark(SshAlgorithms.Hmac.HmacSha256));
+		benchmarks.Add("hmac-sha512", () => new HmacBenchmark(SshAlgorithms.Hmac.HmacSha512));
+		benchmarks.Add("hmac-sha256-etm", () => new HmacBenchmark(SshAlgorithms.Hmac.HmacSha256Etm));
+		benchmarks.Add("hmac-sha512-etm", () => new HmacBenchmark(SshAlgorithms.Hmac.HmacSha512Etm));
+
+		// KEX benchmarks
+#if SSH_ENABLE_ECDH
+		benchmarks.Add("kex-ecdh-p256", () => new KeyExchangeBenchmark(SshAlgorithms.KeyExchange.EcdhNistp256));
+		benchmarks.Add("kex-ecdh-p384", () => new KeyExchangeBenchmark(SshAlgorithms.KeyExchange.EcdhNistp384));
+		benchmarks.Add("kex-ecdh-p521", () => new KeyExchangeBenchmark(SshAlgorithms.KeyExchange.EcdhNistp521));
+#endif
+		benchmarks.Add("kex-dh-group14", () => new KeyExchangeBenchmark(SshAlgorithms.KeyExchange.DHGroup14Sha256));
+		benchmarks.Add("kex-dh-group16", () => new KeyExchangeBenchmark(SshAlgorithms.KeyExchange.DHGroup16Sha512));
+
+		// Keygen benchmarks
+		benchmarks.Add("keygen-rsa-2048", () => new KeygenBenchmark(SshAlgorithms.PublicKey.RsaWithSha256, 2048));
+		benchmarks.Add("keygen-rsa-4096", () => new KeygenBenchmark(SshAlgorithms.PublicKey.RsaWithSha256, 4096));
+		benchmarks.Add("keygen-ecdsa-p256", () => new KeygenBenchmark(SshAlgorithms.PublicKey.ECDsaSha2Nistp256, 256));
+		benchmarks.Add("keygen-ecdsa-p384", () => new KeygenBenchmark(SshAlgorithms.PublicKey.ECDsaSha2Nistp384, 384));
+		benchmarks.Add("keygen-ecdsa-p521", () => new KeygenBenchmark(SshAlgorithms.PublicKey.ECDsaSha2Nistp521, 521));
+
+		// Signature benchmarks
+		benchmarks.Add("sig-rsa-sha256", () => new SignatureBenchmark(SshAlgorithms.PublicKey.RsaWithSha256, 2048));
+		benchmarks.Add("sig-rsa-sha512", () => new SignatureBenchmark(SshAlgorithms.PublicKey.RsaWithSha512, 2048));
+		benchmarks.Add("sig-ecdsa-p256", () => new SignatureBenchmark(SshAlgorithms.PublicKey.ECDsaSha2Nistp256, 256));
+		benchmarks.Add("sig-ecdsa-p384", () => new SignatureBenchmark(SshAlgorithms.PublicKey.ECDsaSha2Nistp384, 384));
+		benchmarks.Add("sig-ecdsa-p521", () => new SignatureBenchmark(SshAlgorithms.PublicKey.ECDsaSha2Nistp521, 521));
+
+		// Protocol serialization benchmarks
+		benchmarks.Add("msg-channel-data", () => new ChannelDataSerializationBenchmark());
+		benchmarks.Add("msg-channel-open", () => new ChannelOpenSerializationBenchmark());
+		benchmarks.Add("msg-kex-init", () => new KeyExchangeInitSerializationBenchmark());
+
+		// Protocol KEX cycle benchmark
+#if SSH_ENABLE_ECDH
+		benchmarks.Add("kex-cycle-ecdh-p384", () => new KexCycleBenchmark());
+#endif
+
 		var stopwatch = new Stopwatch();
 
 		ServerPort = GetAvailableTcpPort();
@@ -73,33 +128,64 @@ public abstract class Benchmark : IAsyncDisposable
 			{
 				benchmark.ReportTitle();
 
+				// Warmup run (not recorded).
+				try { await benchmark.RunAsync(stopwatch); } catch { }
+				benchmark.Measurements.Clear();
+
 				for (int i = 0; i < runCount; i++)
 				{
 					await Task.Delay(TimeSpan.FromMilliseconds(100));
 					stopwatch.Restart();
-					await benchmark.RunAsync(stopwatch);
-					Console.Write(".");
+					try
+					{
+						await benchmark.RunAsync(stopwatch);
+						Console.Write(".");
+					}
+					catch (Exception ex) when (ex is not OutOfMemoryException)
+					{
+						Console.Error.WriteLine(
+							$"\nRun {i + 1} of '{benchmarkName}' failed: {ex.Message}");
+					}
 				}
 
 				benchmark.ReportResults();
+				jsonWriter?.AddBenchmark(benchmark);
+			}
+			catch (Exception ex) when (ex is not OutOfMemoryException)
+			{
+				Console.Error.WriteLine(
+					$"\nBenchmark '{benchmarkName}' failed: {ex.Message}");
 			}
 			finally
 			{
 				await benchmark.DisposeAsync();
 			}
 		}
+
+		if (jsonWriter != null)
+		{
+			jsonWriter.Write(jsonPath, runCount);
+			Console.WriteLine($"JSON results written to {jsonPath}");
+		}
 	}
 
 	protected static int ServerPort { get; private set; }
 
-	protected Benchmark(string title)
+	protected Benchmark(
+		string title,
+		string category = "",
+		IDictionary<string, string> tags = null)
 	{
 		Title = title;
+		Category = category;
+		Tags = tags ?? new Dictionary<string, string>();
 		Measurements = new Dictionary<string, IList<decimal>>();
 		HigherIsBetter = new Dictionary<string, bool>();
 	}
 
 	public string Title { get; }
+	public string Category { get; }
+	public IDictionary<string, string> Tags { get; }
 	public IDictionary<string, IList<decimal>> Measurements { get; }
 	public IDictionary<string, bool> HigherIsBetter { get; }
 

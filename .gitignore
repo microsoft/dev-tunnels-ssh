@@ -16,3 +16,6 @@ launchSettings.json
 # Go compiled test binaries (from `go test -c`)
 src/go/**/*.test
 test/go/**/*.test
+
+# Go compiled benchmark binary
+bench/go/cmd/bench/bench

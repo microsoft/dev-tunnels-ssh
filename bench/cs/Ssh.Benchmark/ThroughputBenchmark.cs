@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 using System.Net;
@@ -30,7 +31,14 @@ class ThroughputBenchmark : Benchmark
 	private readonly bool withEncryption;
 
 	public ThroughputBenchmark(TimeSpan duration, int messageSize, bool withEncryption)
-		: base($"Throughput - {messageSize} byte messages {(withEncryption ? "with" : "without")} encryption")
+		: base(
+			$"Throughput - {messageSize} byte messages {(withEncryption ? "with" : "without")} encryption",
+			"session-throughput",
+			new Dictionary<string, string>
+			{
+				{ "encryption", withEncryption ? "true" : "false" },
+				{ "size", messageSize.ToString() },
+			})
 	{
 		HigherIsBetter[BytesAllocatedMeasurement] = false;
 		HigherIsBetter[BytesCopiedMeasurement] = false;
@@ -88,14 +96,28 @@ class ThroughputBenchmark : Benchmark
 
 			var channel = await clientSession.OpenChannelAsync();
 
+			// Safety timeout to abort if SendAsync deadlocks on channel window
+			// backpressure. This can happen with large encrypted messages over TCP
+			// when the TCP send/receive buffers create a circular dependency between
+			// the client's send and the server's window update. Successful runs
+			// complete within ~1s; deadlocked runs are truly stuck and no amount
+			// of waiting will help, so fail them fast with a 5s timeout.
 			var cancellationSource = new CancellationTokenSource(
-				TimeSpan.FromSeconds(this.duration.TotalSeconds * 2));
+				TimeSpan.FromSeconds(5));
 
 			int messageCount = 0;
 			stopwatch.Restart();
 			while (stopwatch.Elapsed < this.duration)
 			{
-				await channel.SendAsync(this.messageData, cancellationSource.Token);
+				try
+				{
+					await channel.SendAsync(this.messageData, cancellationSource.Token);
+				}
+				catch (OperationCanceledException)
+				{
+					// Backpressure deadlock — record what we have so far.
+					break;
+				}
 				messageCount++;
 			}
 

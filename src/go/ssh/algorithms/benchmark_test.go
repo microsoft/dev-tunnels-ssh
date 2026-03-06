@@ -122,6 +122,49 @@ func benchmarkEncryptDecryptGcm(b *testing.B) {
 	}
 }
 
+// BenchmarkHmac benchmarks HMAC sign+verify operations for each
+// supported algorithm.
+
+func BenchmarkHmacSha256(b *testing.B) {
+	benchmarkHmac(b, NewHmacSha256())
+}
+
+func BenchmarkHmacSha512(b *testing.B) {
+	benchmarkHmac(b, NewHmacSha512())
+}
+
+func BenchmarkHmacSha256Etm(b *testing.B) {
+	benchmarkHmac(b, NewHmacSha256Etm())
+}
+
+func BenchmarkHmacSha512Etm(b *testing.B) {
+	benchmarkHmac(b, NewHmacSha512Etm())
+}
+
+func benchmarkHmac(b *testing.B, algo *HmacAlgorithm) {
+	b.Helper()
+
+	key := make([]byte, algo.KeyLength)
+	rand.Read(key)
+
+	signer := algo.CreateSigner(key)
+	verifier := algo.CreateVerifier(key)
+
+	// 32KB payload (typical SSH max packet size).
+	data := make([]byte, 32*1024)
+	rand.Read(data)
+
+	b.SetBytes(int64(len(data)))
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		sig := signer.Sign(data)
+		if !verifier.Verify(data, sig) {
+			b.Fatal("HMAC verification failed")
+		}
+	}
+}
+
 // BenchmarkKeyExchange benchmarks key exchange operations for each
 // supported algorithm.
 

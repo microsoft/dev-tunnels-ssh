@@ -19,7 +19,7 @@ import { CancellationToken } from 'vscode-jsonrpc';
 const ConnectTimeMeasurement = 'Connect time (ms)';
 const EncryptTimeMeasurement = 'Encrypt time (ms)';
 const AuthTimeMeasurement = 'Authenticate time (ms)';
-const ChannelTimeMeasurement = 'Channnel open time (ms)';
+const ChannelTimeMeasurement = 'Channel open time (ms)';
 const TotalTimeMeasurement = 'Total setup time (ms)';
 const LatencyMeasurement = 'Latency (ms)';
 
@@ -36,7 +36,11 @@ export class SessionSetupBenchmark extends Benchmark {
 	private readonly client: SshClient;
 
 	public constructor(withLatency: boolean) {
-		super('Session setup' + (withLatency ? ' with latency' : ''));
+		super(
+			'Session setup' + (withLatency ? ' with latency' : ''),
+			'session-setup',
+			{ latency: withLatency ? '100' : '0' },
+		);
 
 		this.higherIsBetter.set(ConnectTimeMeasurement, false);
 		this.higherIsBetter.set(EncryptTimeMeasurement, false);
@@ -94,16 +98,8 @@ export class SessionSetupBenchmark extends Benchmark {
 
 		await clientSession.authenticateServer();
 
-		let clientAuthCallback: (err?: Error, result?: boolean) => void;
-		const clientAuthPromise = new Promise((resolve, reject) => {
-			clientAuthCallback = (err, result) => {
-				if (err) reject(err);
-				else resolve(result);
-			};
-		});
-
 		const credentials: SshClientCredentials = { username: 'benchmark', password: 'benchmark' };
-		await clientSession.authenticateClient(credentials, clientAuthCallback!);
+		await clientSession.authenticateClient(credentials);
 
 		var authMark: hrtime = process.hrtime(startTime);
 
@@ -112,8 +108,6 @@ export class SessionSetupBenchmark extends Benchmark {
 
 		// Protocol extension: Send initial request when opening channel.
 		const clientChannel = await clientSession.openChannel(null, channelRequest);
-
-		await clientAuthPromise;
 
 		var channelMark: hrtime = process.hrtime(startTime);
 

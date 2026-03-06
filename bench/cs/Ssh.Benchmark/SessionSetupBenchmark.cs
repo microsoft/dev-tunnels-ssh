@@ -1,5 +1,6 @@
 
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
@@ -23,7 +24,7 @@ class SessionSetupBenchmark : Benchmark
 	private const string ConnectTimeMeasurement = "Connect time (ms)";
 	private const string EncryptTimeMeasurement = "Encrypt time (ms)";
 	private const string AuthTimeMeasurement = "Authenticate time (ms)";
-	private const string ChannelTimeMeasurement = "Channnel open time (ms)";
+	private const string ChannelTimeMeasurement = "Channel open time (ms)";
 	private const string TotalTimeMeasurement = "Total setup time (ms)";
 	private const string BytesAllocatedMeasurement = "Bytes allocated (KB)";
 	private const string BytesCopiedMeasurement = "Bytes copied (KB)";
@@ -36,7 +37,10 @@ class SessionSetupBenchmark : Benchmark
 	private readonly SshClient client;
 
 	public SessionSetupBenchmark(bool withLatency)
-		: base("Session setup" + (withLatency ? " with latency" : ""))
+		: base(
+			"Session setup" + (withLatency ? " with latency" : ""),
+			"session-setup",
+			new Dictionary<string, string> { { "latency", withLatency ? "100" : "0" } })
 	{
 		HigherIsBetter[ConnectTimeMeasurement] = false;
 		HigherIsBetter[EncryptTimeMeasurement] = false;
@@ -90,9 +94,7 @@ class SessionSetupBenchmark : Benchmark
 		clientSession.Authenticating += OnClientSessionAuthenticating;
 		await clientSession.AuthenticateServerAsync();
 
-		var clientAuthCompletion = new TaskCompletionSource<bool>();
-		await clientSession.AuthenticateClientAsync(
-			("benchmark", "benchmark"), clientAuthCompletion);
+		await clientSession.AuthenticateClientAsync(("benchmark", "benchmark"));
 
 		var authMark = stopwatch.Elapsed.TotalMilliseconds;
 
@@ -105,8 +107,6 @@ class SessionSetupBenchmark : Benchmark
 		// Protocol extension: Send initial request when opening channel.
 		var clientChannel = await clientSession.OpenChannelAsync(
 			new ChannelOpenMessage(), channelRequest);
-
-		await clientAuthCompletion.Task;
 
 		var channelMark = stopwatch.Elapsed.TotalMilliseconds;
 
