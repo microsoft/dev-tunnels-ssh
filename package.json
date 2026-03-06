@@ -22,6 +22,7 @@
 		"build-go": "node ./build.js build-go",
 		"test-go": "node ./build.js test-go",
 		"bench-ts": "node ./build.js bench-ts",
+		"bench-go": "node ./build.js bench-go",
 		"compile": "tsc --build",
 		"eslint": "eslint . --ext ts",
 		"eslint-fix": "eslint . --ext ts --fix",

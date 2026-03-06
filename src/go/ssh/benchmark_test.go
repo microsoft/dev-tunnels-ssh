@@ -137,6 +137,100 @@ func BenchmarkMultiChannelThroughput(b *testing.B) {
 	}
 }
 
+// --- Session Setup Benchmarks ---
+
+// BenchmarkSessionSetup measures the time to create a connected encrypted session pair.
+func BenchmarkSessionSetup(b *testing.B) {
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		client, server := benchCreateSessionPairDirect(b, nil, nil)
+		client.Close()
+		server.Close()
+	}
+}
+
+// BenchmarkSessionSetupWithLatency measures session setup with 100ms simulated latency.
+func BenchmarkSessionSetupWithLatency(b *testing.B) {
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		clientStream, serverStream := duplexPipe()
+		cs := &benchLatencyStream{stream: clientStream, delay: 100 * time.Millisecond}
+		ss := &benchLatencyStream{stream: serverStream, delay: 100 * time.Millisecond}
+		client, server := benchCreateSessionPairWithStreams(b, cs, ss, nil, nil)
+		client.Close()
+		server.Close()
+	}
+}
+
+// --- Throughput Benchmarks (Multi-Size) ---
+
+func BenchmarkThroughputEncrypted10B(b *testing.B) {
+	benchmarkThroughputSize(b, 10, true)
+}
+
+func BenchmarkThroughputEncrypted200B(b *testing.B) {
+	benchmarkThroughputSize(b, 200, true)
+}
+
+func BenchmarkThroughputEncrypted50KB(b *testing.B) {
+	benchmarkThroughputSize(b, 50*1024, true)
+}
+
+func BenchmarkThroughputEncrypted1MB(b *testing.B) {
+	benchmarkThroughputSize(b, 1024*1024, true)
+}
+
+func BenchmarkThroughputUnencrypted10B(b *testing.B) {
+	benchmarkThroughputSize(b, 10, false)
+}
+
+func BenchmarkThroughputUnencrypted200B(b *testing.B) {
+	benchmarkThroughputSize(b, 200, false)
+}
+
+func BenchmarkThroughputUnencrypted50KB(b *testing.B) {
+	benchmarkThroughputSize(b, 50*1024, false)
+}
+
+func BenchmarkThroughputUnencrypted1MB(b *testing.B) {
+	benchmarkThroughputSize(b, 1024*1024, false)
+}
+
+func benchmarkThroughputSize(b *testing.B, chunkSize int, encrypted bool) {
+	b.Helper()
+
+	var clientConfig, serverConfig *SessionConfig
+	if encrypted {
+		clientConfig = newEncryptedBenchConfig()
+		serverConfig = newEncryptedBenchConfig()
+	}
+
+	client, server := benchCreateSessionPairDirect(b, clientConfig, serverConfig)
+	defer client.Close()
+	defer server.Close()
+
+	ctx := context.Background()
+	clientCh, serverCh := benchOpenChannel(b, ctx, &client.Session, &server.Session)
+
+	data := make([]byte, chunkSize)
+	rand.Read(data)
+
+	drainDone := drainChannel(serverCh)
+
+	b.SetBytes(int64(chunkSize))
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		if err := clientCh.Send(ctx, data); err != nil {
+			b.Fatalf("send: %v", err)
+		}
+	}
+
+	b.StopTimer()
+	clientCh.Close()
+	<-drainDone
+}
+
 // --- Message Serialization Benchmarks ---
 
 // BenchmarkMessageSerialize benchmarks serialization of various SSH message
@@ -387,4 +481,98 @@ func drainStream(r io.Reader) <-chan int64 {
 		done <- total
 	}()
 	return done
+}
+
+// newEncryptedBenchConfig creates an encrypted session config for benchmarks.
+func newEncryptedBenchConfig() *SessionConfig {
+	c := &SessionConfig{
+		ProtocolExtensions:    []string{ExtensionServerSignatureAlgorithms},
+		AuthenticationMethods: []string{AuthMethodNone},
+		KeyExchangeAlgorithms: []string{AlgoKexEcdhNistp256},
+		PublicKeyAlgorithms:   []string{AlgoPKEcdsaSha2P256},
+		EncryptionAlgorithms:  []string{AlgoEncAes256Ctr},
+		HmacAlgorithms:        []string{AlgoHmacSha256},
+		CompressionAlgorithms: []string{AlgoCompNone},
+		KeyRotationThreshold:  0,
+	}
+	registerDefaultServices(c)
+	return c
+}
+
+// benchLatencyStream wraps a stream and adds a delay to each read and write.
+type benchLatencyStream struct {
+	stream io.ReadWriteCloser
+	delay  time.Duration
+}
+
+func (s *benchLatencyStream) Read(b []byte) (int, error) {
+	time.Sleep(s.delay / 2)
+	return s.stream.Read(b)
+}
+
+func (s *benchLatencyStream) Write(b []byte) (int, error) {
+	time.Sleep(s.delay / 2)
+	return s.stream.Write(b)
+}
+
+func (s *benchLatencyStream) Close() error { return s.stream.Close() }
+
+// benchCreateSessionPairWithStreams creates a connected session pair using provided streams.
+func benchCreateSessionPairWithStreams(b *testing.B, clientStream, serverStream io.ReadWriteCloser, clientConfig, serverConfig *SessionConfig) (*ClientSession, *ServerSession) {
+	b.Helper()
+
+	if clientConfig == nil {
+		clientConfig = NewNoSecurityConfig()
+		clientConfig.KeyRotationThreshold = 0
+	}
+	if serverConfig == nil {
+		serverConfig = NewNoSecurityConfig()
+		serverConfig.KeyRotationThreshold = 0
+	}
+
+	client := NewClientSession(clientConfig)
+	client.OnAuthenticating = func(args *AuthenticatingEventArgs) {
+		args.AuthenticationResult = true
+	}
+
+	server := NewServerSession(serverConfig)
+	server.OnAuthenticating = func(args *AuthenticatingEventArgs) {
+		args.AuthenticationResult = true
+	}
+
+	if hasNonNone(serverConfig.KeyExchangeAlgorithms) {
+		hostKey, err := GenerateKeyPair(serverConfig.PublicKeyAlgorithms[0])
+		if err != nil {
+			b.Fatalf("generate key pair: %v", err)
+		}
+		server.Credentials = &ServerCredentials{
+			PublicKeys: []KeyPair{hostKey},
+		}
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	var wg sync.WaitGroup
+	var clientErr, serverErr error
+
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		clientErr = client.Connect(ctx, clientStream)
+	}()
+	go func() {
+		defer wg.Done()
+		serverErr = server.Connect(ctx, serverStream)
+	}()
+	wg.Wait()
+
+	if clientErr != nil {
+		b.Fatalf("client connect: %v", clientErr)
+	}
+	if serverErr != nil {
+		b.Fatalf("server connect: %v", serverErr)
+	}
+
+	return client, server
 }

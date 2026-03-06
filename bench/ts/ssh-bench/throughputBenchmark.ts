@@ -34,6 +34,8 @@ export class ThroughputBenchmark extends Benchmark {
 			`Throughput - ${messageSize} byte messages ${
 				withEncryption ? 'with' : 'without'
 			} encryption`,
+			'session-throughput',
+			{ encryption: withEncryption ? 'true' : 'false', size: messageSize.toString() },
 		);
 
 		const config = new SshSessionConfiguration(withEncryption);

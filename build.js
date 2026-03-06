@@ -301,6 +301,19 @@ yargs.command('bench-ts', 'Run TypeScript benchmarks', async (yargs) => {
 	await executeCommand(__dirname, 'node', args);
 });
 
+yargs.command('bench-go', 'Run Go benchmarks', async () => {
+	const goBenchDir = path.join(__dirname, 'bench', 'go', 'cmd', 'bench');
+	const extraArgs = process.argv.slice(3).filter((a) => a !== '--');
+	const args = ['run', '.', ...extraArgs];
+	await executeCommand(goBenchDir, 'go', args);
+});
+
+yargs.command('bench', 'Run all benchmarks', async () => {
+	await forkCommand('bench-cs');
+	await forkCommand('bench-ts');
+	await forkCommand('bench-go');
+});
+
 const goSrcDir = path.join(srcDir, 'go');
 const goTestDir = path.join(__dirname, 'test', 'go', 'ssh-test');
 

@@ -14,4 +14,8 @@
 		<ProjectReference Include="$(SshSourceDirectory)Ssh.Tcp/Ssh.Tcp.csproj" />
 	</ItemGroup>
 
+	<ItemGroup Condition="'$(TargetFramework)' == 'net48'">
+		<PackageReference Include="System.Text.Json" Version="8.0.5" />
+	</ItemGroup>
+
 </Project>
