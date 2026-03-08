@@ -60,6 +60,34 @@ export class ChannelDataSerializationBenchmark extends Benchmark {
 		);
 	}
 
+	public async verify(): Promise<void> {
+		const data = Buffer.alloc(128);
+		SshAlgorithms.random.getBytes(data);
+
+		// Serialize
+		const writer = new SshDataWriter(Buffer.alloc(128 + 16));
+		writer.writeByte(94); // SSH_MSG_CHANNEL_DATA
+		writer.writeUInt32(42); // recipientChannel
+		writer.writeBinary(data);
+		const buffer = writer.toBuffer();
+
+		// Deserialize
+		const reader = new SshDataReader(buffer);
+		const msgType = reader.readByte();
+		const channel = reader.readUInt32();
+		const readData = reader.readBinary();
+
+		if (msgType !== 94) {
+			throw new Error(`Expected message type 94, got ${msgType}`);
+		}
+		if (channel !== 42) {
+			throw new Error(`Expected channel 42, got ${channel}`);
+		}
+		if (!readData.equals(data)) {
+			throw new Error('Deserialized data does not match original');
+		}
+	}
+
 	public async dispose(): Promise<void> {}
 }
 
@@ -102,6 +130,32 @@ export class ChannelOpenSerializationBenchmark extends Benchmark {
 			ChannelOpenSerializationBenchmark.RoundTripTimeMeasurement,
 			millis(elapsed) / iterations,
 		);
+	}
+
+	public async verify(): Promise<void> {
+		const msg = new ChannelOpenMessage();
+		msg.channelType = 'session';
+		msg.senderChannel = 7;
+		msg.maxWindowSize = 1024 * 1024;
+		msg.maxPacketSize = 32 * 1024;
+
+		const buffer = msg.toBuffer();
+		const reader = new SshDataReader(buffer);
+		const msg2 = new ChannelOpenMessage();
+		msg2.read(reader);
+
+		if (msg2.channelType !== 'session') {
+			throw new Error(`Expected channelType 'session', got '${msg2.channelType}'`);
+		}
+		if (msg2.senderChannel !== 7) {
+			throw new Error(`Expected senderChannel 7, got ${msg2.senderChannel}`);
+		}
+		if (msg2.maxWindowSize !== 1024 * 1024) {
+			throw new Error(`Expected maxWindowSize ${1024 * 1024}, got ${msg2.maxWindowSize}`);
+		}
+		if (msg2.maxPacketSize !== 32 * 1024) {
+			throw new Error(`Expected maxPacketSize ${32 * 1024}, got ${msg2.maxPacketSize}`);
+		}
 	}
 
 	public async dispose(): Promise<void> {}
@@ -199,6 +253,35 @@ export class KeyExchangeInitSerializationBenchmark extends Benchmark {
 		);
 	}
 
+	public async verify(): Promise<void> {
+		// Serialize
+		const writer = new SshDataWriter(Buffer.alloc(512));
+		serializeKexInit(writer);
+		const buffer = writer.toBuffer();
+
+		// Deserialize
+		const reader = new SshDataReader(buffer);
+		const msgType = reader.readByte();
+		reader.read(16); // cookie
+		const kex = reader.readList('ascii');
+		const hostKey = reader.readList('ascii');
+
+		if (msgType !== 20) {
+			throw new Error(`Expected message type 20 (KEXINIT), got ${msgType}`);
+		}
+		if (kex.length !== kexAlgorithms.length) {
+			throw new Error(`Expected ${kexAlgorithms.length} kex algorithms, got ${kex.length}`);
+		}
+		if (kex[0] !== kexAlgorithms[0]) {
+			throw new Error(`Expected first kex algorithm '${kexAlgorithms[0]}', got '${kex[0]}'`);
+		}
+		if (hostKey.length !== hostKeyAlgorithms.length) {
+			throw new Error(
+				`Expected ${hostKeyAlgorithms.length} host key algorithms, got ${hostKey.length}`,
+			);
+		}
+	}
+
 	public async dispose(): Promise<void> {}
 }
 
@@ -281,6 +364,45 @@ export class KexCycleBenchmark extends Benchmark {
 		const elapsed: hrtime = process.hrtime(startTime);
 
 		this.addMeasurement(KexCycleBenchmark.KexCycleTimeMeasurement, millis(elapsed));
+
+		signer.dispose();
+		verifier.dispose();
+		clientKex.dispose();
+		serverKex.dispose();
+		hostKeyPair.dispose();
+	}
+
+	public async verify(): Promise<void> {
+		const kexAlgorithm = SshAlgorithms.keyExchange.ecdhNistp384Sha384!;
+		const hostKeyAlgorithm = SshAlgorithms.publicKey.ecdsaSha2Nistp384!;
+
+		const hostKeyPair = await hostKeyAlgorithm.generateKeyPair(384);
+
+		// Run full KEX cycle and verify shared secrets match
+		const clientKex = kexAlgorithm.createKeyExchange();
+		const serverKex = kexAlgorithm.createKeyExchange();
+
+		const clientPublic = await clientKex.startKeyExchange();
+		const serverPublic = await serverKex.startKeyExchange();
+
+		const serverSecret = await serverKex.decryptKeyExchange(clientPublic);
+		const clientSecret = await clientKex.decryptKeyExchange(serverPublic);
+
+		if (!clientSecret.equals(serverSecret)) {
+			throw new Error('KEX cycle: shared secrets do not match');
+		}
+
+		// Verify host key signature round-trip
+		const testData = Buffer.alloc(48);
+		SshAlgorithms.random.getBytes(testData);
+		const signer = hostKeyAlgorithm.createSigner(hostKeyPair);
+		const signature = await signer.sign(testData);
+		const verifier = hostKeyAlgorithm.createVerifier(hostKeyPair);
+		const valid = await verifier.verify(testData, signature);
+
+		if (!valid) {
+			throw new Error('KEX cycle: host key signature verification failed');
+		}
 
 		signer.dispose();
 		verifier.dispose();

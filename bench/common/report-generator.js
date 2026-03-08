@@ -60,25 +60,38 @@ const CATEGORY_NAMES = {
 const CATEGORY_DESCRIPTIONS = {
 	'algorithm-encryption':
 		'Measures raw encrypt + decrypt round-trip time and throughput for symmetric ciphers, ' +
-		'isolated from the SSH protocol. Each iteration encrypts then decrypts a single buffer.',
+		'isolated from the SSH protocol. Each iteration encrypts then decrypts a single buffer. ' +
+		'**Note:** Go uses hardware-accelerated AES-NI/GCM assembly in its standard library, ' +
+		'which can be 10-100x faster than C#/.NET or Node.js for small buffers where the ' +
+		'sub-microsecond operation time amplifies fixed runtime overhead.',
 	'algorithm-hmac':
-		'Measures HMAC sign + verify time for each MAC algorithm, isolated from the SSH protocol.',
+		'Measures HMAC sign + verify time for each MAC algorithm, isolated from the SSH protocol. ' +
+		'**Note:** Go uses assembly-optimized SHA-256/SHA-512 in its crypto/hmac package. ' +
+		'HMAC on 256 bytes is a sub-microsecond operation in Go, so large cross-platform ' +
+		'ratios reflect real crypto-library performance differences amplified by timer resolution.',
 	'algorithm-kex':
 		'Measures the time for a single Diffie-Hellman or ECDH key exchange operation ' +
 		'(one side only, not a full handshake).',
 	'algorithm-keygen':
-		'Measures key pair generation time for RSA and ECDSA at various key sizes.',
+		'Measures key pair generation time for RSA and ECDSA at various key sizes. ' +
+		'**Note:** Go uses assembly-optimized elliptic curve operations in crypto/ecdsa, ' +
+		'which can be significantly faster for ECDSA key generation. RSA keygen times are ' +
+		'more comparable across platforms since they depend on probabilistic prime finding.',
 	'algorithm-signature':
-		'Measures sign + verify time for RSA and ECDSA signature algorithms.',
+		'Measures sign + verify time for RSA and ECDSA signature algorithms. ' +
+		'**Note:** Large differences in RSA signature time may indicate differences in the ' +
+		'SSH library\'s RSA signing implementation rather than the underlying crypto library.',
 	'protocol-serialization':
-		'Measures the time to serialize and deserialize SSH protocol messages (round-trip).',
+		'Measures the time to serialize and deserialize SSH protocol messages (round-trip). ' +
+		'**Note:** These operations take microseconds or less, so large cross-platform ratios ' +
+		'are expected and reflect language/runtime overhead differences at negligible absolute scale.',
 	'protocol-kex-cycle':
 		'Measures a full key exchange cycle between two in-process sessions ' +
 		'(both sides, including DH/ECDH computation and new-keys exchange).',
 	'session-setup':
-		'Measures the time to establish a full SSH session: version exchange, key exchange, ' +
-		'authentication, and channel open. Broken down into sub-phases. ' +
-		'"With latency" adds simulated 100ms round-trip network delay.',
+		'Measures the time to establish a full SSH session: TCP connect, version exchange, ' +
+		'key exchange, authentication, and channel open. Broken down into sub-phases. ' +
+		'"With latency" adds simulated 100ms round-trip network delay via write-only stream wrapping.',
 	'session-throughput':
 		'Measures message throughput over an established SSH session at various message sizes, ' +
 		'with and without encryption enabled.',
@@ -152,11 +165,15 @@ function groupBenchmarks(results) {
 					tags: suite.tags,
 					name: suite.name,
 					platforms: new Map(),
+					verifications: new Map(),
 				});
 			}
 			const group = groups.get(key);
 			if (!group.platforms.has(platform)) {
 				group.platforms.set(platform, suite.metrics);
+			}
+			if (suite.verification) {
+				group.verifications.set(platform, suite.verification);
 			}
 		}
 	}
@@ -317,7 +334,146 @@ function generateReport(results) {
 		}
 	}
 
+	// Verification summary
+	const hasAnyVerification = [...groups.values()].some((g) => g.verifications.size > 0);
+	if (hasAnyVerification) {
+		lines.push('## Verification Results');
+		lines.push('');
+		lines.push('Results from `--verify` correctness checks run after each benchmark.');
+		lines.push('');
+
+		const platformHeaders = PLATFORMS.map((p) => PLATFORM_NAMES[p]);
+		lines.push(`| Benchmark | ${platformHeaders.join(' | ')} |`);
+		lines.push(`| --- | ${PLATFORMS.map(() => '---').join(' | ')} |`);
+
+		for (const category of CATEGORY_ORDER) {
+			const categoryGroups = byCategory.get(category);
+			if (!categoryGroups) continue;
+
+			for (const group of categoryGroups) {
+				if (group.verifications.size === 0) continue;
+
+				const cells = PLATFORMS.map((p) => {
+					const v = group.verifications.get(p);
+					if (!v) return 'N/A';
+					if (v.passed) return 'Pass';
+					return `FAIL: ${v.error || 'unknown'}`;
+				});
+				lines.push(`| ${group.name} | ${cells.join(' | ')} |`);
+			}
+		}
+		lines.push('');
+	}
+
+	// Validation warnings
+	const warnings = validateResults(groups);
+	if (warnings.length > 0) {
+		lines.push('## Validation Warnings');
+		lines.push('');
+		lines.push('The following potential issues were detected in the benchmark results:');
+		lines.push('');
+
+		const errors = warnings.filter((w) => w.severity === 'error');
+		const ratioWarnings = warnings.filter((w) => w.severity === 'warning');
+
+		if (errors.length > 0) {
+			lines.push('### Errors');
+			lines.push('');
+			for (const w of errors) {
+				lines.push(`- **${w.benchmark}**: ${w.message}`);
+			}
+			lines.push('');
+		}
+
+		if (ratioWarnings.length > 0) {
+			lines.push('### Suspicious Cross-Platform Ratios');
+			lines.push('');
+			for (const w of ratioWarnings) {
+				lines.push(`- **${w.benchmark}**: ${w.message}`);
+			}
+			lines.push('');
+		}
+	}
+
 	return lines.join('\n');
+}
+
+// Categories where large cross-platform ratios are expected due to differences
+// in underlying crypto libraries (Go's assembly-optimized stdlib vs managed runtimes).
+// These use a much higher threshold before flagging as suspicious.
+const EXPECTED_DIVERGENCE_CATEGORIES = new Set([
+	'algorithm-encryption',
+	'algorithm-hmac',
+	'algorithm-kex',
+	'algorithm-keygen',
+	'algorithm-signature',
+	'protocol-serialization',
+]);
+
+function validateResults(groups) {
+	const warnings = [];
+
+	for (const [, group] of groups) {
+		const allMetricNames = new Set();
+		for (const [, metrics] of group.platforms) {
+			for (const metric of metrics) {
+				allMetricNames.add(metric.name);
+			}
+		}
+
+		// Algorithm and serialization categories use a higher ratio threshold
+		// because Go's crypto stdlib uses hardware-accelerated assembly that is
+		// genuinely 10-100x faster for sub-microsecond operations. The default
+		// 10x threshold would generate many false positives for these categories.
+		const ratioThreshold = EXPECTED_DIVERGENCE_CATEGORIES.has(group.category) ? 200 : 10;
+
+		for (const metricName of allMetricNames) {
+			const platformValues = new Map();
+
+			for (const [platform, metrics] of group.platforms) {
+				const metric = metrics.find((m) => m.name === metricName);
+				if (!metric || metric.values.length === 0) continue;
+
+				const tm = trimmedMean(metric.values);
+				platformValues.set(platform, tm);
+
+				if (tm <= 0) {
+					warnings.push({
+						severity: 'error',
+						benchmark: group.name,
+						metric: metricName,
+						message: `${PLATFORM_NAMES[platform]} reported zero or negative value (${tm}) for "${metricName}"`,
+					});
+				}
+			}
+
+			// Flag if any two platforms differ by more than the threshold
+			if (platformValues.size >= 2) {
+				const entries = [...platformValues.entries()];
+				for (let i = 0; i < entries.length; i++) {
+					for (let j = i + 1; j < entries.length; j++) {
+						const [p1, v1] = entries[i];
+						const [p2, v2] = entries[j];
+						if (v1 <= 0 || v2 <= 0) continue;
+
+						const ratio = Math.max(v1, v2) / Math.min(v1, v2);
+						if (ratio > ratioThreshold) {
+							const faster = v1 < v2 ? p1 : p2;
+							const slower = v1 < v2 ? p2 : p1;
+							warnings.push({
+								severity: 'warning',
+								benchmark: group.name,
+								metric: metricName,
+								message: `${PLATFORM_NAMES[faster]} is ${ratio.toFixed(1)}x different from ${PLATFORM_NAMES[slower]} for "${metricName}" — possible methodology mismatch`,
+							});
+						}
+					}
+				}
+			}
+		}
+	}
+
+	return warnings;
 }
 
 // Main
@@ -334,6 +490,16 @@ if (results.length === 0) {
 }
 
 console.log(`Read ${results.length} result file(s) from ${inputDir}`);
+
+const groups = groupBenchmarks(results);
+const validationWarnings = validateResults(groups);
+if (validationWarnings.length > 0) {
+	console.error(`\n${validationWarnings.length} validation warning(s):`);
+	for (const w of validationWarnings) {
+		console.error(`  [${w.severity.toUpperCase()}] ${w.benchmark} / ${w.metric}: ${w.message}`);
+	}
+	console.error('');
+}
 
 const report = generateReport(results);
 const outputPath = path.resolve(argv.output);

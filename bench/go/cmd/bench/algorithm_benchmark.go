@@ -3,6 +3,7 @@
 package main
 
 import (
+	"bytes"
 	"crypto/rand"
 	"fmt"
 	"os"
@@ -38,6 +39,7 @@ func encryptionScenarios() []benchmarkScenario {
 			category: "algorithm-encryption",
 			tags:     map[string]string{"algo": spec.algo.Name, "size": fmt.Sprintf("%d", spec.size)},
 			run:      func(runs int) []metric { return runEncryptionBenchmark(spec.algo, spec.size, runs) },
+			verify:   func() error { return verifyEncryption(spec.algo, spec.size) },
 		})
 	}
 	return scenarios
@@ -152,6 +154,7 @@ func hmacScenarios() []benchmarkScenario {
 			category: "algorithm-hmac",
 			tags:     map[string]string{"algo": spec.algo.Name},
 			run:      func(runs int) []metric { return runHmacBenchmark(spec.algo, runs) },
+			verify:   func() error { return verifyHmac(spec.algo) },
 		})
 	}
 	return scenarios
@@ -210,6 +213,7 @@ func kexScenarios() []benchmarkScenario {
 			category: "algorithm-kex",
 			tags:     map[string]string{"algo": spec.algo.Name},
 			run:      func(runs int) []metric { return runKexBenchmark(spec.algo, runs) },
+			verify:   func() error { return verifyKex(spec.algo) },
 		})
 	}
 	return scenarios
@@ -292,6 +296,7 @@ func keygenScenarios() []benchmarkScenario {
 			category: "algorithm-keygen",
 			tags:     map[string]string{"algo": keyAlgoName, "size": fmt.Sprintf("%d", spec.keySize)},
 			run:      func(runs int) []metric { return runKeygenBenchmark(spec.algoName, runs) },
+			verify:   func() error { return verifyKeygen(spec.algoName) },
 		})
 	}
 	return scenarios
@@ -365,6 +370,7 @@ func signatureScenarios() []benchmarkScenario {
 			category: "algorithm-signature",
 			tags:     map[string]string{"algo": spec.algoName, "size": fmt.Sprintf("%d", spec.keySize)},
 			run:      func(runs int) []metric { return runSignatureBenchmark(spec.algoName, runs) },
+			verify:   func() error { return verifySignature(spec.algoName) },
 		})
 	}
 	return scenarios
@@ -413,4 +419,179 @@ func runSignatureBenchmark(algoName string, runs int) []metric {
 	return []metric{
 		{Name: "Sign+Verify time", Unit: "ms", Values: timesMs, HigherIsBetter: false},
 	}
+}
+
+// --- Verification functions ---
+
+func verifyEncryption(algo *algorithms.EncryptionAlgorithm, payloadSize int) error {
+	key := make([]byte, algo.KeyLength)
+	rand.Read(key)
+
+	blockLen := 16
+	alignedSize := (payloadSize / blockLen) * blockLen
+	if alignedSize < blockLen {
+		alignedSize = blockLen
+	}
+
+	plaintext := make([]byte, alignedSize)
+	rand.Read(plaintext)
+	original := make([]byte, alignedSize)
+	copy(original, plaintext)
+
+	iv := make([]byte, algo.IVLength())
+	rand.Read(iv)
+	ivCopy := make([]byte, len(iv))
+	copy(ivCopy, iv)
+
+	enc, err := algo.CreateCipher(true, key, iv)
+	if err != nil {
+		return fmt.Errorf("create encryptor: %w", err)
+	}
+	dec, err := algo.CreateCipher(false, key, ivCopy)
+	if err != nil {
+		return fmt.Errorf("create decryptor: %w", err)
+	}
+
+	if err := enc.Transform(plaintext); err != nil {
+		return fmt.Errorf("encrypt: %w", err)
+	}
+	if bytes.Equal(plaintext, original) {
+		return fmt.Errorf("ciphertext equals plaintext — encryption did nothing")
+	}
+
+	if algo.IsAead {
+		if gcmEnc, ok := enc.(*algorithms.AesGcmCipher); ok {
+			tag := gcmEnc.Sign(nil)
+			if gcmDec, ok := dec.(*algorithms.AesGcmCipher); ok {
+				gcmDec.SetTag(tag)
+			}
+		}
+	}
+
+	if err := dec.Transform(plaintext); err != nil {
+		return fmt.Errorf("decrypt: %w", err)
+	}
+	if !bytes.Equal(plaintext, original) {
+		return fmt.Errorf("decrypted data does not match original")
+	}
+	return nil
+}
+
+func verifyHmac(algo *algorithms.HmacAlgorithm) error {
+	key := make([]byte, algo.KeyLength)
+	rand.Read(key)
+	data := make([]byte, 256)
+	rand.Read(data)
+
+	s := algo.CreateSigner(key)
+	v := algo.CreateVerifier(key)
+
+	sig := s.Sign(data)
+	if !v.Verify(data, sig) {
+		return fmt.Errorf("valid signature failed verification")
+	}
+
+	tampered := make([]byte, len(data))
+	copy(tampered, data)
+	tampered[0] ^= 0xFF
+	if v.Verify(tampered, sig) {
+		return fmt.Errorf("tampered data passed verification — HMAC is not checking")
+	}
+	return nil
+}
+
+func verifyKex(algo *algorithms.KeyExchangeAlgorithm) error {
+	kex1, err := algo.CreateKeyExchange()
+	if err != nil {
+		return fmt.Errorf("create kex1: %w", err)
+	}
+	kex2, err := algo.CreateKeyExchange()
+	if err != nil {
+		return fmt.Errorf("create kex2: %w", err)
+	}
+
+	pub1, err := kex1.StartKeyExchange()
+	if err != nil {
+		return fmt.Errorf("start kex1: %w", err)
+	}
+	pub2, err := kex2.StartKeyExchange()
+	if err != nil {
+		return fmt.Errorf("start kex2: %w", err)
+	}
+
+	secret1, err := kex1.DecryptKeyExchange(pub2)
+	if err != nil {
+		return fmt.Errorf("decrypt kex1: %w", err)
+	}
+	secret2, err := kex2.DecryptKeyExchange(pub1)
+	if err != nil {
+		return fmt.Errorf("decrypt kex2: %w", err)
+	}
+
+	if !bytes.Equal(secret1, secret2) {
+		return fmt.Errorf("shared secrets differ — key exchange failed")
+	}
+	if len(secret1) == 0 {
+		return fmt.Errorf("shared secret is empty")
+	}
+	return nil
+}
+
+func verifyKeygen(algoName string) error {
+	kp, err := ssh.GenerateKeyPair(algoName)
+	if err != nil {
+		return fmt.Errorf("generate key: %w", err)
+	}
+
+	s, ok := kp.(signer)
+	if !ok {
+		return fmt.Errorf("key pair does not implement signer")
+	}
+
+	data := []byte("verification test data")
+	sig, err := s.Sign(data)
+	if err != nil {
+		return fmt.Errorf("sign: %w", err)
+	}
+	valid, err := s.Verify(data, sig)
+	if err != nil {
+		return fmt.Errorf("verify: %w", err)
+	}
+	if !valid {
+		return fmt.Errorf("generated key cannot verify its own signature")
+	}
+	return nil
+}
+
+func verifySignature(algoName string) error {
+	kp, err := ssh.GenerateKeyPair(algoName)
+	if err != nil {
+		return fmt.Errorf("generate key: %w", err)
+	}
+
+	s, ok := kp.(signer)
+	if !ok {
+		return fmt.Errorf("key pair does not implement signer")
+	}
+
+	data := []byte("verification test data")
+	sig, err := s.Sign(data)
+	if err != nil {
+		return fmt.Errorf("sign: %w", err)
+	}
+
+	valid, err := s.Verify(data, sig)
+	if err != nil {
+		return fmt.Errorf("verify: %w", err)
+	}
+	if !valid {
+		return fmt.Errorf("valid signature failed verification")
+	}
+
+	wrongData := []byte("wrong data")
+	valid, err = s.Verify(wrongData, sig)
+	if err == nil && valid {
+		return fmt.Errorf("wrong data passed verification — signature is not checking")
+	}
+	return nil
 }

@@ -157,6 +157,46 @@ class SessionSetupBenchmark : Benchmark
 		e.IsAuthorized = true;
 	}
 
+	public override async Task VerifyAsync()
+	{
+		// Open a fresh session, channel, and send/receive data to prove it works.
+		var tcs = new TaskCompletionSource<byte[]>();
+
+		EventHandler<SshServerSession> sessionOpenedHandler = null;
+		sessionOpenedHandler = (_, serverSession) =>
+		{
+			this.server.SessionOpened -= sessionOpenedHandler;
+			serverSession.ChannelOpening += (__, e) =>
+			{
+				e.Channel.DataReceived += (___, data) =>
+				{
+					tcs.TrySetResult(data.ToArray());
+				};
+			};
+		};
+		this.server.SessionOpened += sessionOpenedHandler;
+
+		using var clientSession = await client.OpenSessionAsync(
+			IPAddress.Loopback.ToString(), ServerPort);
+
+		clientSession.Authenticating += OnClientSessionAuthenticating;
+		await clientSession.AuthenticateServerAsync();
+		await clientSession.AuthenticateClientAsync(("benchmark", "benchmark"));
+
+		var channel = await clientSession.OpenChannelAsync();
+
+		var testData = new byte[] { 0xDE, 0xAD, 0xBE, 0xEF };
+		await channel.SendAsync(testData, CancellationToken.None);
+
+		var received = await Task.WhenAny(tcs.Task, Task.Delay(5000));
+		if (received != tcs.Task)
+			throw new Exception("Timed out waiting for data on server side");
+
+		var receivedData = await tcs.Task;
+		if (!receivedData.SequenceEqual(testData))
+			throw new Exception("Received data does not match sent data");
+	}
+
 	public override async ValueTask DisposeAsync()
 	{
 		this.server.Dispose();

@@ -15,11 +15,17 @@ interface MetricResult {
 	higherIsBetter: boolean;
 }
 
+interface VerificationResult {
+	passed: boolean;
+	error?: string;
+}
+
 interface SuiteResult {
 	category: string;
 	name: string;
 	tags: Record<string, string>;
 	metrics: MetricResult[];
+	verification?: VerificationResult;
 }
 
 interface MetadataResult {
@@ -39,7 +45,7 @@ interface ResultFile {
 export class JsonResultWriter {
 	private readonly suites: SuiteResult[] = [];
 
-	public addBenchmark(benchmark: Benchmark): void {
+	public addBenchmark(benchmark: Benchmark, verificationResult?: VerificationResult): void {
 		const metrics: MetricResult[] = [];
 
 		for (const [name, values] of benchmark.measurements.entries()) {
@@ -65,12 +71,16 @@ export class JsonResultWriter {
 			});
 		}
 
-		this.suites.push({
+		const suiteResult: SuiteResult = {
 			category: benchmark.category,
 			name: benchmark.title,
 			tags: { ...benchmark.tags },
 			metrics,
-		});
+		};
+		if (verificationResult) {
+			suiteResult.verification = verificationResult;
+		}
+		this.suites.push(suiteResult);
 	}
 
 	public write(filePath: string, runCount: number): void {

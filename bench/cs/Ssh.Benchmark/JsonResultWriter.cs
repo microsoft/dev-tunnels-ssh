@@ -12,7 +12,7 @@ class JsonResultWriter
 {
 	private readonly List<SuiteResult> suites = new List<SuiteResult>();
 
-	public void AddBenchmark(Benchmark benchmark)
+	public void AddBenchmark(Benchmark benchmark, VerificationResult verificationResult = null)
 	{
 		var metrics = new List<MetricResult>();
 
@@ -52,6 +52,7 @@ class JsonResultWriter
 			Name = benchmark.Title,
 			Tags = new Dictionary<string, string>(benchmark.Tags),
 			Metrics = metrics,
+			Verification = verificationResult,
 		});
 	}
 
@@ -75,6 +76,7 @@ class JsonResultWriter
 		{
 			WriteIndented = true,
 			PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+			DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull,
 		};
 
 		var json = JsonSerializer.Serialize(result, options);
@@ -156,6 +158,13 @@ class JsonResultWriter
 		public string Name { get; set; }
 		public Dictionary<string, string> Tags { get; set; }
 		public List<MetricResult> Metrics { get; set; }
+		public VerificationResult Verification { get; set; }
+	}
+
+	public class VerificationResult
+	{
+		public bool Passed { get; set; }
+		public string Error { get; set; }
 	}
 
 	private class MetricResult

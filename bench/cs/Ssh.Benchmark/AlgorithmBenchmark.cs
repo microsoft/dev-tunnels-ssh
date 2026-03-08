@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.DevTunnels.Ssh.Algorithms;
 
@@ -87,6 +88,52 @@ class EncryptionBenchmark : Benchmark
 		return Task.CompletedTask;
 	}
 
+	public override Task VerifyAsync()
+	{
+		var key = new Buffer(algorithm.KeyLength);
+		var encIv = new Buffer(algorithm.BlockLength);
+		var decIv = new Buffer(algorithm.BlockLength);
+		SshAlgorithms.Random.GetBytes(key);
+		SshAlgorithms.Random.GetBytes(encIv);
+		encIv.CopyTo(decIv);
+
+		var blockLen = algorithm.BlockLength;
+		var alignedSize = (payloadSize / blockLen) * blockLen;
+		if (alignedSize < blockLen) alignedSize = blockLen;
+
+		var plaintext = new Buffer(alignedSize);
+		SshAlgorithms.Random.GetBytes(plaintext);
+		var original = plaintext.ToArray();
+		var ciphertext = new Buffer(alignedSize);
+		var decrypted = new Buffer(alignedSize);
+
+		using var encCipher = algorithm.CreateCipher(true, key, encIv);
+		using var decCipher = algorithm.CreateCipher(false, key, decIv);
+
+		encCipher.Transform(plaintext, ciphertext);
+
+		// Check ciphertext differs from plaintext
+		if (ciphertext.SequenceEqual(plaintext))
+			throw new Exception("Ciphertext equals plaintext — encryption did nothing");
+
+#if SSH_ENABLE_AESGCM
+		if (encCipher is IMessageSigner signer && decCipher is IMessageVerifier verifier)
+		{
+			var tag = new Buffer(signer.DigestLength);
+			signer.Sign(plaintext, tag);
+			verifier.Verify(ciphertext, tag);
+		}
+#endif
+
+		decCipher.Transform(ciphertext, decrypted);
+
+		// Check decrypted matches original
+		if (!decrypted.SequenceEqual((Buffer)original))
+			throw new Exception("Decrypted data does not match original");
+
+		return Task.CompletedTask;
+	}
+
 	public override ValueTask DisposeAsync()
 	{
 #if NETSTANDARD2_0 || NET4
@@ -140,6 +187,31 @@ class HmacBenchmark : Benchmark
 		return Task.CompletedTask;
 	}
 
+	public override Task VerifyAsync()
+	{
+		var key = new Buffer(algorithm.KeyLength);
+		SshAlgorithms.Random.GetBytes(key);
+
+		using var signer = algorithm.CreateSigner(key);
+		using var verifier = algorithm.CreateVerifier(key);
+
+		var data = new Buffer(256);
+		SshAlgorithms.Random.GetBytes(data);
+		var signature = new Buffer(signer.DigestLength);
+
+		signer.Sign(data, signature);
+		if (!verifier.Verify(data, signature))
+			throw new Exception("Valid signature failed verification");
+
+		// Tamper with data
+		var tampered = data.ToArray();
+		tampered[0] ^= 0xFF;
+		if (verifier.Verify((Buffer)tampered, signature))
+			throw new Exception("Tampered data passed verification");
+
+		return Task.CompletedTask;
+	}
+
 	public override ValueTask DisposeAsync()
 	{
 #if NETSTANDARD2_0 || NET4
@@ -184,6 +256,24 @@ class KeyExchangeBenchmark : Benchmark
 		stopwatch.Stop();
 
 		AddMeasurement(KexTimeMeasurement, stopwatch.Elapsed.TotalMilliseconds);
+
+		return Task.CompletedTask;
+	}
+
+	public override Task VerifyAsync()
+	{
+		using var clientKex = algorithm.CreateKeyExchange();
+		using var serverKex = algorithm.CreateKeyExchange();
+
+		var clientPublic = clientKex.StartKeyExchange();
+		var serverPublic = serverKex.StartKeyExchange();
+		var clientSecret = clientKex.DecryptKeyExchange(serverPublic);
+		var serverSecret = serverKex.DecryptKeyExchange(clientPublic);
+
+		if (clientSecret == null || clientSecret.Count == 0)
+			throw new Exception("Client shared secret is empty");
+		if (!clientSecret.SequenceEqual(serverSecret))
+			throw new Exception("Shared secrets differ");
 
 		return Task.CompletedTask;
 	}
@@ -233,6 +323,23 @@ class KeygenBenchmark : Benchmark
 		stopwatch.Stop();
 
 		AddMeasurement(KeygenTimeMeasurement, stopwatch.Elapsed.TotalMilliseconds);
+
+		return Task.CompletedTask;
+	}
+
+	public override Task VerifyAsync()
+	{
+		using var keyPair = algorithm.GenerateKeyPair(keySizeInBits);
+		using var signer = algorithm.CreateSigner(keyPair);
+		using var verifier = algorithm.CreateVerifier(keyPair);
+
+		var data = new Buffer(256);
+		SshAlgorithms.Random.GetBytes(data);
+		var signature = new Buffer(signer.DigestLength);
+
+		signer.Sign(data, signature);
+		if (!verifier.Verify(data, signature))
+			throw new Exception("Generated key cannot verify its own signature");
 
 		return Task.CompletedTask;
 	}
@@ -287,6 +394,28 @@ class SignatureBenchmark : Benchmark
 		stopwatch.Stop();
 
 		AddMeasurement(SignVerifyTimeMeasurement, stopwatch.Elapsed.TotalMilliseconds);
+
+		return Task.CompletedTask;
+	}
+
+	public override Task VerifyAsync()
+	{
+		using var keyPair = algorithm.GenerateKeyPair(keySizeInBits);
+		using var signer = algorithm.CreateSigner(keyPair);
+		using var verifier = algorithm.CreateVerifier(keyPair);
+
+		var data = new Buffer(256);
+		SshAlgorithms.Random.GetBytes(data);
+		var signature = new Buffer(signer.DigestLength);
+
+		signer.Sign(data, signature);
+		if (!verifier.Verify(data, signature))
+			throw new Exception("Valid signature failed verification");
+
+		var wrongData = new Buffer(256);
+		SshAlgorithms.Random.GetBytes(wrongData);
+		if (verifier.Verify(wrongData, signature))
+			throw new Exception("Wrong data passed verification");
 
 		return Task.CompletedTask;
 	}

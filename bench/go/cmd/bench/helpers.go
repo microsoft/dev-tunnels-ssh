@@ -6,54 +6,97 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"net"
 	"sync"
 	"time"
 
 	"github.com/microsoft/dev-tunnels-ssh/src/go/ssh"
 )
 
-// pipeRWC wraps two pipe endpoints into a ReadWriteCloser.
-type pipeRWC struct {
-	r *io.PipeReader
-	w *io.PipeWriter
+// defaultSocketBufferSize is 2 * DefaultMaxPacketSize (32KB) = 64KB,
+// matching the C# and TypeScript implementations.
+const defaultSocketBufferSize = 2 * 0x8000
+
+// configureSocket sets TCP_NODELAY and 64KB send/receive buffers on a TCP connection.
+func configureSocket(conn net.Conn) {
+	tcpConn, ok := conn.(*net.TCPConn)
+	if !ok {
+		return
+	}
+	tcpConn.SetNoDelay(true)
+	tcpConn.SetReadBuffer(defaultSocketBufferSize)
+	tcpConn.SetWriteBuffer(defaultSocketBufferSize)
 }
 
-func (p *pipeRWC) Read(b []byte) (int, error)  { return p.r.Read(b) }
-func (p *pipeRWC) Write(b []byte) (int, error) { return p.w.Write(b) }
-func (p *pipeRWC) Close() error {
-	p.r.Close()
-	return p.w.Close()
+// newTCPPipe creates a pair of connected TCP loopback connections,
+// matching the transport used by C# and TypeScript benchmarks.
+func newTCPPipe() (io.ReadWriteCloser, io.ReadWriteCloser, func(), error) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("listen: %w", err)
+	}
+
+	var serverConn net.Conn
+	var acceptErr error
+	accepted := make(chan struct{})
+	go func() {
+		serverConn, acceptErr = ln.Accept()
+		if serverConn != nil {
+			configureSocket(serverConn)
+		}
+		close(accepted)
+	}()
+
+	clientConn, err := net.Dial("tcp", ln.Addr().String())
+	if err != nil {
+		ln.Close()
+		return nil, nil, nil, fmt.Errorf("dial: %w", err)
+	}
+	configureSocket(clientConn)
+
+	<-accepted
+	if acceptErr != nil {
+		clientConn.Close()
+		ln.Close()
+		return nil, nil, nil, fmt.Errorf("accept: %w", acceptErr)
+	}
+
+	cleanup := func() { ln.Close() }
+	return clientConn, serverConn, cleanup, nil
 }
 
-// newDuplexPipe creates a pair of connected ReadWriteClosers for in-process sessions.
-func newDuplexPipe() (io.ReadWriteCloser, io.ReadWriteCloser) {
-	r1, w1 := io.Pipe()
-	r2, w2 := io.Pipe()
-	return &pipeRWC{r: r1, w: w2}, &pipeRWC{r: r2, w: w1}
-}
-
-// latencyStream wraps a stream and adds a delay to each read and write.
+// latencyStream wraps a stream and adds a delay to each write, matching
+// the C# SlowStream and TS SlowStream which only delay writes (not reads).
 type latencyStream struct {
 	stream io.ReadWriteCloser
 	delay  time.Duration
 }
 
 func (s *latencyStream) Read(b []byte) (int, error) {
-	time.Sleep(s.delay / 2)
 	return s.stream.Read(b)
 }
 
 func (s *latencyStream) Write(b []byte) (int, error) {
-	time.Sleep(s.delay / 2)
+	time.Sleep(s.delay)
 	return s.stream.Write(b)
 }
 
 func (s *latencyStream) Close() error { return s.stream.Close() }
 
-// createSessionPair creates a connected client+server session pair via in-process pipes.
+// createSessionPair creates a connected client+server session pair via TCP loopback.
 func createSessionPair(encrypted bool) (*ssh.ClientSession, *ssh.ServerSession, error) {
-	clientStream, serverStream := newDuplexPipe()
-	return createSessionPairWithStreams(clientStream, serverStream, encrypted)
+	clientStream, serverStream, cleanup, err := newTCPPipe()
+	if err != nil {
+		return nil, nil, fmt.Errorf("create TCP pipe: %w", err)
+	}
+	client, server, err := createSessionPairWithStreams(clientStream, serverStream, encrypted)
+	if err != nil {
+		cleanup()
+		return nil, nil, err
+	}
+	// The TCP listener is no longer needed once the connection is established.
+	cleanup()
+	return client, server, nil
 }
 
 // createSessionPairWithStreams creates a connected session pair using provided streams.

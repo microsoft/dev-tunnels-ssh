@@ -20,11 +20,16 @@ public abstract class Benchmark : IAsyncDisposable
 		List<string> nameList = null;
 		int runCount = 7;
 		string jsonPath = null;
+		bool verify = false;
 		foreach (var arg in args)
 		{
 			if (arg.StartsWith("--json="))
 			{
 				jsonPath = arg.Substring("--json=".Length);
+			}
+			else if (arg == "--verify")
+			{
+				verify = true;
 			}
 			else if (int.TryParse(arg, out var runCountArg))
 			{
@@ -42,7 +47,7 @@ public abstract class Benchmark : IAsyncDisposable
 
 		JsonResultWriter jsonWriter = jsonPath != null ? new JsonResultWriter() : null;
 
-		var t = TimeSpan.FromSeconds(1);
+		var t = TimeSpan.FromSeconds(2);
 
 		var benchmarks = new Dictionary<string, Func<Benchmark>>();
 
@@ -149,7 +154,31 @@ public abstract class Benchmark : IAsyncDisposable
 				}
 
 				benchmark.ReportResults();
-				jsonWriter?.AddBenchmark(benchmark);
+
+				JsonResultWriter.VerificationResult verificationResult = null;
+				if (verify)
+				{
+					try
+					{
+						await benchmark.VerifyAsync();
+						Console.WriteLine("  Verified OK");
+						verificationResult = new JsonResultWriter.VerificationResult
+						{
+							Passed = true,
+						};
+					}
+					catch (Exception ex) when (ex is not OutOfMemoryException)
+					{
+						Console.Error.WriteLine($"  VERIFICATION FAILED: {ex.Message}");
+						verificationResult = new JsonResultWriter.VerificationResult
+						{
+							Passed = false,
+							Error = ex.Message,
+						};
+					}
+				}
+
+				jsonWriter?.AddBenchmark(benchmark, verificationResult);
 			}
 			catch (Exception ex) when (ex is not OutOfMemoryException)
 			{
@@ -188,6 +217,8 @@ public abstract class Benchmark : IAsyncDisposable
 	public IDictionary<string, string> Tags { get; }
 	public IDictionary<string, IList<decimal>> Measurements { get; }
 	public IDictionary<string, bool> HigherIsBetter { get; }
+
+	public virtual Task VerifyAsync() => Task.CompletedTask;
 
 	protected abstract Task RunAsync(Stopwatch stopwatch);
 

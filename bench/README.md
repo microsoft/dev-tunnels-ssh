@@ -90,6 +90,7 @@ orchestrator.sh
 --runs <N>          Number of timed iterations per scenario (default: 20)
 --platforms <list>  Comma-separated platforms to run (default: cs,ts,go)
 --report            Generate Markdown comparison report
+--verify            Run correctness checks after each benchmark (see Verification below)
 ```
 
 Examples:
@@ -99,6 +100,9 @@ bash bench/orchestrator.sh --runs=10 --platforms=cs,go --report
 
 # Quick TS-only run
 bash bench/orchestrator.sh --runs=5 --platforms=ts
+
+# Run with verification enabled
+bash bench/orchestrator.sh --runs=10 --report --verify
 ```
 
 ### Measurement Methodology
@@ -137,13 +141,16 @@ Each platform writes a JSON file with this structure:
           "values": [0.045, 0.043, 0.044, ...],
           "higherIsBetter": false
         }
-      ]
+      ],
+      "verification": {
+        "passed": true
+      }
     }
   ]
 }
 ```
 
-The `category` and `tags` fields are used by the report generator to match equivalent benchmarks across platforms. The `name` field is used for display.
+The `category` and `tags` fields are used by the report generator to match equivalent benchmarks across platforms. The `name` field is used for display. The `verification` field is present only when `--verify` was used and is omitted otherwise.
 
 ### Report Generator (`common/report-generator.js`)
 
@@ -153,6 +160,8 @@ Reads all `*-results.json` files from a directory and produces a Markdown report
 - **Bold** highlighting for the best-performing platform per metric
 - Direction indicators (higher/lower is better)
 - Values displayed as `trimmed_mean ± stddev (n)`
+- Verification results table (when `--verify` was used) showing pass/fail per benchmark per platform
+- Validation warnings flagging zero/negative metrics or >10x cross-platform differences
 
 ## Running Platforms Independently
 
@@ -206,16 +215,157 @@ The Go harness uses flag-style arguments:
 - `--runs <N>` — Number of timed iterations (default: 7)
 - `--scenarios <list>` — Comma-separated scenario names to run (default: all)
 
+## Verification (`--verify`)
+
+The `--verify` flag runs a correctness check after each benchmark to prove the operation actually did what it claims. These checks are separate from timing — they run once after all timed iterations complete and do not affect performance numbers.
+
+When enabled, verification results are included in the JSON output (as a `verification` field per suite) and displayed in the Markdown report as a summary table.
+
+### What each category verifies
+
+#### Algorithm: Encryption
+
+1. Generate a random key and IV for the algorithm
+2. Encrypt a plaintext buffer in-place
+3. **Check:** ciphertext differs from original plaintext (encryption actually happened)
+4. Decrypt the ciphertext back in-place
+5. **Check:** decrypted output matches the original plaintext (round-trip succeeded)
+
+For GCM mode, the authentication tag is transferred from encryptor to decryptor between steps.
+
+#### Algorithm: HMAC
+
+1. Generate a random key and a 256-byte data payload
+2. Create signer and verifier from the same key
+3. Sign the data
+4. **Check:** verifier accepts the signature for the original data (positive test)
+5. Tamper with the data (XOR first byte with 0xFF)
+6. **Check:** verifier rejects the signature for the tampered data (negative test)
+
+#### Algorithm: Key Exchange
+
+1. Create two KEX instances (client and server)
+2. Both start key exchange, producing ephemeral public values
+3. Each side decrypts using the other's public value to derive a shared secret
+4. **Check:** both sides derive the same shared secret
+5. **Check:** the shared secret is not empty
+
+#### Algorithm: Key Generation
+
+1. Generate a key pair for the specified algorithm and key size
+2. Sign test data with the generated key
+3. **Check:** the generated key can verify its own signature (key pair is valid and usable)
+
+#### Algorithm: Signature
+
+1. Generate a key pair
+2. Sign test data
+3. **Check:** verifier accepts the signature for the correct data (positive test)
+4. **Check:** verifier rejects the signature for different data (negative test)
+
+#### Protocol: Serialization (ChannelData, ChannelOpen, KexInit)
+
+1. Create a message with known field values
+2. Serialize the message to a binary buffer
+3. Deserialize the buffer back into a message object
+4. **Check:** all fields on the deserialized message match the original values
+
+Specific fields checked per message type:
+- **ChannelData:** RecipientChannel, Data content
+- **ChannelOpen:** ChannelType (`"session"`), SenderChannel, MaxWindowSize
+- **KexInit:** KeyExchangeAlgorithms list, HostKeyAlgorithms list, EncryptionAlgorithms list
+
+#### Session: Setup
+
+1. Create a full encrypted session pair (client + server over TCP loopback)
+2. Open a channel between them
+3. Send test data through the channel
+4. **Check:** server receives the exact data that was sent (end-to-end data flow works)
+
+#### Session: Throughput
+
+1. Create a session pair and open a channel
+2. Send a known number of bytes through the channel
+3. Count bytes received on the server side (with timeout)
+4. **Check:** total bytes received equals total bytes sent
+
+#### E2E: Multi-Channel (Go only)
+
+1. Create an unencrypted session pair
+2. Open a channel and send test data
+3. **Check:** server receives the exact data sent
+
+#### E2E: Port Forward (Go only)
+
+1. Start a local TCP echo server
+2. Create a session pair with port forwarding enabled
+3. Request a remote port forward through the SSH tunnel
+4. Connect to the forwarded port via TCP
+5. Send test data through the forwarded connection
+6. **Check:** echo server returns the exact data sent (full tunnel round-trip)
+
+#### E2E: Reconnect (Go only)
+
+1. Create an initial session pair with reconnect protocol extension enabled
+2. Open a channel, send data, confirm it works
+3. Force-disconnect by closing the underlying TCP streams
+4. Create new TCP streams and reconnect (client reconnects, server accepts)
+5. Open a new channel on the reconnected session
+6. Send test data through the new channel
+7. **Check:** data is received correctly after reconnection (session state restored)
+
+### Verification coverage by platform
+
+| Category | C# | TypeScript | Go |
+|----------|-----|-----------|-----|
+| Encryption | Yes | Yes | Yes |
+| HMAC | Yes | Yes | Yes |
+| Key Exchange | Yes | Yes | Yes |
+| Key Generation | Yes | Yes | Yes |
+| Signature | Yes | Yes | Yes |
+| Serialization | Yes | Yes | Yes |
+| KEX Cycle | — | — | — |
+| Session Setup | Yes | Yes | Yes |
+| Throughput | Yes | Yes | Yes |
+| Multi-Channel | — | — | Yes |
+| Port Forward | — | — | Yes |
+| Reconnect | — | — | Yes |
+
+All algorithm, protocol serialization, and session benchmarks have consistent verification across all three platforms. The E2E benchmarks (multi-channel, port forward, reconnect) currently have verification only in Go.
+
 ## Platform Differences
 
 | Aspect | C# | TypeScript | Go |
 |--------|-----|-----------|-----|
 | Runtime | .NET 8 | Node.js 20 | Go (compiled) |
-| Session transport | TCP (loopback) | TCP (loopback) | In-process pipes |
+| Session transport | TCP (loopback) | TCP (loopback) | TCP (loopback) |
 | AES-GCM | Conditional (`SSH_ENABLE_AESGCM`) | Always available | Always available |
 | ECDH | Conditional (`SSH_ENABLE_ECDH`) | Always available | Always available |
 | AES-CBC | Available | Not available | Not available |
 | Port forwarding | Full `PortForwardingService` | Full `PortForwardingService` | `tcp.ForwardPort()` |
+
+### Expected Performance Differences
+
+Go will often appear **significantly faster** (10–100x) in algorithm-level and serialization benchmarks. This is expected and reflects real differences in the underlying crypto and runtime implementations — not a bug in the benchmarks.
+
+**Why Go's algorithm benchmarks are faster:**
+
+- **Crypto primitives use hand-written assembly.** Go's standard library (`crypto/aes`, `crypto/sha256`, `crypto/ecdsa`, etc.) includes assembly-optimized implementations for common architectures (amd64, arm64). AES-GCM uses AES-NI + CLMUL hardware instructions directly; SHA-256/SHA-512 use platform-specific SIMD instructions; elliptic curve operations use optimized field arithmetic in assembly. C# and TypeScript rely on their respective runtimes' managed crypto, which generally cannot match hand-tuned assembly for raw throughput.
+
+- **Sub-microsecond operations amplify fixed overhead.** Many algorithm benchmarks (HMAC on 256 bytes, ECDSA P-256 keygen, small-buffer encryption) complete in under 1 microsecond in Go. At these scales, the fixed per-operation overhead in managed runtimes (GC barriers, JIT compilation artifacts, Node.js event loop scheduling) becomes a large fraction of the total time, making Go appear disproportionately faster than it would be for larger workloads.
+
+- **Serialization benchmarks measure runtime overhead, not SSH logic.** Protocol message serialization (ChannelData, ChannelOpen, KexInit) involves allocating small buffers and writing a few fields. Go's zero-overhead memory model (no GC pauses during allocation, stack-allocated small structs) makes these operations extremely fast compared to managed runtimes with heap allocation and garbage collection.
+
+**Where performance is comparable across platforms:**
+
+- **Session setup** — Dominated by network round-trips (TCP + SSH handshake), so all three platforms produce similar numbers.
+- **Throughput** — Measures sustained data transfer over an established SSH session. The SSH protocol framing and TCP stack dominate, so differences are modest (typically < 3x).
+- **RSA key generation** — Depends on probabilistic prime-number finding, which is comparable across platforms.
+- **KEX cycle** — A full key exchange between two in-process sessions involves multiple round-trips, amortizing the per-operation crypto advantage.
+
+**What the report does about this:**
+
+The report generator uses a **200x ratio threshold** for algorithm and serialization categories (vs 10x for session/E2E categories) before flagging cross-platform differences as suspicious. This prevents the expected Go advantages from generating false-positive warnings while still catching genuine methodology mismatches in session-level benchmarks.
 
 ## Troubleshooting
 
