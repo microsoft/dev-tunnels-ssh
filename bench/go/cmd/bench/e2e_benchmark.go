@@ -3,6 +3,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"fmt"
@@ -25,6 +26,7 @@ func multiChannelScenarios() []benchmarkScenario {
 			category: "session-multichannel",
 			tags:     map[string]string{"channels": "10"},
 			run:      runMultiChannelBenchmark,
+			verify:   verifyMultiChannel,
 		},
 	}
 }
@@ -130,6 +132,9 @@ func e2eScenarios() []benchmarkScenario {
 			run: func(runs int) []metric {
 				return runPortForwardBenchmark(runs, cfg.listenAddress, cfg.hostAddress)
 			},
+			verify: func() error {
+				return verifyPortForward(cfg.listenAddress, cfg.hostAddress)
+			},
 		})
 	}
 	scenarios = append(scenarios, benchmarkScenario{
@@ -137,6 +142,7 @@ func e2eScenarios() []benchmarkScenario {
 		category: "e2e-reconnect",
 		tags:     map[string]string{},
 		run:      runReconnectBenchmark,
+		verify:   verifyReconnect,
 	})
 	return scenarios
 }
@@ -166,7 +172,11 @@ func startEchoServer(listenAddress string) (net.Listener, int, error) {
 // createPortForwardSessionPair creates a connected client/server session pair
 // with the PortForwardingService enabled on both sides.
 func createPortForwardSessionPair() (*ssh.ClientSession, *ssh.ServerSession, error) {
-	clientStream, serverStream := newDuplexPipe()
+	clientStream, serverStream, tcpCleanup, err := newTCPPipe()
+	if err != nil {
+		return nil, nil, fmt.Errorf("create TCP pipe: %w", err)
+	}
+	defer tcpCleanup()
 
 	clientConfig := ssh.NewDefaultConfig()
 	clientConfig.KeyRotationThreshold = 0
@@ -312,7 +322,11 @@ func runReconnectBenchmark(runs int) []metric {
 	timesMs := make([]float64, 0, runs)
 
 	for i := 0; i < runs; i++ {
-		clientStream, serverStream := newDuplexPipe()
+		clientStream, serverStream, tcpCleanup1, err := newTCPPipe()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error creating TCP pipe: %v\n", err)
+			continue
+		}
 
 		clientConfig := ssh.NewDefaultConfigWithReconnect()
 		clientConfig.KeyRotationThreshold = 0
@@ -358,6 +372,7 @@ func runReconnectBenchmark(runs int) []metric {
 
 		if clientErr != nil || serverErr != nil {
 			cancel()
+			tcpCleanup1()
 			fmt.Fprintf(os.Stderr, "Initial connect error: client=%v server=%v\n", clientErr, serverErr)
 			continue
 		}
@@ -367,6 +382,7 @@ func runReconnectBenchmark(runs int) []metric {
 		// Wait for reconnect to be enabled on both sides.
 		if err := ssh.WaitUntilReconnectEnabled(ctx, &client.Session, &server.Session); err != nil {
 			cancel()
+			tcpCleanup1()
 			fmt.Fprintf(os.Stderr, "WaitUntilReconnectEnabled error: %v\n", err)
 			continue
 		}
@@ -379,7 +395,13 @@ func runReconnectBenchmark(runs int) []metric {
 		time.Sleep(50 * time.Millisecond)
 
 		// Create new streams for reconnection.
-		newClientStream, newServerStream := newDuplexPipe()
+		newClientStream, newServerStream, tcpCleanup2, err := newTCPPipe()
+		if err != nil {
+			cancel()
+			tcpCleanup1()
+			fmt.Fprintf(os.Stderr, "Error creating reconnect TCP pipe: %v\n", err)
+			continue
+		}
 
 		// Set up new server session to accept the reconnection.
 		newServerConfig := ssh.NewDefaultConfigWithReconnect()
@@ -412,6 +434,8 @@ func runReconnectBenchmark(runs int) []metric {
 			fmt.Fprintf(os.Stderr, "Reconnect error: %v\n", clientErr)
 			client.Close()
 			newServer.Close()
+			tcpCleanup1()
+			tcpCleanup2()
 			continue
 		}
 
@@ -420,9 +444,225 @@ func runReconnectBenchmark(runs int) []metric {
 
 		client.Close()
 		newServer.Close()
+		tcpCleanup1()
+		tcpCleanup2()
 	}
 
 	return []metric{
 		{Name: "Reconnect time", Unit: "ms", Values: timesMs, HigherIsBetter: false},
 	}
+}
+
+// --- Verification functions ---
+
+func verifyMultiChannel() error {
+	client, server, err := createSessionPair(false)
+	if err != nil {
+		return fmt.Errorf("create session pair: %w", err)
+	}
+	defer client.Close()
+	defer server.Close()
+
+	clientCh, serverCh, err := openChannel(&client.Session, &server.Session)
+	if err != nil {
+		return fmt.Errorf("open channel: %w", err)
+	}
+
+	testData := []byte("multichannel verify")
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	var received []byte
+	done := make(chan struct{})
+	serverCh.SetDataReceivedHandler(func(data []byte) {
+		received = append(received, data...)
+		serverCh.AdjustWindow(uint32(len(data)))
+		if len(received) >= len(testData) {
+			close(done)
+		}
+	})
+
+	if err := clientCh.Send(ctx, testData); err != nil {
+		return fmt.Errorf("send: %w", err)
+	}
+
+	select {
+	case <-done:
+	case <-ctx.Done():
+		return fmt.Errorf("timeout waiting for data")
+	}
+
+	if !bytes.Equal(received, testData) {
+		return fmt.Errorf("received data does not match sent data")
+	}
+	return nil
+}
+
+func verifyPortForward(listenAddress, hostAddress string) error {
+	echoLn, echoPort, err := startEchoServer(listenAddress)
+	if err != nil {
+		return fmt.Errorf("start echo server: %w", err)
+	}
+	defer echoLn.Close()
+
+	client, server, err := createPortForwardSessionPair()
+	if err != nil {
+		return fmt.Errorf("create session pair: %w", err)
+	}
+	defer client.Close()
+	defer server.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	clientPFS := tcp.GetPortForwardingService(&client.Session)
+	if clientPFS == nil {
+		return fmt.Errorf("no port forwarding service")
+	}
+
+	forwarder, err := clientPFS.ForwardFromRemotePort(ctx, listenAddress, 0, hostAddress, echoPort)
+	if err != nil || forwarder == nil {
+		return fmt.Errorf("forward port: %w", err)
+	}
+
+	time.Sleep(50 * time.Millisecond)
+
+	conn, err := net.DialTimeout("tcp", net.JoinHostPort(listenAddress, fmt.Sprintf("%d", forwarder.RemotePort)), 5*time.Second)
+	if err != nil {
+		return fmt.Errorf("connect to forwarded port: %w", err)
+	}
+	defer conn.Close()
+
+	testData := []byte("port forward verify")
+	if _, err := conn.Write(testData); err != nil {
+		return fmt.Errorf("write: %w", err)
+	}
+
+	buf := make([]byte, len(testData))
+	conn.SetReadDeadline(time.Now().Add(5 * time.Second))
+	if _, err := io.ReadFull(conn, buf); err != nil {
+		return fmt.Errorf("read echo: %w", err)
+	}
+
+	if !bytes.Equal(buf, testData) {
+		return fmt.Errorf("echo data does not match sent data")
+	}
+	return nil
+}
+
+func verifyReconnect() error {
+	clientStream, serverStream, tcpCleanup1, err := newTCPPipe()
+	if err != nil {
+		return fmt.Errorf("create TCP pipe: %w", err)
+	}
+
+	clientConfig := ssh.NewDefaultConfigWithReconnect()
+	serverConfig := ssh.NewDefaultConfigWithReconnect()
+
+	hostKey, err := ssh.GenerateKeyPair(ssh.AlgoPKEcdsaSha2P256)
+	if err != nil {
+		tcpCleanup1()
+		return fmt.Errorf("generate host key: %w", err)
+	}
+
+	client := ssh.NewClientSession(clientConfig)
+	client.OnAuthenticating = func(args *ssh.AuthenticatingEventArgs) {
+		args.AuthenticationResult = true
+	}
+
+	server := ssh.NewServerSession(serverConfig)
+	server.OnAuthenticating = func(args *ssh.AuthenticatingEventArgs) {
+		args.AuthenticationResult = true
+	}
+	server.Credentials = &ssh.ServerCredentials{PublicKeys: []ssh.KeyPair{hostKey}}
+
+	reconnectableSessions := ssh.NewReconnectableSessions()
+	server.ReconnectableSessions = reconnectableSessions
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	var wg sync.WaitGroup
+	var clientErr, serverErr error
+	wg.Add(2)
+	go func() { defer wg.Done(); clientErr = client.Connect(ctx, clientStream) }()
+	go func() { defer wg.Done(); serverErr = server.Connect(ctx, serverStream) }()
+	wg.Wait()
+
+	if clientErr != nil || serverErr != nil {
+		tcpCleanup1()
+		return fmt.Errorf("initial connect: client=%v server=%v", clientErr, serverErr)
+	}
+
+	reconnectableSessions.Add(server)
+
+	if err := ssh.WaitUntilReconnectEnabled(ctx, &client.Session, &server.Session); err != nil {
+		tcpCleanup1()
+		return fmt.Errorf("wait for reconnect: %w", err)
+	}
+
+	clientStream.Close()
+	serverStream.Close()
+	time.Sleep(50 * time.Millisecond)
+
+	newClientStream, newServerStream, tcpCleanup2, err := newTCPPipe()
+	if err != nil {
+		tcpCleanup1()
+		return fmt.Errorf("create reconnect TCP pipe: %w", err)
+	}
+
+	newServer := ssh.NewServerSession(ssh.NewDefaultConfigWithReconnect())
+	newServer.OnAuthenticating = func(args *ssh.AuthenticatingEventArgs) {
+		args.AuthenticationResult = true
+	}
+	newServer.Credentials = &ssh.ServerCredentials{PublicKeys: []ssh.KeyPair{hostKey}}
+	newServer.ReconnectableSessions = reconnectableSessions
+
+	wg.Add(1)
+	go func() { defer wg.Done(); serverErr = newServer.Connect(ctx, newServerStream) }()
+	clientErr = client.Reconnect(ctx, newClientStream)
+	wg.Wait()
+
+	defer func() {
+		client.Close()
+		newServer.Close()
+		tcpCleanup1()
+		tcpCleanup2()
+	}()
+
+	if clientErr != nil {
+		return fmt.Errorf("reconnect: %w", clientErr)
+	}
+
+	// Verify session is usable after reconnect — open channel and send data.
+	clientCh, serverCh, err := openChannel(&client.Session, &newServer.Session)
+	if err != nil {
+		return fmt.Errorf("open channel after reconnect: %w", err)
+	}
+
+	testData := []byte("reconnect verify")
+	var received []byte
+	done := make(chan struct{})
+	serverCh.SetDataReceivedHandler(func(data []byte) {
+		received = append(received, data...)
+		serverCh.AdjustWindow(uint32(len(data)))
+		if len(received) >= len(testData) {
+			close(done)
+		}
+	})
+
+	if err := clientCh.Send(ctx, testData); err != nil {
+		return fmt.Errorf("send after reconnect: %w", err)
+	}
+
+	select {
+	case <-done:
+	case <-ctx.Done():
+		return fmt.Errorf("timeout waiting for data after reconnect")
+	}
+
+	if !bytes.Equal(received, testData) {
+		return fmt.Errorf("received data does not match after reconnect")
+	}
+	return nil
 }

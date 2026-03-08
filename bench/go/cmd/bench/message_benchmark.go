@@ -3,9 +3,11 @@
 package main
 
 import (
+	"bytes"
 	"crypto/rand"
 	"fmt"
 	"os"
+	"reflect"
 	"time"
 
 	"github.com/microsoft/dev-tunnels-ssh/src/go/ssh"
@@ -23,18 +25,21 @@ func protocolSerializationScenarios() []benchmarkScenario {
 			category: "protocol-serialization",
 			tags:     map[string]string{"msg": "channel-data"},
 			run:      runSerializeChannelData,
+			verify:   verifySerializeChannelData,
 		},
 		{
 			name:     "serialize-channel-open",
 			category: "protocol-serialization",
 			tags:     map[string]string{"msg": "channel-open"},
 			run:      runSerializeChannelOpen,
+			verify:   verifySerializeChannelOpen,
 		},
 		{
 			name:     "serialize-kex-init",
 			category: "protocol-serialization",
 			tags:     map[string]string{"msg": "kex-init"},
 			run:      runSerializeKexInit,
+			verify:   verifySerializeKexInit,
 		},
 	}
 }
@@ -278,4 +283,79 @@ func runKexCycleBenchmark(runs int) []metric {
 	return []metric{
 		{Name: "KEX cycle time", Unit: "ms", Values: timesMs, HigherIsBetter: false},
 	}
+}
+
+// --- Verification functions ---
+
+func verifySerializeChannelData() error {
+	data := make([]byte, 1024)
+	rand.Read(data)
+	msg := &messages.ChannelDataMessage{RecipientChannel: 42, Data: data}
+
+	buf := msg.ToBuffer()
+	var out messages.ChannelDataMessage
+	if err := messages.ReadMessage(&out, buf); err != nil {
+		return fmt.Errorf("deserialize: %w", err)
+	}
+	if out.RecipientChannel != 42 {
+		return fmt.Errorf("RecipientChannel: got %d, want 42", out.RecipientChannel)
+	}
+	if !bytes.Equal(out.Data, data) {
+		return fmt.Errorf("data mismatch after round-trip")
+	}
+	return nil
+}
+
+func verifySerializeChannelOpen() error {
+	msg := &messages.ChannelOpenMessage{
+		ChannelType:   "session",
+		SenderChannel: 42,
+		MaxWindowSize: 1024 * 1024,
+		MaxPacketSize: 32 * 1024,
+	}
+
+	buf := msg.ToBuffer()
+	var out messages.ChannelOpenMessage
+	if err := messages.ReadMessage(&out, buf); err != nil {
+		return fmt.Errorf("deserialize: %w", err)
+	}
+	if out.ChannelType != "session" {
+		return fmt.Errorf("ChannelType: got %q, want %q", out.ChannelType, "session")
+	}
+	if out.SenderChannel != 42 {
+		return fmt.Errorf("SenderChannel: got %d, want 42", out.SenderChannel)
+	}
+	if out.MaxWindowSize != 1024*1024 {
+		return fmt.Errorf("MaxWindowSize: got %d, want %d", out.MaxWindowSize, 1024*1024)
+	}
+	return nil
+}
+
+func verifySerializeKexInit() error {
+	var cookie [16]byte
+	rand.Read(cookie[:])
+	msg := &messages.KeyExchangeInitMessage{
+		Cookie:                              cookie,
+		KeyExchangeAlgorithms:               []string{"ecdh-sha2-nistp384"},
+		ServerHostKeyAlgorithms:             []string{"ecdsa-sha2-nistp384"},
+		EncryptionAlgorithmsClientToServer:  []string{"aes256-gcm@openssh.com"},
+		EncryptionAlgorithmsServerToClient:  []string{"aes256-gcm@openssh.com"},
+		MacAlgorithmsClientToServer:         []string{"hmac-sha2-256"},
+		MacAlgorithmsServerToClient:         []string{"hmac-sha2-256"},
+		CompressionAlgorithmsClientToServer: []string{"none"},
+		CompressionAlgorithmsServerToClient: []string{"none"},
+	}
+
+	buf := msg.ToBuffer()
+	var out messages.KeyExchangeInitMessage
+	if err := messages.ReadMessage(&out, buf); err != nil {
+		return fmt.Errorf("deserialize: %w", err)
+	}
+	if !reflect.DeepEqual(out.KeyExchangeAlgorithms, msg.KeyExchangeAlgorithms) {
+		return fmt.Errorf("KeyExchangeAlgorithms mismatch")
+	}
+	if !reflect.DeepEqual(out.EncryptionAlgorithmsClientToServer, msg.EncryptionAlgorithmsClientToServer) {
+		return fmt.Errorf("EncryptionAlgorithms mismatch")
+	}
+	return nil
 }

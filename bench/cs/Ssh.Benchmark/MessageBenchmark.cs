@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using Microsoft.DevTunnels.Ssh.Algorithms;
@@ -59,6 +60,30 @@ class ChannelDataSerializationBenchmark : Benchmark
 		return Task.CompletedTask;
 	}
 
+	public override Task VerifyAsync()
+	{
+		var data = new Buffer(256);
+		SshAlgorithms.Random.GetBytes(data);
+
+		var msg = new ChannelDataMessage
+		{
+			RecipientChannel = 42,
+			Data = data,
+		};
+
+		var buffer = msg.ToBuffer();
+		var reader = new SshDataReader(buffer);
+		var msg2 = new ChannelDataMessage();
+		msg2.Read(ref reader);
+
+		if (msg2.RecipientChannel != 42)
+			throw new Exception($"RecipientChannel mismatch: expected 42, got {msg2.RecipientChannel}");
+		if (!msg2.Data.SequenceEqual(data))
+			throw new Exception("Data mismatch after round-trip");
+
+		return Task.CompletedTask;
+	}
+
 	public override ValueTask DisposeAsync()
 	{
 #if NETSTANDARD2_0 || NET4
@@ -110,6 +135,31 @@ class ChannelOpenSerializationBenchmark : Benchmark
 		stopwatch.Stop();
 
 		AddMeasurement(RoundTripTimeMeasurement, stopwatch.Elapsed.TotalMilliseconds / Iterations);
+
+		return Task.CompletedTask;
+	}
+
+	public override Task VerifyAsync()
+	{
+		var msg = new ChannelOpenMessage
+		{
+			ChannelType = "session",
+			SenderChannel = 7,
+			MaxWindowSize = SshChannel.DefaultMaxWindowSize,
+			MaxPacketSize = SshChannel.DefaultMaxPacketSize,
+		};
+
+		var buffer = msg.ToBuffer();
+		var reader = new SshDataReader(buffer);
+		var msg2 = new ChannelOpenMessage();
+		msg2.Read(ref reader);
+
+		if (msg2.ChannelType != "session")
+			throw new Exception($"ChannelType mismatch: expected 'session', got '{msg2.ChannelType}'");
+		if (msg2.SenderChannel != 7)
+			throw new Exception($"SenderChannel mismatch: expected 7, got {msg2.SenderChannel}");
+		if (msg2.MaxWindowSize != SshChannel.DefaultMaxWindowSize)
+			throw new Exception($"MaxWindowSize mismatch: expected {SshChannel.DefaultMaxWindowSize}, got {msg2.MaxWindowSize}");
 
 		return Task.CompletedTask;
 	}
@@ -210,6 +260,45 @@ class KeyExchangeInitSerializationBenchmark : Benchmark
 		stopwatch.Stop();
 
 		AddMeasurement(RoundTripTimeMeasurement, stopwatch.Elapsed.TotalMilliseconds / Iterations);
+
+		return Task.CompletedTask;
+	}
+
+	public override Task VerifyAsync()
+	{
+		// Serialize a KEXINIT with known algorithm lists
+		var writer = new SshDataWriter();
+		writer.Write((byte)20); // SSH_MSG_KEXINIT
+		writer.WriteRandom(16); // cookie
+		writer.Write(KexAlgorithms, Encoding.ASCII);
+		writer.Write(HostKeyAlgorithms, Encoding.ASCII);
+		writer.Write(EncryptionAlgorithms, Encoding.ASCII);
+		writer.Write(EncryptionAlgorithms, Encoding.ASCII);
+		writer.Write(MacAlgorithms, Encoding.ASCII);
+		writer.Write(MacAlgorithms, Encoding.ASCII);
+		writer.Write(CompressionAlgorithms, Encoding.ASCII);
+		writer.Write(CompressionAlgorithms, Encoding.ASCII);
+		writer.Write(Array.Empty<string>(), Encoding.ASCII);
+		writer.Write(Array.Empty<string>(), Encoding.ASCII);
+		writer.Write(false);
+		writer.Write(0U);
+
+		var buffer = writer.ToBuffer();
+
+		// Deserialize and verify
+		var reader = new SshDataReader(buffer);
+		reader.ReadByte(); // type
+		reader.ReadBinary(16U); // cookie
+		var kex = reader.ReadList(Encoding.ASCII);
+		var hostKey = reader.ReadList(Encoding.ASCII);
+		var encCS = reader.ReadList(Encoding.ASCII);
+
+		if (!kex.SequenceEqual(KexAlgorithms))
+			throw new Exception("KEX algorithm list mismatch after round-trip");
+		if (!hostKey.SequenceEqual(HostKeyAlgorithms))
+			throw new Exception("Host key algorithm list mismatch after round-trip");
+		if (!encCS.SequenceEqual(EncryptionAlgorithms))
+			throw new Exception("Encryption algorithm list mismatch after round-trip");
 
 		return Task.CompletedTask;
 	}

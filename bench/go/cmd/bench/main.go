@@ -17,6 +17,7 @@ func main() {
 	runs := flag.Int("runs", 7, "Number of timed iterations per scenario")
 	jsonPath := flag.String("json", "", "Path to write JSON results file")
 	scenariosFlag := flag.String("scenarios", "", "Comma-separated list of scenario names to run (default: all)")
+	verify := flag.Bool("verify", false, "Run verification checks after each benchmark")
 	flag.Parse()
 
 	selectedScenarios := map[string]bool{}
@@ -49,11 +50,23 @@ func main() {
 			fmt.Printf("  %s: %.4f %s (trimmed mean)\n", m.Name, mean, m.Unit)
 		}
 
+		var v *verification
+		if *verify && sc.verify != nil {
+			if err := sc.verify(); err != nil {
+				fmt.Fprintf(os.Stderr, "  VERIFICATION FAILED: %v\n", err)
+				v = &verification{Passed: false, Error: err.Error()}
+			} else {
+				fmt.Println("  Verified OK")
+				v = &verification{Passed: true}
+			}
+		}
+
 		suites = append(suites, suite{
-			Category: sc.category,
-			Name:     sc.name,
-			Tags:     sc.tags,
-			Metrics:  metrics,
+			Category:     sc.category,
+			Name:         sc.name,
+			Tags:         sc.tags,
+			Metrics:      metrics,
+			Verification: v,
 		})
 	}
 

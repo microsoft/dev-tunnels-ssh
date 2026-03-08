@@ -20,11 +20,17 @@ type metric struct {
 	HigherIsBetter bool      `json:"higherIsBetter"`
 }
 
+type verification struct {
+	Passed bool   `json:"passed"`
+	Error  string `json:"error,omitempty"`
+}
+
 type suite struct {
-	Category string            `json:"category"`
-	Name     string            `json:"name"`
-	Tags     map[string]string `json:"tags"`
-	Metrics  []metric          `json:"metrics"`
+	Category     string            `json:"category"`
+	Name         string            `json:"name"`
+	Tags         map[string]string `json:"tags"`
+	Metrics      []metric          `json:"metrics"`
+	Verification *verification     `json:"verification,omitempty"`
 }
 
 type benchmarkResults struct {
@@ -38,4 +44,5 @@ type benchmarkScenario struct {
 	category string
 	tags     map[string]string
 	run      func(runs int) []metric
+	verify   func() error // optional correctness check; nil means no verification
 }

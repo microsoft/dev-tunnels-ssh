@@ -78,5 +78,9 @@ export abstract class Benchmark {
 
 	public abstract run(): Promise<void>;
 
+	public async verify(): Promise<void> {
+		// Default no-op; subclasses override to add correctness checks.
+	}
+
 	public abstract dispose(): Promise<void>;
 }

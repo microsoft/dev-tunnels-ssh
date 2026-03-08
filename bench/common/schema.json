@@ -103,6 +103,22 @@
                 }
               }
             }
+          },
+          "verification": {
+            "type": "object",
+            "description": "Verification result from --verify flag. Omitted when verification was not run.",
+            "required": ["passed"],
+            "additionalProperties": false,
+            "properties": {
+              "passed": {
+                "type": "boolean",
+                "description": "True if the correctness check passed."
+              },
+              "error": {
+                "type": "string",
+                "description": "Error message when verification failed. Omitted on success."
+              }
+            }
           }
         }
       }

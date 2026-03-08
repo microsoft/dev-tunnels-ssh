@@ -16,6 +16,7 @@ fi
 RUNS=20
 PLATFORMS="cs,ts,go"
 REPORT=false
+VERIFY=false
 
 usage() {
     echo "Usage: $0 [--runs <N>] [--platforms <cs,ts,go>] [--report]"
@@ -24,6 +25,7 @@ usage() {
     echo "  --runs <N>          Number of timed iterations per scenario (default: 7)"
     echo "  --platforms <list>  Comma-separated platforms to run (default: cs,ts,go)"
     echo "  --report            Generate markdown comparison report"
+    echo "  --verify            Run correctness verification after each benchmark"
     echo "  --help              Show this help message"
     exit 0
 }
@@ -51,6 +53,10 @@ while [[ $# -gt 0 ]]; do
             REPORT=true
             shift
             ;;
+        --verify)
+            VERIFY=true
+            shift
+            ;;
         --help|-h)
             usage
             ;;
@@ -70,6 +76,7 @@ echo "=== Benchmark Orchestrator ==="
 echo "Runs:      $RUNS"
 echo "Platforms: $PLATFORMS"
 echo "Report:    $REPORT"
+echo "Verify:    $VERIFY"
 echo "Output:    $OUTDIR"
 echo ""
 
@@ -92,6 +99,11 @@ for platform in "${PLATFORM_LIST[@]}"; do
     echo "--- Running $platform benchmarks ---"
     JSON_OUT="$OUTDIR/${platform}-results.json"
 
+    VERIFY_FLAG=""
+    if [ "$VERIFY" = true ]; then
+        VERIFY_FLAG="--verify"
+    fi
+
     case "$platform" in
         cs)
             # On macOS with Homebrew, libssl is in /opt/homebrew/lib which is not
@@ -100,14 +112,14 @@ for platform in "${PLATFORM_LIST[@]}"; do
                 export DYLD_FALLBACK_LIBRARY_PATH="/opt/homebrew/lib:${DYLD_FALLBACK_LIBRARY_PATH:-}"
             fi
             CS_ASSEMBLY="$BIN_DIR/Release/Ssh.Benchmark/net8.0/Microsoft.DevTunnels.Ssh.Benchmark.dll"
-            dotnet "$CS_ASSEMBLY" "--json=$JSON_OUT" "$RUNS"
+            dotnet "$CS_ASSEMBLY" "--json=$JSON_OUT" $VERIFY_FLAG "$RUNS"
             ;;
         ts)
             TS_MAIN="$LIB_DIR/ssh-bench/main.js"
-            node "$TS_MAIN" "--json=$JSON_OUT" "$RUNS"
+            node "$TS_MAIN" "--json=$JSON_OUT" $VERIFY_FLAG "$RUNS"
             ;;
         go)
-            (cd "$PROJECT_ROOT/bench/go/cmd/bench" && go run . "--json=$JSON_OUT" "--runs=$RUNS")
+            (cd "$PROJECT_ROOT/bench/go/cmd/bench" && go run . "--json=$JSON_OUT" "--runs=$RUNS" $VERIFY_FLAG)
             ;;
         *)
             echo "Unknown platform: $platform"

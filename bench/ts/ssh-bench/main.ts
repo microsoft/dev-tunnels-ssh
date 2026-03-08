@@ -42,13 +42,16 @@ function usage(errorMessage?: string): number {
 }
 
 async function main(): Promise<number> {
-	const argv = await yargs.argv;
+	const argv = await yargs
+		.option('json', { type: 'string', describe: 'Path to write JSON results file' })
+		.option('verify', { type: 'boolean', default: false, describe: 'Run verification checks' })
+		.argv;
 	let nameList: string[] | null = null;
 	let runCount = 7;
 	let jsonPath: string | null = null;
+	const verify = argv.verify === true;
 
-	// Parse --json=<path> from argv
-	if (typeof argv.json === 'string') {
+	if (argv.json) {
 		jsonPath = argv.json;
 	}
 
@@ -69,7 +72,7 @@ async function main(): Promise<number> {
 
 	const jsonWriter = jsonPath ? new JsonResultWriter() : null;
 
-	var t = 1000;
+	var t = 2000;
 
 	var benchmarks = new Map<string, () => Benchmark>();
 
@@ -186,7 +189,20 @@ async function main(): Promise<number> {
 			}
 
 			benchmark.reportResults();
-			jsonWriter?.addBenchmark(benchmark);
+
+			let verificationResult: { passed: boolean; error?: string } | undefined;
+			if (verify) {
+				try {
+					await benchmark.verify();
+					console.log('  Verified OK');
+					verificationResult = { passed: true };
+				} catch (e: any) {
+					console.error(`  VERIFICATION FAILED: ${e.message || e}`);
+					verificationResult = { passed: false, error: e.message || String(e) };
+				}
+			}
+
+			jsonWriter?.addBenchmark(benchmark, verificationResult);
 			await benchmark.dispose();
 		} catch (e: any) {
 			console.error(`\nBenchmark '${benchmarkName}' failed: ${e.message || e}`);
