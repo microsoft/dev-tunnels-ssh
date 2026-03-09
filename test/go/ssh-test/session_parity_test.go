@@ -1,6 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 
-package ssh
+package ssh_test
 
 import (
 	"context"
@@ -10,7 +10,9 @@ import (
 	"testing"
 	"time"
 
+	ssh "github.com/microsoft/dev-tunnels-ssh/src/go/ssh"
 	"github.com/microsoft/dev-tunnels-ssh/src/go/ssh/messages"
+	"github.com/microsoft/dev-tunnels-ssh/test/go/ssh-test/helpers"
 )
 
 const sessionParityTimeout = 10 * time.Second
@@ -18,10 +20,10 @@ const sessionParityTimeout = 10 * time.Second
 // TestSessionRequest sends a session-level request with WantReply=true and
 // verifies the response is received. Matches C#/TS SessionTests.SessionRequest.
 func TestSessionRequest(t *testing.T) {
-	client, server := createSessionPair(t, nil)
+	client, server := helpers.CreateConnectedSessionPair(t, nil)
 
 	// Server handler: authorize the request.
-	server.OnRequest = func(args *RequestEventArgs) {
+	server.OnRequest = func(args *ssh.RequestEventArgs) {
 		args.IsAuthorized = true
 	}
 
@@ -44,10 +46,10 @@ func TestSessionRequest(t *testing.T) {
 // TestSessionRequestNoReply sends a request with WantReply=false and verifies
 // no reply and no error. Matches C#/TS SessionTests.SessionRequestNoReply.
 func TestSessionRequestNoReply(t *testing.T) {
-	client, server := createSessionPair(t, nil)
+	client, server := helpers.CreateConnectedSessionPair(t, nil)
 
 	var received atomic.Bool
-	server.OnRequest = func(args *RequestEventArgs) {
+	server.OnRequest = func(args *ssh.RequestEventArgs) {
 		received.Store(true)
 		args.IsAuthorized = true
 	}
@@ -79,10 +81,10 @@ func TestSessionRequestNoReply(t *testing.T) {
 // client and verifies all get distinct responses. Matches C#/TS
 // SessionTests.OverlappingSessionRequests.
 func TestOverlappingSessionRequestsParity(t *testing.T) {
-	client, server := createSessionPair(t, nil)
+	client, server := helpers.CreateConnectedSessionPair(t, nil)
 
 	// Server: authorize requests with even indices, deny odd.
-	server.OnRequest = func(args *RequestEventArgs) {
+	server.OnRequest = func(args *ssh.RequestEventArgs) {
 		// Request types are "1" through "5".
 		switch args.RequestType {
 		case "1", "3", "5":
@@ -134,23 +136,23 @@ func TestOverlappingSessionRequestsParity(t *testing.T) {
 // least once during handshake. Matches C#/TS SessionTests.ReportProgress.
 func TestReportProgress(t *testing.T) {
 	var mu sync.Mutex
-	var progress []Progress
+	var progress []ssh.Progress
 
-	clientConfig := NewNoSecurityConfig()
-	clientStream, serverStream := duplexPipe()
+	s1, s2 := helpers.CreateDuplexStreams()
 
-	client := NewClientSession(clientConfig)
-	client.OnAuthenticating = func(args *AuthenticatingEventArgs) {
+	clientConfig := ssh.NewNoSecurityConfig()
+	client := ssh.NewClientSession(clientConfig)
+	client.OnAuthenticating = func(args *ssh.AuthenticatingEventArgs) {
 		args.AuthenticationResult = true
 	}
-	client.OnReportProgress = func(p Progress) {
+	client.OnReportProgress = func(p ssh.Progress) {
 		mu.Lock()
 		progress = append(progress, p)
 		mu.Unlock()
 	}
 
-	server := NewServerSession(NewNoSecurityConfig())
-	server.OnAuthenticating = func(args *AuthenticatingEventArgs) {
+	server := ssh.NewServerSession(ssh.NewNoSecurityConfig())
+	server.OnAuthenticating = func(args *ssh.AuthenticatingEventArgs) {
 		args.AuthenticationResult = true
 	}
 
@@ -162,11 +164,11 @@ func TestReportProgress(t *testing.T) {
 	wg.Add(2)
 	go func() {
 		defer wg.Done()
-		clientErr = client.Connect(ctx, clientStream)
+		clientErr = client.Connect(ctx, s1)
 	}()
 	go func() {
 		defer wg.Done()
-		serverErr = server.Connect(ctx, serverStream)
+		serverErr = server.Connect(ctx, s2)
 	}()
 	wg.Wait()
 
@@ -190,7 +192,7 @@ func TestReportProgress(t *testing.T) {
 	}
 
 	// Verify that key stages were reported.
-	has := func(p Progress) bool {
+	has := func(p ssh.Progress) bool {
 		for _, v := range progress {
 			if v == p {
 				return true
@@ -199,10 +201,10 @@ func TestReportProgress(t *testing.T) {
 		return false
 	}
 
-	if !has(ProgressOpeningSSHSessionConnection) {
+	if !has(ssh.ProgressOpeningSSHSessionConnection) {
 		t.Error("missing ProgressOpeningSSHSessionConnection")
 	}
-	if !has(ProgressOpenedSSHSessionConnection) {
+	if !has(ssh.ProgressOpenedSSHSessionConnection) {
 		t.Error("missing ProgressOpenedSSHSessionConnection")
 	}
 }
@@ -211,18 +213,18 @@ func TestReportProgress(t *testing.T) {
 // verifies OnKeepAliveSucceeded fires with a non-negative count.
 // Matches C#/TS SessionTests.KeepAliveSuccess.
 func TestKeepAliveSuccess(t *testing.T) {
-	clientConfig := NewNoSecurityConfig()
+	clientConfig := ssh.NewNoSecurityConfig()
 	clientConfig.KeepAliveIntervalSeconds = 1
 
-	clientStream, serverStream := duplexPipe()
+	s1, s2 := helpers.CreateDuplexStreams()
 
-	client := NewClientSession(clientConfig)
-	client.OnAuthenticating = func(args *AuthenticatingEventArgs) {
+	client := ssh.NewClientSession(clientConfig)
+	client.OnAuthenticating = func(args *ssh.AuthenticatingEventArgs) {
 		args.AuthenticationResult = true
 	}
 
-	server := NewServerSession(NewNoSecurityConfig())
-	server.OnAuthenticating = func(args *AuthenticatingEventArgs) {
+	server := ssh.NewServerSession(ssh.NewNoSecurityConfig())
+	server.OnAuthenticating = func(args *ssh.AuthenticatingEventArgs) {
 		args.AuthenticationResult = true
 	}
 
@@ -242,11 +244,11 @@ func TestKeepAliveSuccess(t *testing.T) {
 	wg.Add(2)
 	go func() {
 		defer wg.Done()
-		clientErr = client.Connect(ctx, clientStream)
+		clientErr = client.Connect(ctx, s1)
 	}()
 	go func() {
 		defer wg.Done()
-		serverErr = server.Connect(ctx, serverStream)
+		serverErr = server.Connect(ctx, s2)
 	}()
 	wg.Wait()
 
@@ -277,18 +279,18 @@ func TestKeepAliveSuccess(t *testing.T) {
 // so that no keep-alive responses arrive, then verifies OnKeepAliveFailed fires.
 // Matches C#/TS SessionTests.KeepAliveFailure.
 func TestKeepAliveFailure(t *testing.T) {
-	clientConfig := NewNoSecurityConfig()
+	clientConfig := ssh.NewNoSecurityConfig()
 	clientConfig.KeepAliveIntervalSeconds = 1
 
-	clientStream, serverStream := duplexPipe()
+	s1, s2 := helpers.CreateDuplexStreams()
 
-	client := NewClientSession(clientConfig)
-	client.OnAuthenticating = func(args *AuthenticatingEventArgs) {
+	client := ssh.NewClientSession(clientConfig)
+	client.OnAuthenticating = func(args *ssh.AuthenticatingEventArgs) {
 		args.AuthenticationResult = true
 	}
 
-	server := NewServerSession(NewNoSecurityConfig())
-	server.OnAuthenticating = func(args *AuthenticatingEventArgs) {
+	server := ssh.NewServerSession(ssh.NewNoSecurityConfig())
+	server.OnAuthenticating = func(args *ssh.AuthenticatingEventArgs) {
 		args.AuthenticationResult = true
 	}
 
@@ -302,7 +304,7 @@ func TestKeepAliveFailure(t *testing.T) {
 
 	// Block the server's dispatch loop by holding a request handler for a long time.
 	// This prevents it from responding to keep-alive requests.
-	server.OnRequest = func(args *RequestEventArgs) {
+	server.OnRequest = func(args *ssh.RequestEventArgs) {
 		if args.RequestType == "block" {
 			args.IsAuthorized = true
 			time.Sleep(5 * time.Second)
@@ -314,11 +316,11 @@ func TestKeepAliveFailure(t *testing.T) {
 	wg.Add(2)
 	go func() {
 		defer wg.Done()
-		clientErr = client.Connect(ctx, clientStream)
+		clientErr = client.Connect(ctx, s1)
 	}()
 	go func() {
 		defer wg.Done()
-		serverErr = server.Connect(ctx, serverStream)
+		serverErr = server.Connect(ctx, s2)
 	}()
 	wg.Wait()
 
@@ -372,7 +374,7 @@ func TestVersionParsing(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.input, func(t *testing.T) {
-			v := ParseVersionInfo(tc.input)
+			v := ssh.ParseVersionInfo(tc.input)
 			if v == nil {
 				t.Fatal("expected non-nil VersionInfo")
 			}
@@ -392,7 +394,7 @@ func TestVersionParsing(t *testing.T) {
 	}
 
 	// Also verify RemoteVersion is set after a real connection.
-	client, server := createSessionPair(t, nil)
+	client, server := helpers.CreateConnectedSessionPair(t, nil)
 	if client.RemoteVersion == nil {
 		t.Fatal("client RemoteVersion should be set after connect")
 	}
@@ -411,29 +413,29 @@ func TestVersionParsing(t *testing.T) {
 // KEX algorithms and verifies Connect returns a negotiation failure error.
 // Matches C#/TS SessionTests.AlgorithmNegotiationFailure.
 func TestAlgorithmNegotiationFailure(t *testing.T) {
-	clientConfig := NewDefaultConfig()
-	clientConfig.KeyExchangeAlgorithms = []string{AlgoKexEcdhNistp256}
-	clientConfig.PublicKeyAlgorithms = []string{AlgoPKEcdsaSha2P256}
+	clientConfig := ssh.NewDefaultConfig()
+	clientConfig.KeyExchangeAlgorithms = []string{ssh.AlgoKexEcdhNistp256}
+	clientConfig.PublicKeyAlgorithms = []string{ssh.AlgoPKEcdsaSha2P256}
 
-	serverConfig := NewDefaultConfig()
-	serverConfig.KeyExchangeAlgorithms = []string{AlgoKexDHGroup14}
-	serverConfig.PublicKeyAlgorithms = []string{AlgoPKRsaSha512}
+	serverConfig := ssh.NewDefaultConfig()
+	serverConfig.KeyExchangeAlgorithms = []string{ssh.AlgoKexDHGroup14}
+	serverConfig.PublicKeyAlgorithms = []string{ssh.AlgoPKRsaSha512}
 
-	clientStream, serverStream := duplexPipe()
+	s1, s2 := helpers.CreateDuplexStreams()
 
-	client := NewClientSession(clientConfig)
-	client.OnAuthenticating = func(args *AuthenticatingEventArgs) {
+	client := ssh.NewClientSession(clientConfig)
+	client.OnAuthenticating = func(args *ssh.AuthenticatingEventArgs) {
 		args.AuthenticationResult = true
 	}
 
-	serverKey, err := GenerateKeyPair(AlgoPKRsaSha512)
+	serverKey, err := ssh.GenerateKeyPair(ssh.AlgoPKRsaSha512)
 	if err != nil {
 		t.Fatalf("generate server key: %v", err)
 	}
 
-	server := NewServerSession(serverConfig)
-	server.Credentials = &ServerCredentials{PublicKeys: []KeyPair{serverKey}}
-	server.OnAuthenticating = func(args *AuthenticatingEventArgs) {
+	server := ssh.NewServerSession(serverConfig)
+	server.Credentials = &ssh.ServerCredentials{PublicKeys: []ssh.KeyPair{serverKey}}
+	server.OnAuthenticating = func(args *ssh.AuthenticatingEventArgs) {
 		args.AuthenticationResult = true
 	}
 
@@ -445,11 +447,11 @@ func TestAlgorithmNegotiationFailure(t *testing.T) {
 	wg.Add(2)
 	go func() {
 		defer wg.Done()
-		clientErr = client.Connect(ctx, clientStream)
+		clientErr = client.Connect(ctx, s1)
 	}()
 	go func() {
 		defer wg.Done()
-		serverErr = server.Connect(ctx, serverStream)
+		serverErr = server.Connect(ctx, s2)
 	}()
 	wg.Wait()
 

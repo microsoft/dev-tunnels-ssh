@@ -1,18 +1,21 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 
-package ssh
+package ssh_test
 
 import (
 	"context"
 	"sync"
 	"testing"
 	"time"
+
+	ssh "github.com/microsoft/dev-tunnels-ssh/src/go/ssh"
+	"github.com/microsoft/dev-tunnels-ssh/test/go/ssh-test/helpers"
 )
 
 // TestMultiChannelStreamDoubleClose verifies that closing a MultiChannelStream
 // twice does not panic and returns nil on both calls.
 func TestMultiChannelStreamDoubleClose(t *testing.T) {
-	client, server := createMultiChannelStreamPair(t)
+	client, server := helpers.CreateMultiChannelStreamPair(t)
 
 	// First close should succeed.
 	if err := client.Close(); err != nil {
@@ -45,7 +48,7 @@ func TestMultiChannelStreamDoubleClose(t *testing.T) {
 // TestSecureStreamDoubleClose verifies that closing a SecureStream twice
 // does not panic and returns nil on both calls.
 func TestSecureStreamDoubleClose(t *testing.T) {
-	client, server := createSecureStreamPair(t)
+	client, server := helpers.CreateSecureStreamPair(t)
 
 	// First close should succeed.
 	if err := client.Close(); err != nil {
@@ -78,14 +81,14 @@ func TestSecureStreamDoubleClose(t *testing.T) {
 // TestChannelCloseAfterSessionClose verifies that closing a channel after
 // its parent session is already closed does not panic.
 func TestChannelCloseAfterSessionClose(t *testing.T) {
-	client, server := createSessionPair(t, nil)
+	client, server := helpers.CreateConnectedSessionPair(t, nil)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
 	// Accept channel on server side.
 	acceptDone := make(chan struct{})
-	var serverCh *Channel
+	var serverCh *ssh.Channel
 	var acceptErr error
 	go func() {
 		defer close(acceptDone)
@@ -138,7 +141,7 @@ func TestChannelCloseAfterSessionClose(t *testing.T) {
 // TestSessionCloseWhileChannelActive verifies that closing a session with
 // active channels cleans up all channels without panicking.
 func TestSessionCloseWhileChannelActive(t *testing.T) {
-	client, server := createSessionPair(t, nil)
+	client, server := helpers.CreateConnectedSessionPair(t, nil)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -146,7 +149,7 @@ func TestSessionCloseWhileChannelActive(t *testing.T) {
 	numChannels := 3
 
 	// Accept channels on server side.
-	serverChannels := make([]*Channel, numChannels)
+	serverChannels := make([]*ssh.Channel, numChannels)
 	var acceptWg sync.WaitGroup
 	acceptWg.Add(numChannels)
 
@@ -170,7 +173,7 @@ func TestSessionCloseWhileChannelActive(t *testing.T) {
 	}()
 
 	// Open channels from client.
-	clientChannels := make([]*Channel, numChannels)
+	clientChannels := make([]*ssh.Channel, numChannels)
 	for i := 0; i < numChannels; i++ {
 		ch, err := client.OpenChannel(ctx)
 		if err != nil {
@@ -190,7 +193,7 @@ func TestSessionCloseWhileChannelActive(t *testing.T) {
 	closedCount := int32(0)
 	var closedMu sync.Mutex
 	for i := 0; i < numChannels; i++ {
-		clientChannels[i].SetClosedHandler(func(args *ChannelClosedEventArgs) {
+		clientChannels[i].SetClosedHandler(func(args *ssh.ChannelClosedEventArgs) {
 			closedMu.Lock()
 			closedCount++
 			closedMu.Unlock()
