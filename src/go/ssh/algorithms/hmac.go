@@ -70,6 +70,7 @@ func (a *HmacAlgorithm) CreateSigner(key []byte) MessageSigner {
 		etm:       a.IsEtm,
 		hashFunc:  a.hashFunc,
 		key:       key[:a.KeyLength],
+		sumBuf:    make([]byte, 0, a.digestLength),
 	}
 }
 
@@ -144,16 +145,22 @@ type hmacSigner struct {
 	etm       bool
 	hashFunc  func() hash.Hash
 	key       []byte
+	sumBuf    []byte // reusable buffer for Sum output
 }
 
 func (s *hmacSigner) DigestLength() int {
 	return s.digestLen
 }
 
+// Sign computes the HMAC of data.
+//
+// The returned slice aliases internal state and is valid only until the next
+// call to Sign. Callers must not modify the returned slice.
 func (s *hmacSigner) Sign(data []byte) []byte {
 	s.mac.Reset()
 	s.mac.Write(data)
-	return s.mac.Sum(nil)
+	s.sumBuf = s.mac.Sum(s.sumBuf[:0])
+	return s.sumBuf
 }
 
 func (s *hmacSigner) EncryptThenMac() bool {

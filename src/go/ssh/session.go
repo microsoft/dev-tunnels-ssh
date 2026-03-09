@@ -78,6 +78,7 @@ type Session struct {
 	isClient         bool
 	closedEventFired bool
 
+
 	// Key exchange service.
 	kexService *keyExchangeService
 
@@ -287,23 +288,48 @@ func (s *Session) Connect(ctx context.Context, stream io.ReadWriteCloser) error 
 
 	s.reportProgress(ProgressStartingProtocolVersionExchange)
 
-	// Exchange version strings concurrently.
-	// With io.Pipe-based streams, Write blocks until the other side reads.
-	// Both sides must write and read concurrently to avoid deadlock.
 	localVersion := GetLocalVersion()
-	versionWriteErr := make(chan error, 1)
+
+	// Initialize key exchange service and prepare KexInit payload before any I/O.
+	// Per RFC 4253, KexInit can be sent immediately after the version string.
+	s.mu.Lock()
+	s.kexService = newKeyExchangeService(s)
+	s.mu.Unlock()
+	s.kexDone = make(chan struct{})
+	kexInitPayload, guessPayload := s.kexService.startKeyExchange(true)
+
+	// Pipeline version string + KexInit in a background goroutine, matching
+	// C#/TS behavior. This lets the version write + KexInit write proceed
+	// while we read the remote version concurrently — saving one round trip.
+	// With io.Pipe streams, the goroutine safely blocks on Write until the
+	// other side's Read consumes each message sequentially.
+	writeErr := make(chan error, 1)
 	go func() {
-		versionWriteErr <- s.protocol.writeVersionString(localVersion.String())
+		if err := s.protocol.writeVersionString(localVersion.String()); err != nil {
+			writeErr <- err
+			return
+		}
+		if err := s.protocol.sendMessage(kexInitPayload); err != nil {
+			writeErr <- err
+			return
+		}
+		if guessPayload != nil {
+			if err := s.protocol.sendMessage(guessPayload); err != nil {
+				writeErr <- err
+				return
+			}
+		}
+		writeErr <- nil
 	}()
 
 	remoteVersionStr, err := s.protocol.readVersionString()
 	if err != nil {
-		<-versionWriteErr // wait for write goroutine to finish
+		<-writeErr
 		return fmt.Errorf("failed to read version string: %w", err)
 	}
 
-	if err := <-versionWriteErr; err != nil {
-		return fmt.Errorf("failed to write version string: %w", err)
+	if err := <-writeErr; err != nil {
+		return fmt.Errorf("failed to write version/kex init: %w", err)
 	}
 
 	s.RemoteVersion = ParseVersionInfo(remoteVersionStr)
@@ -325,31 +351,10 @@ func (s *Session) Connect(ctx context.Context, stream io.ReadWriteCloser) error 
 
 	s.reportProgress(ProgressStartingKeyExchange)
 
-	// Initialize key exchange service and completion signal.
-	s.mu.Lock()
-	s.kexService = newKeyExchangeService(s)
-	s.mu.Unlock()
-	s.kexDone = make(chan struct{})
-
-	// Start dispatch loop before sending KexInit. The dispatch loop reads
-	// messages in the background, which is necessary for the other side's
-	// KexInit write to complete (io.Pipe is unbuffered).
+	// Start dispatch loop after the version string has been consumed from the
+	// stream. The dispatch loop reads framed SSH messages (starting with the
+	// remote KexInit that was pipelined with the version string).
 	go s.runDispatchLoop()
-
-	// Start key exchange. Returns serialized payloads ready to send.
-	kexInitPayload, guessPayload := s.kexService.startKeyExchange(true)
-	if err := s.protocol.sendMessage(kexInitPayload); err != nil {
-		s.close(messages.DisconnectProtocolError, err.Error(), false, false)
-		return fmt.Errorf("failed to send kex init: %w", err)
-	}
-
-	// Send guess message if key exchange guess is enabled.
-	if guessPayload != nil {
-		if err := s.protocol.sendMessage(guessPayload); err != nil {
-			s.close(messages.DisconnectProtocolError, err.Error(), false, false)
-			return fmt.Errorf("failed to send kex guess: %w", err)
-		}
-	}
 
 	// Wait for the initial key exchange to complete before returning.
 	// This ensures the session is ready for use (encryption activated, etc.).
@@ -471,7 +476,7 @@ func (s *Session) close(reason messages.SSHDisconnectReason, msg string, sendDis
 
 	wasConnected := s.isConnected
 	s.isConnected = false
-	s.isClosed = true
+s.isClosed = true
 
 	// Signal keep-alive goroutine to stop (it listens on s.done).
 	s.keepAliveResetCh = nil
@@ -574,7 +579,7 @@ func (s *Session) closeWithError(reason messages.SSHDisconnectReason, msg string
 	}
 	wasConnected := s.isConnected
 	s.isConnected = false
-	s.isClosed = true
+s.isClosed = true
 	s.mu.Unlock()
 
 	// Try to send disconnect message (ignore errors, stream may already be closed).
@@ -683,7 +688,7 @@ func (s *Session) SendMessage(msg messages.Message) error {
 	p := s.protocol
 	s.mu.Unlock()
 
-	return p.sendMessage(msg.ToBuffer())
+	return p.sendMessageDirect(msg)
 }
 
 // flushDisconnectedBuffer sends all messages that were buffered while

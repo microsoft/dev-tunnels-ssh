@@ -82,11 +82,11 @@ func TestKexBlockedQueueDataDeliveredAfterReKey(t *testing.T) {
 		case <-deadline:
 			t.Fatalf("timed out waiting for re-keying to complete "+
 				"(client.exchanging=%v, counter=%d, metrics=%d)",
-				client.kexService.exchanging,
+				atomic.LoadInt32(&client.kexService.exchanging) != 0,
 				atomic.LoadUint64(&client.protocol.BytesSent),
 				client.Metrics().BytesSent())
 		case <-time.After(50 * time.Millisecond):
-			if !client.kexService.exchanging &&
+			if atomic.LoadInt32(&client.kexService.exchanging) == 0 &&
 				client.Metrics().BytesSent() > 0 &&
 				atomic.LoadUint64(&client.protocol.BytesSent) < uint64(client.Metrics().BytesSent()) {
 				goto rekeyDone
@@ -248,7 +248,7 @@ func TestKexBlockedQueueIsKexBlockingLogic(t *testing.T) {
 	}
 
 	// When not exchanging, nothing should be blocked.
-	s.kexService.exchanging = false
+	atomic.StoreInt32(&s.kexService.exchanging, 0)
 	for msgType := byte(0); msgType <= 100; msgType++ {
 		if s.isKexBlocking(msgType) {
 			t.Errorf("isKexBlocking(%d) = true when not exchanging, want false", msgType)
@@ -256,7 +256,7 @@ func TestKexBlockedQueueIsKexBlockingLogic(t *testing.T) {
 	}
 
 	// When exchanging, check specific message types.
-	s.kexService.exchanging = true
+	atomic.StoreInt32(&s.kexService.exchanging, 1)
 
 	// Transport generic (1-4): never blocked.
 	for _, msgType := range []byte{1, 2, 3, 4} {

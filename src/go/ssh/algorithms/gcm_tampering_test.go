@@ -27,7 +27,10 @@ func gcmEncryptHelper(t *testing.T, plaintext []byte) (ciphertext, tag, key, iv 
 	}
 
 	gcmEnc := encCipher.(*AesGcmCipher)
-	tag = gcmEnc.Sign(nil)
+	signedTag := gcmEnc.Sign(nil)
+	// Copy the tag since Sign() returns internal state that may be overwritten.
+	tag = make([]byte, len(signedTag))
+	copy(tag, signedTag)
 	return ciphertext, tag, key, iv
 }
 

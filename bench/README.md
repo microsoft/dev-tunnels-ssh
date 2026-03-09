@@ -253,15 +253,17 @@ For GCM mode, the authentication tag is transferred from encryptor to decryptor 
 #### Algorithm: Key Generation
 
 1. Generate a key pair for the specified algorithm and key size
-2. Sign test data with the generated key
-3. **Check:** the generated key can verify its own signature (key pair is valid and usable)
+2. **Check:** the generated key has the expected bit size (RSA modulus length, ECDSA curve size) — this prevents silent key size mismatches across platforms
+3. Sign test data with the generated key
+4. **Check:** the generated key can verify its own signature (key pair is valid and usable)
 
 #### Algorithm: Signature
 
-1. Generate a key pair
-2. Sign test data
-3. **Check:** verifier accepts the signature for the correct data (positive test)
-4. **Check:** verifier rejects the signature for different data (negative test)
+1. Generate a key pair with the specified key size
+2. **Check:** the generated key has the expected bit size (same key size validation as keygen)
+3. Sign test data
+4. **Check:** verifier accepts the signature for the correct data (positive test)
+5. **Check:** verifier rejects the signature for different data (negative test)
 
 #### Protocol: Serialization (ChannelData, ChannelOpen, KexInit)
 
@@ -350,7 +352,7 @@ Go will often appear **significantly faster** (10–100x) in algorithm-level and
 
 **Why Go's algorithm benchmarks are faster:**
 
-- **Crypto primitives use hand-written assembly.** Go's standard library (`crypto/aes`, `crypto/sha256`, `crypto/ecdsa`, etc.) includes assembly-optimized implementations for common architectures (amd64, arm64). AES-GCM uses AES-NI + CLMUL hardware instructions directly; SHA-256/SHA-512 use platform-specific SIMD instructions; elliptic curve operations use optimized field arithmetic in assembly. C# and TypeScript rely on their respective runtimes' managed crypto, which generally cannot match hand-tuned assembly for raw throughput.
+- **Crypto primitives use hand-written assembly.** Go's standard library includes assembly-optimized implementations for common architectures (amd64, arm64). AES-GCM uses [AES-NI + CLMUL hardware instructions](https://pkg.go.dev/crypto/aes) directly via [dedicated assembly](https://github.com/golang/go/blob/2ebe77a2fda1ee9ff6fd9a3e08933ad1ebaea039/src/crypto/aes/gcm_amd64.s); SHA-256/SHA-512 use [platform-specific assembly](https://github.com/golang/go/blob/master/src/crypto/sha256/sha256block_amd64.s) with AVX2 and SHA-NI instructions (see [issue #50543](https://github.com/golang/go/issues/50543)); elliptic curve P-256 uses [optimized field arithmetic in assembly](https://github.com/golang/go/blob/master/src/crypto/internal/fips140/nistec/p256_asm_amd64.s) based on work by Gueron and Krasnov (see [Cloudflare's analysis](https://blog.cloudflare.com/go-crypto-bridging-the-performance-gap/) showing 21–30x speedups). C# and TypeScript rely on their respective runtimes' managed crypto, which generally cannot match hand-tuned assembly for raw throughput.
 
 - **Sub-microsecond operations amplify fixed overhead.** Many algorithm benchmarks (HMAC on 256 bytes, ECDSA P-256 keygen, small-buffer encryption) complete in under 1 microsecond in Go. At these scales, the fixed per-operation overhead in managed runtimes (GC barriers, JIT compilation artifacts, Node.js event loop scheduling) becomes a large fraction of the total time, making Go appear disproportionately faster than it would be for larger workloads.
 

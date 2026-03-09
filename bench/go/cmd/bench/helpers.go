@@ -66,10 +66,51 @@ func newTCPPipe() (io.ReadWriteCloser, io.ReadWriteCloser, func(), error) {
 }
 
 // latencyStream wraps a stream and adds a delay to each write, matching
-// the C# SlowStream and TS SlowStream which only delay writes (not reads).
+// the C# SlowStream and TS SlowStream behavior: writes return immediately
+// (data is queued), and the actual write to the underlying stream happens
+// after the delay in a single background drainer goroutine. This models
+// real TCP behavior where Write() returns as soon as data enters the kernel
+// send buffer and the network adds latency to delivery. A single drainer
+// guarantees FIFO write ordering.
 type latencyStream struct {
-	stream io.ReadWriteCloser
-	delay  time.Duration
+	stream    io.ReadWriteCloser
+	delay     time.Duration
+	queue     chan latencyItem
+	closeCh   chan struct{}
+	closeOnce sync.Once
+	done      chan struct{}
+}
+
+type latencyItem struct {
+	data      []byte
+	deliverAt time.Time
+}
+
+func newLatencyStream(stream io.ReadWriteCloser, delay time.Duration) *latencyStream {
+	s := &latencyStream{
+		stream:  stream,
+		delay:   delay,
+		queue:   make(chan latencyItem, 256),
+		closeCh: make(chan struct{}),
+		done:    make(chan struct{}),
+	}
+	go s.drainer()
+	return s
+}
+
+func (s *latencyStream) drainer() {
+	defer close(s.done)
+	for {
+		select {
+		case item := <-s.queue:
+			if wait := time.Until(item.deliverAt); wait > 0 {
+				time.Sleep(wait)
+			}
+			s.stream.Write(item.data)
+		case <-s.closeCh:
+			return
+		}
+	}
 }
 
 func (s *latencyStream) Read(b []byte) (int, error) {
@@ -77,11 +118,21 @@ func (s *latencyStream) Read(b []byte) (int, error) {
 }
 
 func (s *latencyStream) Write(b []byte) (int, error) {
-	time.Sleep(s.delay)
-	return s.stream.Write(b)
+	data := make([]byte, len(b))
+	copy(data, b)
+	select {
+	case s.queue <- latencyItem{data: data, deliverAt: time.Now().Add(s.delay)}:
+		return len(b), nil
+	case <-s.closeCh:
+		return 0, io.ErrClosedPipe
+	}
 }
 
-func (s *latencyStream) Close() error { return s.stream.Close() }
+func (s *latencyStream) Close() error {
+	s.closeOnce.Do(func() { close(s.closeCh) })
+	<-s.done
+	return s.stream.Close()
+}
 
 // createSessionPair creates a connected client+server session pair via TCP loopback.
 func createSessionPair(encrypted bool) (*ssh.ClientSession, *ssh.ServerSession, error) {

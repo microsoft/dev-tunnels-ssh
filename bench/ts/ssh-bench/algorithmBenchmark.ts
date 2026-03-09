@@ -309,6 +309,9 @@ export class KeygenBenchmark extends Benchmark {
 	public async verify(): Promise<void> {
 		const keyPair = await this.algorithm.generateKeyPair(this.keySizeInBits);
 
+		// Verify the generated key has the expected bit size.
+		await verifyKeySize(keyPair, this.keySizeInBits, this.algorithm.keyAlgorithmName);
+
 		// Sign test data and verify the signature
 		const signer = this.algorithm.createSigner(keyPair);
 		const verifier = this.algorithm.createVerifier(keyPair);
@@ -372,6 +375,10 @@ export class SignatureBenchmark extends Benchmark {
 
 	public async verify(): Promise<void> {
 		const keyPair = await this.algorithm.generateKeyPair(this.keySizeInBits);
+
+		// Verify the generated key has the expected bit size.
+		await verifyKeySize(keyPair, this.keySizeInBits, this.algorithm.keyAlgorithmName);
+
 		const signer = this.algorithm.createSigner(keyPair);
 		const verifier = this.algorithm.createVerifier(keyPair);
 
@@ -401,4 +408,49 @@ export class SignatureBenchmark extends Benchmark {
 	}
 
 	public async dispose(): Promise<void> {}
+}
+
+/**
+ * Verifies that a generated key pair has the expected bit size by checking
+ * the SSH public key byte length. For RSA, the modulus is the dominant
+ * component, so the total byte count is a reliable proxy for key size.
+ */
+async function verifyKeySize(
+	keyPair: import('@microsoft/dev-tunnels-ssh').KeyPair,
+	expectedSizeInBits: number,
+	keyAlgorithmName: string,
+): Promise<void> {
+	const pubKeyBytes = await keyPair.getPublicKeyBytes();
+	if (!pubKeyBytes) {
+		throw new Error('Failed to get public key bytes for key size verification');
+	}
+
+	if (keyAlgorithmName === 'ssh-rsa') {
+		// RSA public key SSH wire format: [string "ssh-rsa"] [mpint e] [mpint n]
+		// Expected total: ~11 (algo) + ~7 (exponent) + 5 (mpint header) + keySizeInBits/8.
+		const expectedModulusBytes = expectedSizeInBits / 8;
+		const minExpectedLength = expectedModulusBytes + 10;
+		const maxExpectedLength = expectedModulusBytes + 25;
+
+		if (pubKeyBytes.length < minExpectedLength || pubKeyBytes.length > maxExpectedLength) {
+			throw new Error(
+				`Expected ${expectedSizeInBits}-bit RSA key (pub key ~${minExpectedLength}-${maxExpectedLength} bytes), ` +
+				`but got ${pubKeyBytes.length} bytes. Key size mismatch.`,
+			);
+		}
+	} else if (keyAlgorithmName.startsWith('ecdsa-sha2-')) {
+		// ECDSA public key SSH wire format: [string algo] [string curve] [string Q]
+		// Q is uncompressed: 0x04 || X || Y, so Q length = 1 + 2*ceil(bits/8).
+		const coordBytes = Math.ceil(expectedSizeInBits / 8);
+		const expectedQLen = 1 + 2 * coordBytes;
+		const curveName = keyAlgorithmName.substring('ecdsa-sha2-'.length);
+		const expectedTotal = (4 + keyAlgorithmName.length) + (4 + curveName.length) + (4 + expectedQLen);
+		// Allow small tolerance for encoding variations.
+		if (pubKeyBytes.length < expectedTotal - 2 || pubKeyBytes.length > expectedTotal + 2) {
+			throw new Error(
+				`Expected ${expectedSizeInBits}-bit ECDSA key (pub key ~${expectedTotal} bytes), ` +
+				`but got ${pubKeyBytes.length} bytes. Key size mismatch.`,
+			);
+		}
+	}
 }

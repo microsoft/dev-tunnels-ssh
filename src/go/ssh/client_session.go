@@ -47,8 +47,11 @@ func (cs *ClientSession) Authenticate(ctx context.Context, creds *ClientCredenti
 		return false, nil
 	}
 
-	// Step 2: Request the server to activate the authentication service.
-	if err := cs.RequestService(AuthServiceName); err != nil {
+	// Step 2: Send a service request to the server (fire-and-forget).
+	// Matching C#/TS behavior: don't wait for ServiceAccept. If the server
+	// rejects the service, subsequent auth messages will fail.
+	serviceMsg := &messages.ServiceRequestMessage{ServiceName: AuthServiceName}
+	if err := cs.SendMessage(serviceMsg); err != nil {
 		return false, err
 	}
 

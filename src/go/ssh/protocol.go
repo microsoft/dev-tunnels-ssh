@@ -8,11 +8,14 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
+	mathrand "math/rand"
 	"strings"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/microsoft/dev-tunnels-ssh/src/go/ssh/algorithms"
+	sshio "github.com/microsoft/dev-tunnels-ssh/src/go/ssh/io"
 	"github.com/microsoft/dev-tunnels-ssh/src/go/ssh/messages"
 )
 
@@ -24,6 +27,15 @@ const (
 	minPaddingLength         = 4
 	sequenceNumberSize       = 4
 )
+
+// packetPool reuses packet buffers across send operations to reduce GC pressure.
+// Each pool entry is a *[]byte to avoid interface{} boxing of the slice header.
+var packetPool = sync.Pool{
+	New: func() interface{} {
+		buf := make([]byte, 0, 65536)
+		return &buf
+	},
+}
 
 // SSHProtocol handles binary SSH packet framing on a stream.
 //
@@ -41,7 +53,8 @@ type SSHProtocol struct {
 	stream io.ReadWriteCloser
 	reader *bufio.Reader
 
-	sendMu  sync.Mutex // protects send-side state: cipher, signer, sequence, stream writes
+	writer  *bufio.Writer // buffered writer for stream; protected by sendMu
+	sendMu  sync.Mutex   // protects send-side state: cipher, signer, sequence, stream writes
 	closeMu sync.Mutex
 	closed  bool
 
@@ -75,6 +88,14 @@ type SSHProtocol struct {
 	OutgoingMessagesHaveLatencyInfo   int32 // atomic; 0 = false, 1 = true
 	IncomingMessagesHaveLatencyInfo   int32 // atomic; 0 = false, 1 = true
 
+	// reconnectInfoReady is closed when IncomingMessagesHaveReconnectInfo is set,
+	// signaling that message caching is active. Reconnect() and handleReconnectRequest()
+	// wait on this to guarantee caching is active before returning — matching C#/TS
+	// behavior where reconnect state is fully established before the reconnect
+	// operation completes.
+	reconnectInfoReady     chan struct{}
+	reconnectInfoReadyOnce sync.Once
+
 	// Message cache for reconnection. Sent messages are cached until the remote side
 	// acknowledges receipt, enabling retransmission after reconnect.
 	// Protected by cacheMu.
@@ -98,6 +119,20 @@ type SSHProtocol struct {
 	// trace is set from Session to enable protocol-level tracing.
 	trace         TraceFunc
 	traceChannelData bool
+
+	// Reusable HMAC input buffers to avoid per-message allocation.
+	// sendHmacBuf is protected by sendMu; recvHmacBuf is only used from dispatch loop.
+	sendHmacBuf []byte
+	recvHmacBuf []byte
+
+	// fastRand is a non-crypto PRNG for padding when encryption is disabled.
+	// Padding bytes serve no security purpose in unencrypted mode.
+	// Protected by sendMu.
+	fastRand *mathrand.Rand
+
+	// sendWriter is a reusable buffer for serializing messages, eliminating
+	// per-message SSHDataWriter allocation. Protected by sendMu.
+	sendWriter *sshio.SSHDataWriter
 }
 
 // SequencedMessage stores a sent message payload with its sequence number
@@ -110,9 +145,13 @@ type SequencedMessage struct {
 
 func newSSHProtocol(stream io.ReadWriteCloser, metrics *SessionMetrics) *SSHProtocol {
 	return &SSHProtocol{
-		stream:  stream,
-		reader:  bufio.NewReader(stream),
-		metrics: metrics,
+		stream:             stream,
+		writer:             bufio.NewWriterSize(stream, 65536),
+		reader:             bufio.NewReader(stream),
+		metrics:            metrics,
+		fastRand:           mathrand.New(mathrand.NewSource(time.Now().UnixNano())),
+		sendWriter:         sshio.NewSSHDataWriter(make([]byte, 1024)),
+		reconnectInfoReady: make(chan struct{}),
 	}
 }
 
@@ -148,7 +187,12 @@ func (p *SSHProtocol) hasEncryption() bool {
 // The string is terminated with \r\n per RFC 4253 section 4.2.
 func (p *SSHProtocol) writeVersionString(version string) error {
 	data := []byte(version + "\r\n")
-	_, err := p.stream.Write(data)
+	p.sendMu.Lock()
+	_, err := p.writer.Write(data)
+	if err == nil {
+		err = p.writer.Flush()
+	}
+	p.sendMu.Unlock()
 	if err == nil && p.metrics != nil {
 		p.metrics.addMessageSent(len(data))
 	}
@@ -239,6 +283,24 @@ func (p *SSHProtocol) sendMessage(payload []byte) error {
 	return p.sendMessageLocked(payload)
 }
 
+// sendMessageDirect serializes a message into a reusable internal buffer and
+// sends it, avoiding the per-message SSHDataWriter allocation that ToBuffer()
+// creates. The sendWriter is reused across calls (protected by sendMu).
+func (p *SSHProtocol) sendMessageDirect(msg messages.Message) error {
+	p.sendMu.Lock()
+	defer p.sendMu.Unlock()
+
+	// Serialize message into the reusable sendWriter.
+	p.sendWriter.Position = 0
+	if err := msg.Write(p.sendWriter); err != nil {
+		return err
+	}
+
+	// Pass the zero-copy slice to the existing send path.
+	// sendMessageLocked only reads (copies) the payload, so aliasing is safe.
+	return p.sendMessageLocked(p.sendWriter.Slice())
+}
+
 // sendMessageLocked is like sendMessage but assumes sendMu is already held by the caller.
 // Used when the caller needs to atomically send a message and update protocol state
 // (e.g., enabling reconnect flags immediately after sending the enable message).
@@ -298,7 +360,20 @@ func (p *SSHProtocol) sendMessageLocked(payload []byte) error {
 
 	// Build the packet: [packet_length(4)] [padding_length(1)] [payload] [padding]
 	packetSize := packetLengthSize + packetLength
-	packet := make([]byte, packetSize)
+	macLen := 0
+	if p.signer != nil {
+		macLen = p.signer.DigestLength()
+	}
+
+	// Get a reusable buffer from the pool. Grow if needed for packet + MAC.
+	needed := packetSize + macLen
+	bufPtr := packetPool.Get().(*[]byte)
+	if cap(*bufPtr) < needed {
+		*bufPtr = make([]byte, needed)
+	} else {
+		*bufPtr = (*bufPtr)[:needed]
+	}
+	packet := (*bufPtr)[:packetSize]
 
 	// Write packet_length (big-endian uint32).
 	binary.BigEndian.PutUint32(packet[0:4], uint32(packetLength))
@@ -309,8 +384,16 @@ func (p *SSHProtocol) sendMessageLocked(payload []byte) error {
 	// Write payload.
 	copy(packet[packetLengthSize+paddingLengthSize:], payload)
 
-	// Write random padding.
-	_, _ = rand.Read(packet[packetLengthSize+paddingLengthSize+len(payload) : packetSize])
+	// Write random padding. Use fast PRNG when unencrypted since padding bytes
+	// serve no security purpose in that mode.
+	paddingSlice := packet[packetLengthSize+paddingLengthSize+len(payload):packetSize]
+	if p.encryptCipher != nil {
+		_, _ = rand.Read(paddingSlice)
+	} else {
+		for i := range paddingSlice {
+			paddingSlice[i] = byte(p.fastRand.Int31())
+		}
+	}
 
 	// Compute MAC and encrypt based on mode.
 	var mac []byte
@@ -318,7 +401,7 @@ func (p *SSHProtocol) sendMessageLocked(payload []byte) error {
 	if p.signer != nil && p.signer.EncryptThenMac() && p.encryptCipher != nil {
 		// EtM mode: encrypt (without length), then compute HMAC on ciphertext.
 		_ = p.encryptCipher.Transform(packet[packetLengthSize:])
-		mac = p.computeHmac(p.signer, packet, p.SendSequence)
+		mac, p.sendHmacBuf = p.computeHmac(p.signer, packet, p.SendSequence, p.sendHmacBuf)
 	} else if p.signer != nil && p.signer.AuthenticatedEncryption() && p.encryptCipher != nil {
 		// GCM mode: encrypt (without length), then retrieve tag from cipher.
 		_ = p.encryptCipher.Transform(packet[packetLengthSize:])
@@ -326,7 +409,7 @@ func (p *SSHProtocol) sendMessageLocked(payload []byte) error {
 	} else {
 		// Standard mode: compute HMAC on plaintext, then encrypt full packet.
 		if p.signer != nil {
-			mac = p.computeHmac(p.signer, packet, p.SendSequence)
+			mac, p.sendHmacBuf = p.computeHmac(p.signer, packet, p.SendSequence, p.sendHmacBuf)
 		}
 		if p.encryptCipher != nil {
 			_ = p.encryptCipher.Transform(packet)
@@ -355,23 +438,29 @@ func (p *SSHProtocol) sendMessageLocked(payload []byte) error {
 		p.cacheMu.Unlock()
 	}
 
-	// Write packet + MAC.
-	_, err := p.stream.Write(packet)
-	if err != nil {
-		return err
+	// Write packet + MAC into the buffered writer, then flush.
+	if len(mac) > 0 {
+		packet = append(packet, mac...)
+	}
+	_, err := p.writer.Write(packet)
+	if err == nil {
+		err = p.writer.Flush()
 	}
 
-	if len(mac) > 0 {
-		_, err = p.stream.Write(mac)
-		if err != nil {
-			return err
-		}
+	// Zero and return buffer to pool (prevents data leakage between sessions).
+	for i := range (*bufPtr)[:needed] {
+		(*bufPtr)[i] = 0
+	}
+	packetPool.Put(bufPtr)
+
+	if err != nil {
+		return err
 	}
 
 	p.SendSequence++
 
 	wireBytes := uint64(packetSize + len(mac))
-	atomic.AddUint64(&p.BytesSent,wireBytes)
+	atomic.AddUint64(&p.BytesSent, wireBytes)
 
 	if p.metrics != nil {
 		p.metrics.addMessageSent(packetSize + len(mac))
@@ -396,12 +485,17 @@ func (p *SSHProtocol) sendMessageLocked(payload []byte) error {
 
 // computeHmac computes the HMAC over [sequence_number(4)] [packet].
 // The sequence number is truncated to uint32 per SSH spec (RFC 4253).
-func (p *SSHProtocol) computeHmac(signer algorithms.MessageSigner, packet []byte, sequence uint64) []byte {
+// buf is a reusable buffer for the HMAC input; it is grown if needed.
+func (p *SSHProtocol) computeHmac(signer algorithms.MessageSigner, packet []byte, sequence uint64, buf []byte) (mac, updatedBuf []byte) {
 	// HMAC input: sequence_number(4 bytes, truncated) || packet
-	hmacInput := make([]byte, sequenceNumberSize+len(packet))
-	binary.BigEndian.PutUint32(hmacInput[0:4], uint32(sequence))
-	copy(hmacInput[sequenceNumberSize:], packet)
-	return signer.Sign(hmacInput)
+	needed := sequenceNumberSize + len(packet)
+	if cap(buf) < needed {
+		buf = make([]byte, needed)
+	}
+	buf = buf[:needed]
+	binary.BigEndian.PutUint32(buf[0:4], uint32(sequence))
+	copy(buf[sequenceNumberSize:], packet)
+	return signer.Sign(buf), buf
 }
 
 // verifyHmac reads the MAC from the wire and verifies it against the packet.
@@ -414,11 +508,15 @@ func (p *SSHProtocol) verifyHmac(verifier algorithms.MessageVerifier, packet []b
 		return false, err
 	}
 
-	// HMAC input: sequence_number(4 bytes) || packet
-	hmacInput := make([]byte, sequenceNumberSize+len(packet))
-	binary.BigEndian.PutUint32(hmacInput[0:4], uint32(sequence))
-	copy(hmacInput[sequenceNumberSize:], packet)
-	return verifier.Verify(hmacInput, mac), nil
+	// HMAC input: sequence_number(4 bytes) || packet (reuse recvHmacBuf)
+	needed := sequenceNumberSize + len(packet)
+	if cap(p.recvHmacBuf) < needed {
+		p.recvHmacBuf = make([]byte, needed)
+	}
+	p.recvHmacBuf = p.recvHmacBuf[:needed]
+	binary.BigEndian.PutUint32(p.recvHmacBuf[0:4], uint32(sequence))
+	copy(p.recvHmacBuf[sequenceNumberSize:], packet)
+	return verifier.Verify(p.recvHmacBuf, mac), nil
 }
 
 // receiveMessage reads and deframes one SSH packet from the wire.
@@ -708,5 +806,11 @@ func (p *SSHProtocol) close() error {
 		return nil
 	}
 	p.closed = true
+
+	// Flush any buffered data before closing the underlying stream.
+	p.sendMu.Lock()
+	_ = p.writer.Flush()
+	p.sendMu.Unlock()
+
 	return p.stream.Close()
 }

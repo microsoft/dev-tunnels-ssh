@@ -128,15 +128,37 @@ func (s *Session) enableReconnect() error {
 		}
 	}
 
-	// Acquire sendMu to atomically: send enable message + set outgoing flags.
+	// Acquire sendMu to atomically: send enable message + cache it + set flags.
 	// No concurrent sendMessage can interleave between the enable message
 	// and the flag update because sendMessage also acquires sendMu.
 	proto.sendMu.Lock()
-	err := proto.sendMessageLocked(enableMsg.ToBuffer())
+	enablePayload := enableMsg.ToBuffer()
+	err := proto.sendMessageLocked(enablePayload)
 	if err != nil {
 		proto.sendMu.Unlock()
 		return err
 	}
+
+	// Explicitly cache the enable message for reconnection retransmission.
+	// This message is sent before IncomingMessagesHaveReconnectInfo is set
+	// (the remote hasn't processed it yet), so sendMessageLocked's normal
+	// caching path doesn't capture it. If the connection drops before the
+	// remote receives this message, the next reconnect needs it in the cache.
+	// Locking order: sendMu (held) → cacheMu (safe, matches sendMessageLocked).
+	sentSeq := proto.SendSequence - 1 // sendMessageLocked already incremented
+	sentTime := int64(0)
+	if proto.metrics != nil {
+		sentTime = proto.metrics.TimeMicroseconds()
+	}
+	proto.cacheMu.Lock()
+	payloadCopy := make([]byte, len(enablePayload))
+	copy(payloadCopy, enablePayload)
+	proto.recentSentMessages = append(proto.recentSentMessages, SequencedMessage{
+		Sequence: sentSeq,
+		Payload:  payloadCopy,
+		SentTime: sentTime,
+	})
+	proto.cacheMu.Unlock()
 
 	// Set both flags before releasing sendMu so the next sendMessage sees them.
 	if hasLatencySupport {
@@ -174,6 +196,12 @@ func (s *Session) handleEnableReconnectRequest() {
 		}
 	}
 	atomic.StoreInt32(&s.protocol.IncomingMessagesHaveReconnectInfo, 1)
+
+	// Signal that caching is now active. Reconnect() and handleReconnectRequest()
+	// wait on this channel to guarantee caching before returning.
+	s.protocol.reconnectInfoReadyOnce.Do(func() {
+		close(s.protocol.reconnectInfoReady)
+	})
 }
 
 // onDisconnected is called when the connection is lost. Returns true if the session
@@ -206,7 +234,7 @@ func (s *Session) onDisconnected() bool {
 func (s *Session) disconnect(reason messages.SSHDisconnectReason, msg string) {
 	s.mu.Lock()
 	s.isConnected = false
-	kex := s.kexService
+kex := s.kexService
 	onDisconnected := s.OnDisconnected
 	s.mu.Unlock()
 
@@ -460,6 +488,21 @@ func (cs *ClientSession) Reconnect(ctx context.Context, newStream io.ReadWriteCl
 	// Enable reconnect info on the new protocol.
 	cs.enableReconnect()
 
+	// Wait for the server's enable-reconnect message to be processed by our
+	// dispatch loop. This ensures IncomingMessagesHaveReconnectInfo is set and
+	// message caching is active before Reconnect returns — matching C#/TS
+	// behavior where the reconnect operation guarantees caching is established.
+	select {
+	case <-cs.protocol.reconnectInfoReady:
+	case <-cs.done:
+		return &ReconnectError{
+			Reason: messages.ReconnectFailureUnknownClientFailure,
+			Msg:    "session closed waiting for reconnect enable",
+		}
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+
 	// Flush messages that were buffered while disconnected.
 	if err := cs.flushDisconnectedBuffer(); err != nil {
 		return fmt.Errorf("failed to flush disconnected buffer: %w", err)
@@ -610,6 +653,11 @@ func (ss *ServerSession) handleReconnectRequest(payload []byte) error {
 	reconnectSession.done = make(chan struct{})
 	go reconnectSession.runDispatchLoop()
 
+	// No wait needed here for the client's enable-reconnect: the dispatch loop
+	// processes messages sequentially, so it will set IncomingMessagesHaveReconnectInfo
+	// (via handleEnableReconnectRequest) before processing any subsequent messages
+	// that need caching. This ordering guarantee is inherent to the dispatch loop.
+
 	// Update metrics.
 	reconnectSession.sessionMetrics.addReconnection()
 
@@ -637,21 +685,34 @@ func (ss *ServerSession) handleReconnectRequest(payload []byte) error {
 }
 
 // WaitUntilReconnectEnabled polls until both sides of a session pair have
-// reconnect extensions negotiated and enabled. Used in tests.
+// reconnect extensions negotiated and enabled, AND both protocols have
+// IncomingMessagesHaveReconnectInfo set (meaning each side has received
+// the other's enable-reconnect message and message caching is active).
+// Used in tests for initial setup with kex:none (where enableReconnect
+// is called manually rather than via extension info exchange).
 func WaitUntilReconnectEnabled(ctx context.Context, sessions ...*Session) error {
 	timeout := time.After(5 * time.Second)
 	for {
-		allEnabled := true
+		allReady := true
 		for _, s := range sessions {
 			s.mu.Lock()
 			enabled := s.reconnectEnabled
+			proto := s.protocol
 			s.mu.Unlock()
-			if !enabled {
-				allEnabled = false
+			if !enabled || proto == nil {
+				allReady = false
 				break
 			}
+			// Wait for the protocol-level signal: reconnectInfoReady is closed
+			// when IncomingMessagesHaveReconnectInfo is set, meaning the remote
+			// side's enable-reconnect message has been received and processed.
+			select {
+			case <-proto.reconnectInfoReady:
+			default:
+				allReady = false
+			}
 		}
-		if allEnabled {
+		if allReady {
 			return nil
 		}
 		select {

@@ -285,6 +285,97 @@ func TestAes256GcmNonceIncrement(t *testing.T) {
 	}
 }
 
+// TestAes256GcmBufferReuseVaryingSizes verifies that the GCM cipher correctly
+// handles multiple sequential operations with varying payload sizes, which
+// forces the internal sealBuf to grow.
+func TestAes256GcmBufferReuseVaryingSizes(t *testing.T) {
+	algo := NewAes256Gcm()
+	key := generateKey(t, algo.KeyLength)
+	iv := generateIV(t, algo.IVLength())
+
+	encCipher, err := algo.CreateCipher(true, key, iv)
+	if err != nil {
+		t.Fatal(err)
+	}
+	decCipher, err := algo.CreateCipher(false, key, iv)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	gcmEnc := encCipher.(*AesGcmCipher)
+	gcmDec := decCipher.(*AesGcmCipher)
+
+	// Varying sizes: small → large (forces sealBuf growth) → small again.
+	sizes := []int{16, 100, 1024, 64 * 1024, 100, 16}
+	for _, size := range sizes {
+		plaintext := make([]byte, size)
+		if _, err := rand.Read(plaintext); err != nil {
+			t.Fatal(err)
+		}
+		original := make([]byte, size)
+		copy(original, plaintext)
+
+		gcmEnc.Transform(plaintext)
+		tag := gcmEnc.Sign(nil)
+
+		// Copy tag since Sign returns internal state.
+		tagCopy := make([]byte, len(tag))
+		copy(tagCopy, tag)
+
+		gcmDec.SetTag(tagCopy)
+		if err := gcmDec.Transform(plaintext); err != nil {
+			t.Fatalf("decryption failed for size %d: %v", size, err)
+		}
+		if !bytes.Equal(plaintext, original) {
+			t.Fatalf("round-trip failed for size %d", size)
+		}
+	}
+}
+
+// TestAes256GcmSignReturnsInternalState verifies Sign() returns a slice that
+// aliases internal cipher state (valid until next Transform call).
+func TestAes256GcmSignReturnsInternalState(t *testing.T) {
+	algo := NewAes256Gcm()
+	key := generateKey(t, algo.KeyLength)
+	iv := generateIV(t, algo.IVLength())
+
+	encCipher, err := algo.CreateCipher(true, key, iv)
+	if err != nil {
+		t.Fatal(err)
+	}
+	gcmEnc := encCipher.(*AesGcmCipher)
+
+	data := make([]byte, 64)
+	rand.Read(data)
+	gcmEnc.Transform(data)
+
+	tag1 := gcmEnc.Sign(nil)
+	tag2 := gcmEnc.Sign(nil)
+
+	// Both calls should return the same underlying slice (aliased internal state).
+	if &tag1[0] != &tag2[0] {
+		t.Fatal("Sign() should return the same internal slice on consecutive calls")
+	}
+
+	// Save the tag value before next Transform overwrites it.
+	savedTag := make([]byte, len(tag1))
+	copy(savedTag, tag1)
+
+	// Next Transform should overwrite the tag.
+	rand.Read(data)
+	gcmEnc.Transform(data)
+	tag3 := gcmEnc.Sign(nil)
+
+	// tag1 and tag3 point to the same buffer, so tag1's content is now tag3's.
+	if &tag1[0] != &tag3[0] {
+		t.Fatal("Sign() should return the same internal slice across Transform calls")
+	}
+	// The saved tag should differ from the new tag (different plaintext + nonce).
+	if bytes.Equal(savedTag, tag3) {
+		t.Fatal("tag should change after encrypting different data")
+	}
+}
+
 func TestEncryptionAlgorithmNames(t *testing.T) {
 	tests := []struct {
 		algo     *EncryptionAlgorithm

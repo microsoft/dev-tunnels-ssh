@@ -128,41 +128,39 @@ func runSessionSetupBenchmark(runs int, withLatency bool) []metric {
 		// Wrap streams with latency if needed.
 		var cs, ss io.ReadWriteCloser = clientConn, serverConn
 		if withLatency {
-			cs = &latencyStream{stream: clientConn, delay: 100 * time.Millisecond}
-			ss = &latencyStream{stream: serverConn, delay: 100 * time.Millisecond}
+			cs = newLatencyStream(clientConn, 100*time.Millisecond)
+			ss = newLatencyStream(serverConn, 100*time.Millisecond)
 		}
 
 		// Connect both sessions (version exchange + KEX).
-		var wg sync.WaitGroup
-		var clientErr, serverErr error
-		wg.Add(2)
-		go func() {
-			defer wg.Done()
-			clientErr = client.Connect(ctx, cs)
-		}()
-		go func() {
-			defer wg.Done()
-			serverErr = server.Connect(ctx, ss)
-		}()
-		wg.Wait()
+		// Encrypt mark is when the CLIENT's Connect() returns, matching
+		// C# (client.OpenSessionAsync) and TS (client.openSession) which
+		// only await the client side. The server runs in the background.
+		clientDone := make(chan error, 1)
+		serverDone := make(chan error, 1)
+		go func() { clientDone <- client.Connect(ctx, cs) }()
+		go func() { serverDone <- server.Connect(ctx, ss) }()
 
-		// Encrypt mark = Connect() returns (version exchange + KEX done).
+		clientErr := <-clientDone
 		encryptMark := float64(time.Since(start).Nanoseconds()) / 1e6
 
-		if clientErr != nil || serverErr != nil {
+		if clientErr != nil {
+			<-serverDone
 			cancel()
 			ln.Close()
-			fmt.Fprintf(os.Stderr, "Session setup error: client=%v server=%v\n", clientErr, serverErr)
+			fmt.Fprintf(os.Stderr, "Session setup error: client=%v\n", clientErr)
 			continue
 		}
 
-		// Authenticate the client (matching C#'s AuthenticateServerAsync +
-		// AuthenticateClientAsync and TS's authenticateServer + authenticateClient).
+		// Authenticate immediately after client Connect(), matching C#/TS
+		// which don't wait for server Connect(). The server's dispatch loop
+		// handles auth messages independently once it finishes KEX.
 		_, err = client.Authenticate(ctx, &ssh.ClientCredentials{
 			Username: "benchmark",
 			Password: "benchmark",
 		})
 		if err != nil {
+			<-serverDone
 			cancel()
 			ln.Close()
 			fmt.Fprintf(os.Stderr, "Auth error: %v\n", err)
@@ -173,23 +171,33 @@ func runSessionSetupBenchmark(runs int, withLatency bool) []metric {
 
 		// Open a channel to complete the full session setup.
 		var clientCh *ssh.Channel
+		var chClientErr, chServerErr error
+		var wg sync.WaitGroup
 		wg.Add(2)
 		go func() {
 			defer wg.Done()
-			clientCh, clientErr = client.OpenChannel(ctx)
+			clientCh, chClientErr = client.OpenChannel(ctx)
 		}()
 		go func() {
 			defer wg.Done()
-			_, serverErr = server.AcceptChannel(ctx)
+			_, chServerErr = server.AcceptChannel(ctx)
 		}()
 		wg.Wait()
 
 		channelMark := float64(time.Since(start).Nanoseconds()) / 1e6
 
-		if clientErr != nil || serverErr != nil {
+		// Check server Connect() error (should have completed by now).
+		if serverErr := <-serverDone; serverErr != nil {
 			cancel()
 			ln.Close()
-			fmt.Fprintf(os.Stderr, "Channel open error: client=%v server=%v\n", clientErr, serverErr)
+			fmt.Fprintf(os.Stderr, "Server connect error: %v\n", serverErr)
+			continue
+		}
+
+		if chClientErr != nil || chServerErr != nil {
+			cancel()
+			ln.Close()
+			fmt.Fprintf(os.Stderr, "Channel open error: client=%v server=%v\n", chClientErr, chServerErr)
 			continue
 		}
 
