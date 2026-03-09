@@ -1,25 +1,28 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 
-package ssh
+package ssh_test
 
 import (
 	"context"
 	"sync"
 	"testing"
 	"time"
+
+	ssh "github.com/microsoft/dev-tunnels-ssh/src/go/ssh"
+	"github.com/microsoft/dev-tunnels-ssh/test/go/ssh-test/helpers"
 )
 
 // TestPipeSendErrorClosesPipe verifies that a send failure during pipe relay
 // closes the pipe (HIGH-04: errors must not be silently swallowed).
 func TestPipeSendErrorClosesPipe(t *testing.T) {
-	client1, server1 := createSessionPair(t, nil)
-	client2, server2 := createSessionPair(t, nil)
+	client1, server1 := helpers.CreateConnectedSessionPair(t, nil)
+	client2, server2 := helpers.CreateConnectedSessionPair(t, nil)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
 	// Open channels on both session pairs.
-	var serverCh1, serverCh2 *Channel
+	var serverCh1, serverCh2 *ssh.Channel
 	var wg sync.WaitGroup
 	wg.Add(2)
 	go func() {

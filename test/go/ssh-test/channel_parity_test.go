@@ -1,6 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 
-package ssh
+package ssh_test
 
 import (
 	"bytes"
@@ -12,7 +12,9 @@ import (
 	"testing"
 	"time"
 
+	ssh "github.com/microsoft/dev-tunnels-ssh/src/go/ssh"
 	"github.com/microsoft/dev-tunnels-ssh/src/go/ssh/messages"
+	"github.com/microsoft/dev-tunnels-ssh/test/go/ssh-test/helpers"
 )
 
 const channelParityTimeout = 10 * time.Second
@@ -21,13 +23,13 @@ const channelParityTimeout = 10 * time.Second
 // client, the client accepts, and data flows bidirectionally.
 // Matches C#/TS ChannelTests.ServerOpensChannel.
 func TestServerOpensChannel(t *testing.T) {
-	client, server := createSessionPair(t, nil)
+	client, server := helpers.CreateConnectedSessionPair(t, nil)
 
 	ctx, cancel := context.WithTimeout(context.Background(), channelParityTimeout)
 	defer cancel()
 
 	// Client accepts in background.
-	var clientCh *Channel
+	var clientCh *ssh.Channel
 	var wg sync.WaitGroup
 	wg.Add(1)
 	go func() {
@@ -52,7 +54,7 @@ func TestServerOpensChannel(t *testing.T) {
 
 	// Send data server → client.
 	serverData := []byte("hello from server")
-	clientStream := NewStream(clientCh)
+	clientStream := ssh.NewStream(clientCh)
 
 	if err := serverCh.Send(ctx, serverData); err != nil {
 		t.Fatalf("server Send failed: %v", err)
@@ -68,7 +70,7 @@ func TestServerOpensChannel(t *testing.T) {
 
 	// Send data client → server.
 	clientData := []byte("hello from client")
-	serverStream := NewStream(serverCh)
+	serverStream := ssh.NewStream(serverCh)
 
 	if err := clientCh.Send(ctx, clientData); err != nil {
 		t.Fatalf("client Send failed: %v", err)
@@ -86,13 +88,13 @@ func TestServerOpensChannel(t *testing.T) {
 // TestChannelRequestFailure sends a channel request that the peer does not
 // handle, verifying Request() returns false.
 // Matches C#/TS ChannelTests.ChannelRequestFailure.
-func TestChannelRequestFailure(t *testing.T) {
-	client, server := createSessionPair(t, nil)
+func TestChannelRequestFailureParity(t *testing.T) {
+	client, server := helpers.CreateConnectedSessionPair(t, nil)
 
 	ctx, cancel := context.WithTimeout(context.Background(), channelParityTimeout)
 	defer cancel()
 
-	var serverCh *Channel
+	var serverCh *ssh.Channel
 	var wg sync.WaitGroup
 	wg.Add(1)
 	go func() {
@@ -125,12 +127,12 @@ func TestChannelRequestFailure(t *testing.T) {
 // a channel and verifies each arrives intact with the correct length.
 // Matches C#/TS ChannelTests.ChannelDataMultipleSizes.
 func TestChannelDataMultipleSizes(t *testing.T) {
-	client, server := createSessionPair(t, nil)
+	client, server := helpers.CreateConnectedSessionPair(t, nil)
 
 	ctx, cancel := context.WithTimeout(context.Background(), channelParityTimeout)
 	defer cancel()
 
-	var serverCh *Channel
+	var serverCh *ssh.Channel
 	var wg sync.WaitGroup
 	wg.Add(1)
 	go func() {
@@ -144,7 +146,7 @@ func TestChannelDataMultipleSizes(t *testing.T) {
 	}
 	wg.Wait()
 
-	serverStream := NewStream(serverCh)
+	serverStream := ssh.NewStream(serverCh)
 
 	sizes := []int{1, 1024, 32 * 1024, 64 * 1024}
 	for _, size := range sizes {
@@ -176,12 +178,12 @@ func TestChannelDataMultipleSizes(t *testing.T) {
 // verifies the peer's channel has ExitStatus == 42.
 // Matches C#/TS ChannelTests.ChannelExitStatus.
 func TestChannelExitStatus(t *testing.T) {
-	client, server := createSessionPair(t, nil)
+	client, server := helpers.CreateConnectedSessionPair(t, nil)
 
 	ctx, cancel := context.WithTimeout(context.Background(), channelParityTimeout)
 	defer cancel()
 
-	var serverCh *Channel
+	var serverCh *ssh.Channel
 	var wg sync.WaitGroup
 	wg.Add(1)
 	go func() {
@@ -196,8 +198,8 @@ func TestChannelExitStatus(t *testing.T) {
 	wg.Wait()
 
 	// Set up OnClosed callback on server channel to capture exit status.
-	serverClosed := make(chan *ChannelClosedEventArgs, 1)
-	serverCh.SetClosedHandler(func(args *ChannelClosedEventArgs) {
+	serverClosed := make(chan *ssh.ChannelClosedEventArgs, 1)
+	serverCh.SetClosedHandler(func(args *ssh.ChannelClosedEventArgs) {
 		serverClosed <- args
 	})
 
@@ -223,12 +225,12 @@ func TestChannelExitStatus(t *testing.T) {
 // and verifies the peer's ExitSignal == "TERM" and error message matches.
 // Matches C#/TS ChannelTests.ChannelExitSignal.
 func TestChannelExitSignal(t *testing.T) {
-	client, server := createSessionPair(t, nil)
+	client, server := helpers.CreateConnectedSessionPair(t, nil)
 
 	ctx, cancel := context.WithTimeout(context.Background(), channelParityTimeout)
 	defer cancel()
 
-	var serverCh *Channel
+	var serverCh *ssh.Channel
 	var wg sync.WaitGroup
 	wg.Add(1)
 	go func() {
@@ -243,8 +245,8 @@ func TestChannelExitSignal(t *testing.T) {
 	wg.Wait()
 
 	// Set up OnClosed callback on server channel.
-	serverClosed := make(chan *ChannelClosedEventArgs, 1)
-	serverCh.SetClosedHandler(func(args *ChannelClosedEventArgs) {
+	serverClosed := make(chan *ssh.ChannelClosedEventArgs, 1)
+	serverCh.SetClosedHandler(func(args *ssh.ChannelClosedEventArgs) {
 		serverClosed <- args
 	})
 
@@ -271,12 +273,12 @@ func TestChannelExitSignal(t *testing.T) {
 // consumed as exit signal). Depends on US-005.
 // Matches C#/TS ChannelTests.ChannelStandaloneSignal.
 func TestChannelStandaloneSignal(t *testing.T) {
-	client, server := createSessionPair(t, nil)
+	client, server := helpers.CreateConnectedSessionPair(t, nil)
 
 	ctx, cancel := context.WithTimeout(context.Background(), channelParityTimeout)
 	defer cancel()
 
-	var serverCh *Channel
+	var serverCh *ssh.Channel
 	var wg sync.WaitGroup
 	wg.Add(1)
 	go func() {
@@ -296,7 +298,7 @@ func TestChannelStandaloneSignal(t *testing.T) {
 	var receivedSignal string
 	requestReceived := make(chan struct{})
 
-	serverCh.OnRequest = func(args *RequestEventArgs) {
+	serverCh.OnRequest = func(args *ssh.RequestEventArgs) {
 		mu.Lock()
 		receivedType = args.RequestType
 		if msg, ok := args.Request.(*messages.ChannelSignalMessage); ok {
@@ -334,12 +336,12 @@ func TestChannelStandaloneSignal(t *testing.T) {
 // Depends on US-008.
 // Matches C#/TS ChannelTests.ChannelExtendedData.
 func TestChannelExtendedData(t *testing.T) {
-	client, server := createSessionPair(t, nil)
+	client, server := helpers.CreateConnectedSessionPair(t, nil)
 
 	ctx, cancel := context.WithTimeout(context.Background(), channelParityTimeout)
 	defer cancel()
 
-	var serverCh *Channel
+	var serverCh *ssh.Channel
 	var wg sync.WaitGroup
 	wg.Add(1)
 	go func() {
@@ -355,9 +357,9 @@ func TestChannelExtendedData(t *testing.T) {
 
 	// Set up extended data handler on server channel.
 	receivedCh := make(chan struct{}, 1)
-	var receivedType SSHExtendedDataType
+	var receivedType ssh.SSHExtendedDataType
 	var receivedData []byte
-	serverCh.SetExtendedDataReceivedHandler(func(dataType SSHExtendedDataType, data []byte) {
+	serverCh.SetExtendedDataReceivedHandler(func(dataType ssh.SSHExtendedDataType, data []byte) {
 		receivedType = dataType
 		receivedData = make([]byte, len(data))
 		copy(receivedData, data)
@@ -369,7 +371,7 @@ func TestChannelExtendedData(t *testing.T) {
 	})
 
 	testData := []byte("stderr output for parity test")
-	if err := clientCh.SendExtendedData(ctx, ExtendedDataStderr, testData); err != nil {
+	if err := clientCh.SendExtendedData(ctx, ssh.ExtendedDataStderr, testData); err != nil {
 		t.Fatalf("SendExtendedData failed: %v", err)
 	}
 
@@ -379,8 +381,8 @@ func TestChannelExtendedData(t *testing.T) {
 		t.Fatal("timed out waiting for extended data")
 	}
 
-	if receivedType != ExtendedDataStderr {
-		t.Errorf("received type = %d, want %d (ExtendedDataStderr)", receivedType, ExtendedDataStderr)
+	if receivedType != ssh.ExtendedDataStderr {
+		t.Errorf("received type = %d, want %d (ExtendedDataStderr)", receivedType, ssh.ExtendedDataStderr)
 	}
 	if !bytes.Equal(receivedData, testData) {
 		t.Errorf("received data = %q, want %q", receivedData, testData)
@@ -392,7 +394,7 @@ func TestChannelExtendedData(t *testing.T) {
 // the channel and the initial request succeed on the peer.
 // Matches C#/TS ChannelTests.OpenChannelWithInitialRequest.
 func TestOpenChannelWithInitialRequestParity(t *testing.T) {
-	client, server := createSessionPair(t, nil)
+	client, server := helpers.CreateConnectedSessionPair(t, nil)
 
 	ctx, cancel := context.WithTimeout(context.Background(), channelParityTimeout)
 	defer cancel()
@@ -406,8 +408,8 @@ func TestOpenChannelWithInitialRequestParity(t *testing.T) {
 
 	// Install OnRequest handler during channel opening so it is in place
 	// before the initial-channel-request extension message arrives.
-	server.SetChannelOpeningHandler(func(args *ChannelOpeningEventArgs) {
-		args.Channel.OnRequest = func(reqArgs *RequestEventArgs) {
+	server.SetChannelOpeningHandler(func(args *ssh.ChannelOpeningEventArgs) {
+		args.Channel.OnRequest = func(reqArgs *ssh.RequestEventArgs) {
 			mu.Lock()
 			requestReceived = true
 			requestTypeReceived = reqArgs.RequestType
@@ -416,7 +418,7 @@ func TestOpenChannelWithInitialRequestParity(t *testing.T) {
 		}
 	})
 
-	var serverCh *Channel
+	var serverCh *ssh.Channel
 	var wg sync.WaitGroup
 	wg.Add(1)
 	go func() {

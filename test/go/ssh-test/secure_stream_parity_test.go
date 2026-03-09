@@ -1,6 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 
-package ssh
+package ssh_test
 
 import (
 	"bytes"
@@ -9,12 +9,15 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	ssh "github.com/microsoft/dev-tunnels-ssh/src/go/ssh"
+	"github.com/microsoft/dev-tunnels-ssh/test/go/ssh-test/helpers"
 )
 
 // TestSecureStreamServerAuth verifies that the client's OnAuthenticating callback
 // receives the server's host key for verification, matching C#/TS SecureStreamTests.
 func TestSecureStreamServerAuth(t *testing.T) {
-	serverKey, err := GenerateKeyPair(AlgoPKEcdsaSha2P256)
+	serverKey, err := ssh.GenerateKeyPair(ssh.AlgoPKEcdsaSha2P256)
 	if err != nil {
 		t.Fatalf("failed to generate server key: %v", err)
 	}
@@ -24,19 +27,19 @@ func TestSecureStreamServerAuth(t *testing.T) {
 		t.Fatalf("failed to get server public key bytes: %v", err)
 	}
 
-	clientStream, serverStream := duplexPipe()
+	s1, s2 := helpers.CreateDuplexStreams()
 
-	clientCreds := &ClientCredentials{Username: "testuser"}
-	serverCreds := &ServerCredentials{PublicKeys: []KeyPair{serverKey}}
+	clientCreds := &ssh.ClientCredentials{Username: "testuser"}
+	serverCreds := &ssh.ServerCredentials{PublicKeys: []ssh.KeyPair{serverKey}}
 
-	client := NewSecureStreamClient(clientStream, clientCreds, false)
-	server := NewSecureStreamServer(serverStream, serverCreds, nil)
+	client := ssh.NewSecureStreamClient(s1, clientCreds, false)
+	server := ssh.NewSecureStreamServer(s2, serverCreds, nil)
 
-	var receivedAuthType AuthenticationType
+	var receivedAuthType ssh.AuthenticationType
 	var receivedPubKeyBytes []byte
 	var mu sync.Mutex
 
-	client.OnAuthenticating = func(args *AuthenticatingEventArgs) {
+	client.OnAuthenticating = func(args *ssh.AuthenticatingEventArgs) {
 		mu.Lock()
 		defer mu.Unlock()
 		receivedAuthType = args.AuthenticationType
@@ -46,7 +49,7 @@ func TestSecureStreamServerAuth(t *testing.T) {
 		args.AuthenticationResult = true
 	}
 
-	server.OnAuthenticating = func(args *AuthenticatingEventArgs) {
+	server.OnAuthenticating = func(args *ssh.AuthenticatingEventArgs) {
 		args.AuthenticationResult = true
 	}
 
@@ -81,9 +84,9 @@ func TestSecureStreamServerAuth(t *testing.T) {
 	mu.Lock()
 	defer mu.Unlock()
 
-	if receivedAuthType != AuthServerPublicKey {
+	if receivedAuthType != ssh.AuthServerPublicKey {
 		t.Errorf("expected client auth type AuthServerPublicKey (%d), got %d",
-			AuthServerPublicKey, receivedAuthType)
+			ssh.AuthServerPublicKey, receivedAuthType)
 	}
 
 	if receivedPubKeyBytes == nil {
@@ -98,12 +101,12 @@ func TestSecureStreamServerAuth(t *testing.T) {
 // TestSecureStreamClientAuth verifies that the server's OnAuthenticating callback
 // receives the client's public key and auth succeeds, matching C#/TS SecureStreamTests.
 func TestSecureStreamClientAuth(t *testing.T) {
-	serverKey, err := GenerateKeyPair(AlgoPKEcdsaSha2P256)
+	serverKey, err := ssh.GenerateKeyPair(ssh.AlgoPKEcdsaSha2P256)
 	if err != nil {
 		t.Fatalf("failed to generate server key: %v", err)
 	}
 
-	clientKey, err := GenerateKeyPair(AlgoPKEcdsaSha2P256)
+	clientKey, err := ssh.GenerateKeyPair(ssh.AlgoPKEcdsaSha2P256)
 	if err != nil {
 		t.Fatalf("failed to generate client key: %v", err)
 	}
@@ -113,26 +116,26 @@ func TestSecureStreamClientAuth(t *testing.T) {
 		t.Fatalf("failed to get client public key bytes: %v", err)
 	}
 
-	clientStream, serverStream := duplexPipe()
+	s1, s2 := helpers.CreateDuplexStreams()
 
-	clientCreds := &ClientCredentials{
+	clientCreds := &ssh.ClientCredentials{
 		Username:   "testuser",
-		PublicKeys: []KeyPair{clientKey},
+		PublicKeys: []ssh.KeyPair{clientKey},
 	}
-	serverCreds := &ServerCredentials{PublicKeys: []KeyPair{serverKey}}
+	serverCreds := &ssh.ServerCredentials{PublicKeys: []ssh.KeyPair{serverKey}}
 
-	client := NewSecureStreamClient(clientStream, clientCreds, false)
-	server := NewSecureStreamServer(serverStream, serverCreds, nil)
+	client := ssh.NewSecureStreamClient(s1, clientCreds, false)
+	server := ssh.NewSecureStreamServer(s2, serverCreds, nil)
 
-	client.OnAuthenticating = func(args *AuthenticatingEventArgs) {
+	client.OnAuthenticating = func(args *ssh.AuthenticatingEventArgs) {
 		args.AuthenticationResult = true
 	}
 
-	var receivedAuthType AuthenticationType
+	var receivedAuthType ssh.AuthenticationType
 	var receivedPubKeyBytes []byte
 	var mu sync.Mutex
 
-	server.OnAuthenticating = func(args *AuthenticatingEventArgs) {
+	server.OnAuthenticating = func(args *ssh.AuthenticatingEventArgs) {
 		mu.Lock()
 		defer mu.Unlock()
 		receivedAuthType = args.AuthenticationType
@@ -173,9 +176,9 @@ func TestSecureStreamClientAuth(t *testing.T) {
 	mu.Lock()
 	defer mu.Unlock()
 
-	if receivedAuthType != AuthClientPublicKey {
+	if receivedAuthType != ssh.AuthClientPublicKey {
 		t.Errorf("expected server auth type AuthClientPublicKey (%d), got %d",
-			AuthClientPublicKey, receivedAuthType)
+			ssh.AuthClientPublicKey, receivedAuthType)
 	}
 
 	if receivedPubKeyBytes == nil {
@@ -189,8 +192,8 @@ func TestSecureStreamClientAuth(t *testing.T) {
 
 // TestSecureStreamReadWrite verifies bidirectional 1KB data exchange through
 // SecureStream with data integrity checks, matching C#/TS SecureStreamTests.
-func TestSecureStreamReadWrite(t *testing.T) {
-	client, server := createSecureStreamPair(t)
+func TestSecureStreamReadWriteParity(t *testing.T) {
+	client, server := helpers.CreateSecureStreamPair(t)
 
 	// Generate 1KB test data.
 	const dataSize = 1024
@@ -245,15 +248,15 @@ func TestSecureStreamReadWrite(t *testing.T) {
 // TestSecureStreamCloseFiresEvent verifies that closing one side fires OnClosed
 // on both sides, matching C#/TS SecureStreamTests.
 func TestSecureStreamCloseFiresEvent(t *testing.T) {
-	client, server := createSecureStreamPair(t)
+	client, server := helpers.CreateSecureStreamPair(t)
 
-	clientClosedCh := make(chan *SessionClosedEventArgs, 1)
-	serverClosedCh := make(chan *SessionClosedEventArgs, 1)
+	clientClosedCh := make(chan *ssh.SessionClosedEventArgs, 1)
+	serverClosedCh := make(chan *ssh.SessionClosedEventArgs, 1)
 
-	client.OnClosed = func(args *SessionClosedEventArgs) {
+	client.OnClosed = func(args *ssh.SessionClosedEventArgs) {
 		clientClosedCh <- args
 	}
-	server.OnClosed = func(args *SessionClosedEventArgs) {
+	server.OnClosed = func(args *ssh.SessionClosedEventArgs) {
 		serverClosedCh <- args
 	}
 

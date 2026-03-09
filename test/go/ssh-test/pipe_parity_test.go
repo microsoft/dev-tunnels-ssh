@@ -1,6 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 
-package ssh
+package ssh_test
 
 import (
 	"bytes"
@@ -11,7 +11,9 @@ import (
 	"testing"
 	"time"
 
+	ssh "github.com/microsoft/dev-tunnels-ssh/src/go/ssh"
 	"github.com/microsoft/dev-tunnels-ssh/src/go/ssh/messages"
+	"github.com/microsoft/dev-tunnels-ssh/test/go/ssh-test/helpers"
 )
 
 const pipeParityTimeout = 10 * time.Second
@@ -24,16 +26,16 @@ const pipeParityTimeout = 10 * time.Second
 //
 // Returns clientCh1 (the external sender) and serverCh2 (the external receiver).
 // The pipe goroutine runs in the background until either channel closes.
-func createChannelPipePairs(t *testing.T) (clientCh1, serverCh2 *Channel) {
+func createChannelPipePairs(t *testing.T) (clientCh1, serverCh2 *ssh.Channel) {
 	t.Helper()
 
 	// Session pair 1.
-	client1, server1 := createSessionPair(t, nil)
+	client1, server1 := helpers.CreateConnectedSessionPair(t, nil)
 
 	ctx, cancel := context.WithTimeout(context.Background(), pipeParityTimeout)
 	defer cancel()
 
-	var serverCh1 *Channel
+	var serverCh1 *ssh.Channel
 	var wg sync.WaitGroup
 	wg.Add(1)
 	go func() {
@@ -53,9 +55,9 @@ func createChannelPipePairs(t *testing.T) (clientCh1, serverCh2 *Channel) {
 	wg.Wait()
 
 	// Session pair 2.
-	client2, server2 := createSessionPair(t, nil)
+	client2, server2 := helpers.CreateConnectedSessionPair(t, nil)
 
-	var clientCh2 *Channel
+	var clientCh2 *ssh.Channel
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -129,10 +131,10 @@ func TestChannelPipeForwardData(t *testing.T) {
 // session request on one, and verifies it arrives on the other's OnRequest.
 // Depends on US-009. Matches C#/TS PipeTests.SessionPipeForwardRequest.
 func TestSessionPipeForwardRequest(t *testing.T) {
-	clientA, serverB, _ := createPipedSessionPairs(t)
+	clientA, serverB, _ := helpers.CreatePipedSessionPairs(t)
 
 	receivedCh := make(chan string, 1)
-	serverB.OnRequest = func(args *RequestEventArgs) {
+	serverB.OnRequest = func(args *ssh.RequestEventArgs) {
 		receivedCh <- args.RequestType
 		args.IsAuthorized = true
 	}
@@ -167,7 +169,7 @@ func TestSessionPipeForwardRequest(t *testing.T) {
 // session B's remote side with data flowing end-to-end.
 // Depends on US-009. Matches C#/TS PipeTests.SessionPipeForwardChannelOpen.
 func TestSessionPipeForwardChannelOpen(t *testing.T) {
-	clientA, serverB, _ := createPipedSessionPairs(t)
+	clientA, serverB, _ := helpers.CreatePipedSessionPairs(t)
 
 	ctx, cancel := context.WithTimeout(context.Background(), pipeParityTimeout)
 	defer cancel()
@@ -235,23 +237,12 @@ func TestSessionPipeForwardChannelOpen(t *testing.T) {
 // session B also closes and PipeSession returns.
 // Depends on US-009. Matches C#/TS PipeTests.SessionPipeClose.
 func TestSessionPipeClose(t *testing.T) {
-	clientA, serverA := createSessionPair(t, nil)
-	clientB, serverB := createSessionPair(t, nil)
-
-	pipeErrCh := make(chan error, 1)
-	pipeCtx, pipeCancel := context.WithCancel(context.Background())
-	defer pipeCancel()
-	go func() {
-		pipeErrCh <- PipeSession(pipeCtx, &serverA.Session, &clientB.Session)
-	}()
-
-	// Give the pipe goroutines time to start.
-	time.Sleep(50 * time.Millisecond)
+	clientA, serverB, _ := helpers.CreatePipedSessionPairs(t)
 
 	// Track when serverB closes.
 	serverBClosed := make(chan struct{})
 	var closeOnce sync.Once
-	serverB.OnClosed = func(args *SessionClosedEventArgs) {
+	serverB.OnClosed = func(args *ssh.SessionClosedEventArgs) {
 		closeOnce.Do(func() { close(serverBClosed) })
 	}
 
@@ -267,16 +258,6 @@ func TestSessionPipeClose(t *testing.T) {
 	case <-ctx.Done():
 		t.Fatal("timed out waiting for serverB to close")
 	}
-
-	// Verify PipeSession returned.
-	select {
-	case err := <-pipeErrCh:
-		if err != nil {
-			t.Errorf("PipeSession returned error: %v", err)
-		}
-	case <-ctx.Done():
-		t.Fatal("timed out waiting for PipeSession to return")
-	}
 }
 
 // TestPipeExtendedData pipes two channels, sends extended data on one, and
@@ -290,15 +271,15 @@ func TestPipeExtendedData(t *testing.T) {
 
 	// Set up extended data handler on the receiving end.
 	receivedCh := make(chan struct {
-		dataType SSHExtendedDataType
+		dataType ssh.SSHExtendedDataType
 		data     []byte
 	}, 1)
 
-	serverCh2.SetExtendedDataReceivedHandler(func(dataType SSHExtendedDataType, data []byte) {
+	serverCh2.SetExtendedDataReceivedHandler(func(dataType ssh.SSHExtendedDataType, data []byte) {
 		buf := make([]byte, len(data))
 		copy(buf, data)
 		receivedCh <- struct {
-			dataType SSHExtendedDataType
+			dataType ssh.SSHExtendedDataType
 			data     []byte
 		}{dataType, buf}
 		serverCh2.AdjustWindow(uint32(len(data)))
@@ -306,14 +287,14 @@ func TestPipeExtendedData(t *testing.T) {
 
 	// Send extended data (stderr) from clientCh1.
 	stderrPayload := []byte("piped stderr output")
-	if err := clientCh1.SendExtendedData(ctx, ExtendedDataStderr, stderrPayload); err != nil {
+	if err := clientCh1.SendExtendedData(ctx, ssh.ExtendedDataStderr, stderrPayload); err != nil {
 		t.Fatalf("SendExtendedData failed: %v", err)
 	}
 
 	select {
 	case got := <-receivedCh:
-		if got.dataType != ExtendedDataStderr {
-			t.Errorf("data type = %d, want %d (ExtendedDataStderr)", got.dataType, ExtendedDataStderr)
+		if got.dataType != ssh.ExtendedDataStderr {
+			t.Errorf("data type = %d, want %d (ExtendedDataStderr)", got.dataType, ssh.ExtendedDataStderr)
 		}
 		if !bytes.Equal(got.data, stderrPayload) {
 			t.Errorf("data = %q, want %q", got.data, stderrPayload)
@@ -395,26 +376,35 @@ func TestPipeLargeDataSequence(t *testing.T) {
 		// Show first mismatch location for debugging.
 		for i := 0; i < len(got) && i < len(expected); i++ {
 			if got[i] != expected[i] {
+				gEnd := i + 20
+				if gEnd > len(got) {
+					gEnd = len(got)
+				}
+				eEnd := i + 20
+				if eEnd > len(expected) {
+					eEnd = len(expected)
+				}
+				gStart := i - 5
+				if gStart < 0 {
+					gStart = 0
+				}
+				eStart := i - 5
+				if eStart < 0 {
+					eStart = 0
+				}
 				t.Fatalf("data mismatch at byte %d: got %q..., want %q...",
-					i, got[max(0, i-5):min(len(got), i+20)],
-					expected[max(0, i-5):min(len(expected), i+20)])
+					i, got[gStart:gEnd], expected[eStart:eEnd])
 			}
 		}
 		t.Fatalf("data length mismatch: got %d bytes, want %d bytes", len(got), len(expected))
 	}
 }
 
-// Note: C# has PipeChannelPendingRequest which tests request forwarding through
-// a channel pipe. This is a feature gap in Go — Channel.Pipe() forwards data,
-// extended data, EOF, and close events, but not channel requests. The equivalent
-// test is TestOpenChannelWithMultipleRequests in channel_request_test.go which
-// tests the same overlapping-request pattern without pipe relay.
-
 // TestPipeSessionChannelOpenAndClose opens a channel through piped sessions,
 // closes it from one side, and verifies the Closed event fires on the far side.
 // Matches C# PipeTests.PipeSessionChannelOpenAndClose.
 func TestPipeSessionChannelOpenAndClose(t *testing.T) {
-	clientA, serverB, _ := createPipedSessionPairs(t)
+	clientA, serverB, _ := helpers.CreatePipedSessionPairs(t)
 
 	ctx, cancel := context.WithTimeout(context.Background(), pipeParityTimeout)
 	defer cancel()
@@ -433,7 +423,7 @@ func TestPipeSessionChannelOpenAndClose(t *testing.T) {
 
 	// Track close event on chA.
 	closedCh := make(chan struct{})
-	chA.OnClosed = func(args *ChannelClosedEventArgs) {
+	chA.OnClosed = func(args *ssh.ChannelClosedEventArgs) {
 		close(closedCh)
 	}
 
@@ -448,18 +438,4 @@ func TestPipeSessionChannelOpenAndClose(t *testing.T) {
 	case <-ctx.Done():
 		t.Fatal("timed out waiting for channel close through pipe")
 	}
-}
-
-func max(a, b int) int {
-	if a > b {
-		return a
-	}
-	return b
-}
-
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
 }

@@ -10,6 +10,7 @@ import (
 	"crypto/rsa"
 	"sync"
 	"testing"
+	"time"
 
 	ssh "github.com/microsoft/dev-tunnels-ssh/src/go/ssh"
 )
@@ -47,6 +48,26 @@ type SessionPairConfig struct {
 
 	// ClientConfig overrides the default client session configuration.
 	ClientConfig *ssh.SessionConfig
+
+	// ServerCredentials sets credentials on the server session.
+	ServerCredentials *ssh.ServerCredentials
+
+	// ServerOnAuthenticating overrides the server's OnAuthenticating callback.
+	// If nil, a default callback that approves all authentication is used.
+	ServerOnAuthenticating func(*ssh.AuthenticatingEventArgs)
+
+	// ClientOnAuthenticating overrides the client's OnAuthenticating callback.
+	// If nil, a default callback that approves all authentication is used.
+	ClientOnAuthenticating func(*ssh.AuthenticatingEventArgs)
+
+	// ClientTrace sets the Trace callback on the client session.
+	ClientTrace ssh.TraceFunc
+
+	// ServerTrace sets the Trace callback on the server session.
+	ServerTrace ssh.TraceFunc
+
+	// ConnectTimeout overrides the connection timeout. Default is 30s.
+	ConnectTimeout time.Duration
 }
 
 // NewSessionPair creates a new SessionPair with no-security configuration.
@@ -87,14 +108,30 @@ func NewSessionPairWithConfig(t *testing.T, config *SessionPairConfig) *SessionP
 
 	// Create sessions.
 	clientSession := ssh.NewClientSession(clientConfig)
-	serverSession := ssh.NewServerSession(serverConfig)
-
-	// Set up auto-approval authentication on both sides.
-	clientSession.OnAuthenticating = func(args *ssh.AuthenticatingEventArgs) {
-		args.AuthenticationResult = struct{}{} // non-nil = success
+	if config.ClientTrace != nil {
+		clientSession.Trace = config.ClientTrace
 	}
-	serverSession.OnAuthenticating = func(args *ssh.AuthenticatingEventArgs) {
-		args.AuthenticationResult = struct{}{} // non-nil = success
+	if config.ClientOnAuthenticating != nil {
+		clientSession.OnAuthenticating = config.ClientOnAuthenticating
+	} else {
+		clientSession.OnAuthenticating = func(args *ssh.AuthenticatingEventArgs) {
+			args.AuthenticationResult = struct{}{} // non-nil = success
+		}
+	}
+
+	serverSession := ssh.NewServerSession(serverConfig)
+	if config.ServerTrace != nil {
+		serverSession.Trace = config.ServerTrace
+	}
+	if config.ServerCredentials != nil {
+		serverSession.Credentials = config.ServerCredentials
+	}
+	if config.ServerOnAuthenticating != nil {
+		serverSession.OnAuthenticating = config.ServerOnAuthenticating
+	} else {
+		serverSession.OnAuthenticating = func(args *ssh.AuthenticatingEventArgs) {
+			args.AuthenticationResult = struct{}{} // non-nil = success
+		}
 	}
 
 	return &SessionPair{
@@ -218,4 +255,158 @@ func (p *SessionPair) Close() {
 	if p.ServerStream != nil {
 		p.ServerStream.Close()
 	}
+}
+
+// CreateConnectedSessionPair creates a connected client/server session pair
+// matching the internal createSessionPair helper. Both sessions are connected
+// and ready to use. Sessions are auto-closed via t.Cleanup.
+func CreateConnectedSessionPair(t *testing.T, config *SessionPairConfig) (*ssh.ClientSession, *ssh.ServerSession) {
+	t.Helper()
+
+	pair := NewSessionPairWithConfig(t, config)
+
+	connectTimeout := 30 * time.Second
+	if config != nil && config.ConnectTimeout > 0 {
+		connectTimeout = config.ConnectTimeout
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), connectTimeout)
+	defer cancel()
+
+	pair.Connect(ctx)
+
+	t.Cleanup(func() {
+		pair.Close()
+	})
+
+	return pair.ClientSession, pair.ServerSession
+}
+
+// CreateMultiChannelStreamPair creates a connected client/server
+// MultiChannelStream pair over in-memory pipes for testing.
+// Both streams are connected and ready to use. Cleaned up via t.Cleanup.
+func CreateMultiChannelStreamPair(t *testing.T) (*ssh.MultiChannelStream, *ssh.MultiChannelStream) {
+	t.Helper()
+
+	s1, s2 := CreateDuplexStreams()
+
+	client := ssh.NewMultiChannelStream(s1, true)
+	server := ssh.NewMultiChannelStream(s2, false)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	var wg sync.WaitGroup
+	var clientErr, serverErr error
+
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		clientErr = client.Connect(ctx)
+	}()
+	go func() {
+		defer wg.Done()
+		serverErr = server.Connect(ctx)
+	}()
+	wg.Wait()
+
+	if clientErr != nil {
+		t.Fatalf("client Connect failed: %v", clientErr)
+	}
+	if serverErr != nil {
+		t.Fatalf("server Connect failed: %v", serverErr)
+	}
+
+	t.Cleanup(func() {
+		client.Close()
+		server.Close()
+	})
+
+	return client, server
+}
+
+// CreateSecureStreamPair creates a connected client/server SecureStream pair
+// using real encryption. Both streams are authenticated and ready for data exchange.
+// Cleaned up via t.Cleanup.
+func CreateSecureStreamPair(t *testing.T) (*ssh.SecureStream, *ssh.SecureStream) {
+	t.Helper()
+
+	serverKey, err := ssh.GenerateKeyPair(ssh.AlgoPKEcdsaSha2P256)
+	if err != nil {
+		t.Fatalf("failed to generate server key: %v", err)
+	}
+
+	s1, s2 := CreateDuplexStreams()
+
+	clientCreds := &ssh.ClientCredentials{Username: "testuser"}
+	serverCreds := &ssh.ServerCredentials{PublicKeys: []ssh.KeyPair{serverKey}}
+
+	client := ssh.NewSecureStreamClient(s1, clientCreds, false)
+	client.OnAuthenticating = func(args *ssh.AuthenticatingEventArgs) {
+		args.AuthenticationResult = true
+	}
+
+	server := ssh.NewSecureStreamServer(s2, serverCreds, nil)
+	server.OnAuthenticating = func(args *ssh.AuthenticatingEventArgs) {
+		args.AuthenticationResult = true
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	var wg sync.WaitGroup
+	var clientErr, serverErr error
+
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		clientErr = client.Connect(ctx)
+	}()
+	go func() {
+		defer wg.Done()
+		serverErr = server.Connect(ctx)
+	}()
+	wg.Wait()
+
+	if clientErr != nil {
+		t.Fatalf("client connect failed: %v", clientErr)
+	}
+	if serverErr != nil {
+		t.Fatalf("server connect failed: %v", serverErr)
+	}
+
+	t.Cleanup(func() {
+		client.Close()
+		server.Close()
+	})
+
+	return client, server
+}
+
+// CreatePipedSessionPairs creates two session pairs and pipes the server of the
+// first pair to the client of the second pair. This simulates a relay:
+//
+//	clientA <-> serverA --[pipe]--> clientB <-> serverB
+//
+// Returns clientA (the external client), serverB (the external server), and a
+// channel that will receive the PipeSession error when it completes.
+// Cleaned up via t.Cleanup.
+func CreatePipedSessionPairs(t *testing.T) (clientA *ssh.ClientSession, serverB *ssh.ServerSession, pipeDone <-chan error) {
+	t.Helper()
+
+	clientA, serverA := CreateConnectedSessionPair(t, nil)
+	clientB, serverB := CreateConnectedSessionPair(t, nil)
+
+	pipeErrCh := make(chan error, 1)
+	pipeCtx, pipeCancel := context.WithCancel(context.Background())
+	t.Cleanup(pipeCancel)
+
+	go func() {
+		pipeErrCh <- ssh.PipeSession(pipeCtx, &serverA.Session, &clientB.Session)
+	}()
+
+	// Wait for PipeSession to install its handlers. Since we can't access
+	// unexported fields, use a brief sleep to let the goroutine start.
+	time.Sleep(50 * time.Millisecond)
+
+	return clientA, serverB, pipeErrCh
 }

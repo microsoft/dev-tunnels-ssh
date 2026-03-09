@@ -1,6 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 
-package ssh
+package ssh_test
 
 import (
 	"bytes"
@@ -11,6 +11,9 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	ssh "github.com/microsoft/dev-tunnels-ssh/src/go/ssh"
+	"github.com/microsoft/dev-tunnels-ssh/test/go/ssh-test/helpers"
 )
 
 const mcsParityTimeout = 10 * time.Second
@@ -19,14 +22,14 @@ const mcsParityTimeout = 10 * time.Second
 // opens a channel from one side, accepts on the other, sends/receives data, and
 // verifies a round-trip. Matches C#/TS MultiChannelStreamTests.SingleChannelConnect
 // + SingleChannelReadWrite.
-func TestMultiChannelStreamSingleChannel(t *testing.T) {
-	client, server := createMultiChannelStreamPair(t)
+func TestMultiChannelStreamSingleChannelParity(t *testing.T) {
+	client, server := helpers.CreateMultiChannelStreamPair(t)
 
 	ctx, cancel := context.WithTimeout(context.Background(), mcsParityTimeout)
 	defer cancel()
 
 	// Accept on server side concurrently.
-	var serverCh *Channel
+	var serverCh *ssh.Channel
 	var acceptErr error
 	accepted := make(chan struct{})
 	go func() {
@@ -50,7 +53,7 @@ func TestMultiChannelStreamSingleChannel(t *testing.T) {
 		t.Fatalf("client Send failed: %v", err)
 	}
 
-	serverStream := NewStream(serverCh)
+	serverStream := ssh.NewStream(serverCh)
 	buf := make([]byte, len(payload))
 	if _, err := io.ReadFull(serverStream, buf); err != nil {
 		t.Fatalf("server ReadFull failed: %v", err)
@@ -65,7 +68,7 @@ func TestMultiChannelStreamSingleChannel(t *testing.T) {
 		t.Fatalf("server Send failed: %v", err)
 	}
 
-	clientStream := NewStream(clientCh)
+	clientStream := ssh.NewStream(clientCh)
 	replyBuf := make([]byte, len(reply))
 	if _, err := io.ReadFull(clientStream, replyBuf); err != nil {
 		t.Fatalf("client ReadFull failed: %v", err)
@@ -80,7 +83,7 @@ func TestMultiChannelStreamSingleChannel(t *testing.T) {
 // only its own data (isolation). Matches C#/TS MultiChannelStreamTests.
 // MultiChannelConnect + MultiChannelReadWrite.
 func TestMultiChannelStreamMultipleChannelsIsolation(t *testing.T) {
-	client, server := createMultiChannelStreamPair(t)
+	client, server := helpers.CreateMultiChannelStreamPair(t)
 
 	ctx, cancel := context.WithTimeout(context.Background(), mcsParityTimeout)
 	defer cancel()
@@ -88,7 +91,7 @@ func TestMultiChannelStreamMultipleChannelsIsolation(t *testing.T) {
 	numChannels := 3
 
 	// Accept channels on server side.
-	serverChannels := make([]*Channel, numChannels)
+	serverChannels := make([]*ssh.Channel, numChannels)
 	var acceptWg sync.WaitGroup
 	acceptWg.Add(numChannels)
 	acceptIdx := 0
@@ -111,7 +114,7 @@ func TestMultiChannelStreamMultipleChannelsIsolation(t *testing.T) {
 	}()
 
 	// Open channels from client sequentially (io.Pipe is synchronous).
-	clientChannels := make([]*Channel, numChannels)
+	clientChannels := make([]*ssh.Channel, numChannels)
 	for i := 0; i < numChannels; i++ {
 		ch, err := client.OpenChannel(ctx, "session")
 		if err != nil {
@@ -132,12 +135,12 @@ func TestMultiChannelStreamMultipleChannelsIsolation(t *testing.T) {
 	// Verify each server channel receives only its own data.
 	// Channels may be accepted in different order, so match by channel remote ID.
 	mu.Lock()
-	srvChans := make([]*Channel, numChannels)
+	srvChans := make([]*ssh.Channel, numChannels)
 	copy(srvChans, serverChannels)
 	mu.Unlock()
 
 	for _, sCh := range srvChans {
-		stream := NewStream(sCh)
+		stream := ssh.NewStream(sCh)
 		// Each message is "CHn_DATA" — max 8 bytes.
 		buf := make([]byte, 8)
 		n, err := io.ReadFull(stream, buf)
@@ -161,7 +164,7 @@ func TestMultiChannelStreamMultipleChannelsIsolation(t *testing.T) {
 	}
 
 	for i := 0; i < numChannels; i++ {
-		stream := NewStream(clientChannels[i])
+		stream := ssh.NewStream(clientChannels[i])
 		// Find the matching server channel (same remote channel ID).
 		expected := ""
 		for j := 0; j < numChannels; j++ {
@@ -188,7 +191,7 @@ func TestMultiChannelStreamMultipleChannelsIsolation(t *testing.T) {
 // opens a channel, and verifies the callback fires with the channel and correct
 // metadata. Matches C#/TS MultiChannelStreamTests.OpenChannelEvent.
 func TestMultiChannelStreamOpenChannelEvent(t *testing.T) {
-	client, server := createMultiChannelStreamPair(t)
+	client, server := helpers.CreateMultiChannelStreamPair(t)
 
 	ctx, cancel := context.WithTimeout(context.Background(), mcsParityTimeout)
 	defer cancel()
@@ -197,7 +200,7 @@ func TestMultiChannelStreamOpenChannelEvent(t *testing.T) {
 	var eventIsRemote atomic.Bool
 	var eventChannelType atomic.Value
 
-	server.OnChannelOpening = func(args *ChannelOpeningEventArgs) {
+	server.OnChannelOpening = func(args *ssh.ChannelOpeningEventArgs) {
 		eventFired.Store(true)
 		eventIsRemote.Store(args.IsRemoteRequest)
 		eventChannelType.Store(args.Channel.ChannelType)
@@ -232,10 +235,10 @@ func TestMultiChannelStreamOpenChannelEvent(t *testing.T) {
 // yet closed, that after connecting operations work, and that after closing
 // IsClosed returns true. Matches C#/TS MultiChannelStreamTests state transitions.
 func TestMultiChannelStreamConnectedState(t *testing.T) {
-	s1, s2 := duplexPipe()
+	s1, s2 := helpers.CreateDuplexStreams()
 
-	client := NewMultiChannelStream(s1, true)
-	server := NewMultiChannelStream(s2, false)
+	client := ssh.NewMultiChannelStream(s1, true)
+	server := ssh.NewMultiChannelStream(s2, false)
 
 	// Before connecting: IsClosed should be false.
 	if client.IsClosed() {
@@ -302,13 +305,13 @@ func TestMultiChannelStreamConnectedState(t *testing.T) {
 // and verifies OnExtendedDataReceived fires with the correct type code and data.
 // Depends on US-008 (extended data support). Matches C#/TS extended data tests.
 func TestMultiChannelStreamExtendedData(t *testing.T) {
-	client, server := createMultiChannelStreamPair(t)
+	client, server := helpers.CreateMultiChannelStreamPair(t)
 
 	ctx, cancel := context.WithTimeout(context.Background(), mcsParityTimeout)
 	defer cancel()
 
 	// Accept on server side.
-	var serverCh *Channel
+	var serverCh *ssh.Channel
 	var acceptErr error
 	accepted := make(chan struct{})
 	go func() {
@@ -330,7 +333,7 @@ func TestMultiChannelStreamExtendedData(t *testing.T) {
 	var receivedData atomic.Value
 	extDataDone := make(chan struct{})
 
-	serverCh.SetExtendedDataReceivedHandler(func(dataType SSHExtendedDataType, data []byte) {
+	serverCh.SetExtendedDataReceivedHandler(func(dataType ssh.SSHExtendedDataType, data []byte) {
 		receivedType.Store(uint32(dataType))
 		cp := make([]byte, len(data))
 		copy(cp, data)
@@ -340,7 +343,7 @@ func TestMultiChannelStreamExtendedData(t *testing.T) {
 
 	// Send extended data (stderr) from client.
 	stderrPayload := []byte("error output from client")
-	if err := clientCh.SendExtendedData(ctx, ExtendedDataStderr, stderrPayload); err != nil {
+	if err := clientCh.SendExtendedData(ctx, ssh.ExtendedDataStderr, stderrPayload); err != nil {
 		t.Fatalf("SendExtendedData failed: %v", err)
 	}
 
@@ -351,8 +354,8 @@ func TestMultiChannelStreamExtendedData(t *testing.T) {
 		t.Fatal("timed out waiting for OnExtendedDataReceived")
 	}
 
-	if SSHExtendedDataType(receivedType.Load()) != ExtendedDataStderr {
-		t.Errorf("expected data type %d (stderr), got %d", ExtendedDataStderr, receivedType.Load())
+	if ssh.SSHExtendedDataType(receivedType.Load()) != ssh.ExtendedDataStderr {
+		t.Errorf("expected data type %d (stderr), got %d", ssh.ExtendedDataStderr, receivedType.Load())
 	}
 
 	gotData, ok := receivedData.Load().([]byte)

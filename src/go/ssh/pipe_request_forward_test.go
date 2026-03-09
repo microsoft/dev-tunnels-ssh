@@ -13,6 +13,73 @@ import (
 
 const pipeRequestTestTimeout = 10 * time.Second
 
+// createChannelPipePairs creates two session pairs, opens a channel on each,
+// and pipes the server-side channel of pair1 with the client-side channel of
+// pair2 to form a relay:
+//
+//	clientCh1 <-> serverCh1 --[pipe]--> clientCh2 <-> serverCh2
+//
+// Returns clientCh1 (the external sender) and serverCh2 (the external receiver).
+// The pipe goroutine runs in the background until either channel closes.
+func createChannelPipePairs(t *testing.T) (clientCh1, serverCh2 *Channel) {
+	t.Helper()
+
+	// Session pair 1.
+	client1, server1 := createSessionPair(t, nil)
+
+	ctx, cancel := context.WithTimeout(context.Background(), pipeRequestTestTimeout)
+	defer cancel()
+
+	var serverCh1 *Channel
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		var acceptErr error
+		serverCh1, acceptErr = server1.AcceptChannel(ctx)
+		if acceptErr != nil {
+			t.Errorf("server1.AcceptChannel failed: %v", acceptErr)
+		}
+	}()
+
+	var err error
+	clientCh1, err = client1.OpenChannel(ctx)
+	if err != nil {
+		t.Fatalf("client1.OpenChannel failed: %v", err)
+	}
+	wg.Wait()
+
+	// Session pair 2.
+	client2, server2 := createSessionPair(t, nil)
+
+	var clientCh2 *Channel
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		var acceptErr error
+		serverCh2, acceptErr = server2.AcceptChannel(ctx)
+		if acceptErr != nil {
+			t.Errorf("server2.AcceptChannel failed: %v", acceptErr)
+		}
+	}()
+
+	clientCh2, err = client2.OpenChannel(ctx)
+	if err != nil {
+		t.Fatalf("client2.OpenChannel failed: %v", err)
+	}
+	wg.Wait()
+
+	// Pipe serverCh1 <-> clientCh2 in the background.
+	go func() {
+		_ = serverCh1.Pipe(context.Background(), clientCh2)
+	}()
+
+	// Give the pipe handlers a moment to be installed.
+	time.Sleep(20 * time.Millisecond)
+
+	return clientCh1, serverCh2
+}
+
 // TestPipeForwardsChannelRequest pipes two channels on separate session pairs,
 // sends a channel request on channel A (clientCh1), and verifies it arrives on
 // channel B's remote end (serverCh2). Matches C# PipeChannelPendingRequest.
