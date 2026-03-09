@@ -16,13 +16,8 @@ func (s *Session) activateNewKeys() error {
 		return nil
 	}
 
-	// Wait for our own NewKeys to be sent before activating send encryption.
-	// This ensures NewKeys itself is sent with old (or no) encryption.
-	if s.kexService.newKeysSent != nil {
-		<-s.kexService.newKeysSent
-		s.kexService.newKeysSent = nil
-	}
-
+	// NewKeys is sent inline from the dispatch loop before this is called,
+	// so no synchronization is needed — the send has already completed.
 	algs := s.kexService.finishKeyExchange()
 	if algs == nil {
 		return nil
@@ -42,17 +37,14 @@ func (s *Session) activateNewKeys() error {
 	atomic.StoreUint64(&s.protocol.BytesSent, 0)
 	atomic.StoreUint64(&s.protocol.BytesReceived, 0)
 
-	// Send extension info in a goroutine to avoid pipe deadlock.
-	// Both sides' dispatch loops send extension info simultaneously after NewKeys;
-	// using a goroutine lets the dispatch loop continue reading so the peer's
-	// extension info write can complete.
+	// Send extension info inline, matching C#/TS behavior.
+	// This is called from the dispatch loop after NewKeys is processed.
+	// Sending inline avoids the ~200ms latency penalty of goroutine-based
+	// sends that block Authenticate() from proceeding.
 	if algs.IsExtensionInfoRequested {
-		kexSvc := s.kexService
-		go func() {
-			if err := kexSvc.sendExtensionInfo(); err != nil {
-				s.close(messages.DisconnectProtocolError, err.Error(), false, false)
-			}
-		}()
+		if err := s.kexService.sendExtensionInfo(); err != nil {
+			return fmt.Errorf("failed to send extension info: %w", err)
+		}
 	}
 
 	// Signal that key exchange is complete.
@@ -84,7 +76,7 @@ func (s *Session) isKexBlocking(msgType byte) bool {
 	if msgType <= messages.MsgNumDebug {
 		return false
 	}
-	return s.kexService.exchanging
+	return atomic.LoadInt32(&s.kexService.exchanging) != 0
 }
 
 // replayKexBlockedQueue replays messages that were queued during key exchange.
@@ -96,7 +88,7 @@ func (s *Session) replayKexBlockedQueue() error {
 		return nil
 	}
 	// Only replay if key exchange is no longer in progress.
-	if s.kexService != nil && s.kexService.exchanging {
+	if s.kexService != nil && atomic.LoadInt32(&s.kexService.exchanging) != 0 {
 		return nil
 	}
 

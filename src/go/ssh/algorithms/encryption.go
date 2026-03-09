@@ -172,7 +172,9 @@ type AesGcmCipher struct {
 	aead         cipher.AEAD
 	nonce        []byte
 	isEncryption bool
-	tag          []byte // last tag produced (encryption) or to verify (decryption)
+	tag          []byte   // last tag produced (encryption) or to verify (decryption)
+	aadBuf       [4]byte  // reusable AAD buffer (avoids per-operation allocation)
+	sealBuf      []byte   // reusable buffer for Seal/Open output
 }
 
 func newAesGcmCipher(isEncryption bool, key, iv []byte) (*AesGcmCipher, error) {
@@ -194,6 +196,8 @@ func newAesGcmCipher(isEncryption bool, key, iv []byte) (*AesGcmCipher, error) {
 		aead:         aead,
 		nonce:        nonce,
 		isEncryption: isEncryption,
+		tag:          make([]byte, gcmTagSize),
+		sealBuf:      make([]byte, 0, 1024+gcmTagSize),
 	}, nil
 }
 
@@ -217,12 +221,14 @@ func (c *AesGcmCipher) transformEncrypt(data []byte) {
 	// Associated data is the 32-bit packet length (= data length).
 	aad := c.makeAAD(uint32(len(data)))
 
-	// GCM Seal appends tag; we use a temporary buffer to capture the tag separately.
-	sealed := c.aead.Seal(nil, c.nonce, data, aad)
-	// sealed = ciphertext + tag
-	copy(data, sealed[:len(data)])
-	c.tag = make([]byte, gcmTagSize)
-	copy(c.tag, sealed[len(data):])
+	// Seal into reusable buffer: ciphertext + tag.
+	needed := len(data) + gcmTagSize
+	if cap(c.sealBuf) < needed {
+		c.sealBuf = make([]byte, 0, needed)
+	}
+	c.sealBuf = c.aead.Seal(c.sealBuf[:0], c.nonce, data, aad)
+	copy(data, c.sealBuf[:len(data)])
+	copy(c.tag, c.sealBuf[len(data):])
 	c.incrementNonce()
 }
 
@@ -230,16 +236,23 @@ func (c *AesGcmCipher) transformDecrypt(data []byte) error {
 	// Associated data is the 32-bit packet length (= data length).
 	aad := c.makeAAD(uint32(len(data)))
 
-	// Append the tag to the ciphertext for GCM Open.
-	ciphertextWithTag := make([]byte, len(data)+gcmTagSize)
-	copy(ciphertextWithTag, data)
-	copy(ciphertextWithTag[len(data):], c.tag)
+	// Build ciphertext+tag in reusable buffer.
+	needed := len(data) + gcmTagSize
+	if cap(c.sealBuf) < needed {
+		c.sealBuf = make([]byte, needed)
+	}
+	c.sealBuf = c.sealBuf[:needed]
+	copy(c.sealBuf, data)
+	copy(c.sealBuf[len(data):], c.tag)
 
-	plaintext, err := c.aead.Open(nil, c.nonce, ciphertextWithTag, aad)
+	// Open into data buffer directly (data and sealBuf don't overlap).
+	plaintext, err := c.aead.Open(data[:0], c.nonce, c.sealBuf, aad)
 	if err != nil {
 		return fmt.Errorf("gcm authentication failed: %w", err)
 	}
-	copy(data, plaintext)
+	if len(plaintext) != len(data) {
+		copy(data, plaintext)
+	}
 	c.incrementNonce()
 	return nil
 }
@@ -247,17 +260,17 @@ func (c *AesGcmCipher) transformDecrypt(data []byte) error {
 // makeAAD creates the Associated Authenticated Data for GCM operations.
 // Per the SSH GCM spec, the AAD is the 4-byte big-endian packet length.
 func (c *AesGcmCipher) makeAAD(packetLength uint32) []byte {
-	aad := make([]byte, 4)
-	binary.BigEndian.PutUint32(aad, packetLength)
-	return aad
+	binary.BigEndian.PutUint32(c.aadBuf[:], packetLength)
+	return c.aadBuf[:]
 }
 
 // Sign retrieves the authentication tag produced by the last encryption.
 // For GCM, this is the AEAD tag, not a separate HMAC.
+//
+// The returned slice aliases internal state and is valid only until the next
+// call to Transform. Callers must not modify the returned slice.
 func (c *AesGcmCipher) Sign(data []byte) []byte {
-	tag := make([]byte, gcmTagSize)
-	copy(tag, c.tag)
-	return tag
+	return c.tag
 }
 
 // DigestLength returns the GCM tag size.
@@ -277,7 +290,6 @@ func (c *AesGcmCipher) AuthenticatedEncryption() bool {
 
 // SetTag sets the authentication tag for decryption verification.
 func (c *AesGcmCipher) SetTag(tag []byte) {
-	c.tag = make([]byte, gcmTagSize)
 	copy(c.tag, tag)
 }
 

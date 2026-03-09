@@ -47,7 +47,8 @@ type KeyPair interface {
 	SetComment(comment string)
 }
 
-// GenerateKeyPair generates a new key pair for the specified algorithm.
+// GenerateKeyPair generates a new key pair for the specified algorithm
+// using a default key size.
 // Supported algorithm names:
 //   - "rsa-sha2-256": RSA 2048-bit with SHA-256 signing
 //   - "rsa-sha2-512": RSA 4096-bit with SHA-512 signing
@@ -60,6 +61,21 @@ func GenerateKeyPair(algorithmName string) (KeyPair, error) {
 		return generateRsaKeyPair(2048, algorithmName)
 	case AlgoPKRsaSha512:
 		return generateRsaKeyPair(4096, algorithmName)
+	case AlgoPKEcdsaSha2P256, AlgoPKEcdsaSha2P384, AlgoPKEcdsaSha2P521:
+		return generateEcdsaKeyPair(algorithmName)
+	default:
+		return nil, fmt.Errorf("unsupported key algorithm: %s", algorithmName)
+	}
+}
+
+// GenerateKeyPairWithSize generates a new key pair for the specified algorithm
+// with an explicit key size in bits. For RSA algorithms, keySizeInBits controls
+// the RSA key length (e.g., 2048, 4096). For ECDSA algorithms, keySizeInBits
+// is ignored (the curve determines the key size).
+func GenerateKeyPairWithSize(algorithmName string, keySizeInBits int) (KeyPair, error) {
+	switch algorithmName {
+	case AlgoPKRsaSha256, AlgoPKRsaSha512:
+		return generateRsaKeyPair(keySizeInBits, algorithmName)
 	case AlgoPKEcdsaSha2P256, AlgoPKEcdsaSha2P384, AlgoPKEcdsaSha2P521:
 		return generateEcdsaKeyPair(algorithmName)
 	default:

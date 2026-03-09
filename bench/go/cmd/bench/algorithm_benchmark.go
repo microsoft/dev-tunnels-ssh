@@ -280,7 +280,7 @@ func keygenScenarios() []benchmarkScenario {
 
 	specs := []keygenSpec{
 		{ssh.AlgoPKRsaSha256, 2048, "keygen-rsa-2048"},
-		{ssh.AlgoPKRsaSha512, 4096, "keygen-rsa-4096"},
+		{ssh.AlgoPKRsaSha256, 4096, "keygen-rsa-4096"},
 		{ssh.AlgoPKEcdsaSha2P256, 256, "keygen-ecdsa-p256"},
 		{ssh.AlgoPKEcdsaSha2P384, 384, "keygen-ecdsa-p384"},
 		{ssh.AlgoPKEcdsaSha2P521, 521, "keygen-ecdsa-p521"},
@@ -295,8 +295,8 @@ func keygenScenarios() []benchmarkScenario {
 			name:     spec.scenName,
 			category: "algorithm-keygen",
 			tags:     map[string]string{"algo": keyAlgoName, "size": fmt.Sprintf("%d", spec.keySize)},
-			run:      func(runs int) []metric { return runKeygenBenchmark(spec.algoName, runs) },
-			verify:   func() error { return verifyKeygen(spec.algoName) },
+			run:      func(runs int) []metric { return runKeygenBenchmark(spec.algoName, spec.keySize, runs) },
+			verify:   func() error { return verifyKeygen(spec.algoName, spec.keySize) },
 		})
 	}
 	return scenarios
@@ -314,13 +314,13 @@ func keyAlgorithmName(algoName string) string {
 	}
 }
 
-func runKeygenBenchmark(algoName string, runs int) []metric {
+func runKeygenBenchmark(algoName string, keySize int, runs int) []metric {
 	timesMs := make([]float64, 0, runs)
 
 	for i := 0; i < runs; i++ {
 		start := time.Now()
 
-		_, err := ssh.GenerateKeyPair(algoName)
+		_, err := ssh.GenerateKeyPairWithSize(algoName, keySize)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error generating key: %v\n", err)
 			continue
@@ -369,16 +369,17 @@ func signatureScenarios() []benchmarkScenario {
 			name:     spec.scenName,
 			category: "algorithm-signature",
 			tags:     map[string]string{"algo": spec.algoName, "size": fmt.Sprintf("%d", spec.keySize)},
-			run:      func(runs int) []metric { return runSignatureBenchmark(spec.algoName, runs) },
-			verify:   func() error { return verifySignature(spec.algoName) },
+			run:      func(runs int) []metric { return runSignatureBenchmark(spec.algoName, spec.keySize, runs) },
+			verify:   func() error { return verifySignature(spec.algoName, spec.keySize) },
 		})
 	}
 	return scenarios
 }
 
-func runSignatureBenchmark(algoName string, runs int) []metric {
-	// Generate key pair outside timed section
-	kp, err := ssh.GenerateKeyPair(algoName)
+func runSignatureBenchmark(algoName string, keySize int, runs int) []metric {
+	// Generate key pair outside timed section with explicit key size
+	// to ensure fair comparison across platforms (C#/TS use 2048-bit for all RSA).
+	kp, err := ssh.GenerateKeyPairWithSize(algoName, keySize)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error generating key for signature benchmark: %v\n", err)
 		return nil
@@ -537,10 +538,15 @@ func verifyKex(algo *algorithms.KeyExchangeAlgorithm) error {
 	return nil
 }
 
-func verifyKeygen(algoName string) error {
-	kp, err := ssh.GenerateKeyPair(algoName)
+func verifyKeygen(algoName string, expectedKeySize int) error {
+	kp, err := ssh.GenerateKeyPairWithSize(algoName, expectedKeySize)
 	if err != nil {
 		return fmt.Errorf("generate key: %w", err)
+	}
+
+	// Verify the generated key has the expected bit size.
+	if err := verifyKeySize(kp, expectedKeySize); err != nil {
+		return err
 	}
 
 	s, ok := kp.(signer)
@@ -563,10 +569,15 @@ func verifyKeygen(algoName string) error {
 	return nil
 }
 
-func verifySignature(algoName string) error {
-	kp, err := ssh.GenerateKeyPair(algoName)
+func verifySignature(algoName string, expectedKeySize int) error {
+	kp, err := ssh.GenerateKeyPairWithSize(algoName, expectedKeySize)
 	if err != nil {
 		return fmt.Errorf("generate key: %w", err)
+	}
+
+	// Verify the generated key has the expected bit size.
+	if err := verifyKeySize(kp, expectedKeySize); err != nil {
+		return err
 	}
 
 	s, ok := kp.(signer)
@@ -592,6 +603,26 @@ func verifySignature(algoName string) error {
 	valid, err = s.Verify(wrongData, sig)
 	if err == nil && valid {
 		return fmt.Errorf("wrong data passed verification — signature is not checking")
+	}
+	return nil
+}
+
+// verifyKeySize checks that a generated key pair has the expected bit size.
+// For RSA, this checks the modulus bit length. For ECDSA, this checks the curve size.
+func verifyKeySize(kp ssh.KeyPair, expectedKeySize int) error {
+	switch k := kp.(type) {
+	case *ssh.RsaKeyPair:
+		actual := k.PublicKey().N.BitLen()
+		if actual != expectedKeySize {
+			return fmt.Errorf("expected %d-bit RSA key, got %d-bit", expectedKeySize, actual)
+		}
+	case *ssh.EcdsaKeyPair:
+		actual := k.PublicKey().Curve.Params().BitSize
+		if actual != expectedKeySize {
+			return fmt.Errorf("expected %d-bit ECDSA key, got %d-bit", expectedKeySize, actual)
+		}
+	default:
+		return fmt.Errorf("unknown key pair type for size verification: %T", kp)
 	}
 	return nil
 }

@@ -187,6 +187,67 @@ func TestHmacSignDeterministic(t *testing.T) {
 	}
 }
 
+// TestHmacSignSequentialVaryingSizes verifies that the HMAC signer correctly
+// handles sequential Sign() calls with varying data sizes, exercising the
+// internal sumBuf reuse.
+func TestHmacSignSequentialVaryingSizes(t *testing.T) {
+	algos := []*HmacAlgorithm{
+		NewHmacSha256(), NewHmacSha512(), NewHmacSha256Etm(), NewHmacSha512Etm(),
+	}
+
+	for _, algo := range algos {
+		t.Run(algo.Name, func(t *testing.T) {
+			key := make([]byte, algo.KeyLength)
+			rand.Read(key)
+			signer := algo.CreateSigner(key)
+			verifier := algo.CreateVerifier(key)
+
+			sizes := []int{1, 100, 32 * 1024, 50, 1}
+			for _, size := range sizes {
+				data := make([]byte, size)
+				rand.Read(data)
+
+				sig := signer.Sign(data)
+				// Copy immediately since Sign() returns aliased internal state.
+				sigCopy := make([]byte, len(sig))
+				copy(sigCopy, sig)
+
+				if !verifier.Verify(data, sigCopy) {
+					t.Fatalf("verify failed for data size %d", size)
+				}
+			}
+		})
+	}
+}
+
+// TestHmacSignReturnsInternalState verifies Sign() returns a slice aliasing
+// internal state that is overwritten by the next Sign() call.
+func TestHmacSignReturnsInternalState(t *testing.T) {
+	algo := NewHmacSha256()
+	key := make([]byte, algo.KeyLength)
+	rand.Read(key)
+	signer := algo.CreateSigner(key)
+
+	data1 := []byte("first message")
+	data2 := []byte("second message")
+
+	sig1 := signer.Sign(data1)
+	saved := make([]byte, len(sig1))
+	copy(saved, sig1)
+
+	sig2 := signer.Sign(data2)
+
+	// sig1 and sig2 should alias the same internal buffer.
+	if &sig1[0] != &sig2[0] {
+		t.Fatal("Sign() should return the same internal slice across calls")
+	}
+
+	// The saved value of sig1 should differ from sig2 (different data).
+	if bytes.Equal(saved, sig2) {
+		t.Fatal("signatures for different data should differ")
+	}
+}
+
 func TestHmacAlgorithmNames(t *testing.T) {
 	tests := []struct {
 		algo   *HmacAlgorithm

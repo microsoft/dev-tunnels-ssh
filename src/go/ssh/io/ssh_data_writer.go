@@ -136,6 +136,13 @@ func (w *SSHDataWriter) ToBuffer() []byte {
 	return result
 }
 
+// Slice returns the written data as a sub-slice of the internal buffer.
+// Unlike ToBuffer, this does not allocate. The returned slice aliases internal
+// state and is valid only until the next write or position change.
+func (w *SSHDataWriter) Slice() []byte {
+	return w.buffer[:w.Position]
+}
+
 // WriteUInt32At writes a uint32 at a specific offset in the given buffer.
 func WriteUInt32At(buffer []byte, offset int, value uint32) {
 	buffer[offset] = byte(value >> 24)

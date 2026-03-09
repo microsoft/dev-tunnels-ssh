@@ -159,15 +159,14 @@ func (s *Session) handleMessage(msgType byte, payload []byte) error {
 		s.ProtocolExtensions = msg.Extensions
 		s.mu.Unlock()
 
-		// If both sides support reconnect, enable it.
+		// If both sides support reconnect, enable it inline.
+		// Sending inline (matching C#/TS) avoids goroutine sendMu contention
+		// that would delay Authenticate() by ~100ms per latency round-trip.
 		if _, ok := msg.Extensions[ExtensionSessionReconnect]; ok {
 			if s.hasProtocolExtension(ExtensionSessionReconnect) {
-				go func() {
-					if err := s.enableReconnect(); err != nil {
-						s.close(messages.DisconnectConnectionLost,
-							"failed to enable reconnect: "+err.Error(), true, false)
-					}
-				}()
+				if err := s.enableReconnect(); err != nil {
+					return fmt.Errorf("failed to enable reconnect: %w", err)
+				}
 			}
 		}
 		return nil

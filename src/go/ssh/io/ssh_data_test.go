@@ -466,3 +466,64 @@ func TestWriteRandom(t *testing.T) {
 		t.Error("WriteRandom produced all zeros")
 	}
 }
+
+func TestSliceReturnsWrittenData(t *testing.T) {
+	w := NewSSHDataWriter(make([]byte, 64))
+	w.WriteUInt32(0xDEADBEEF)
+	_ = w.WriteByte(0x42)
+
+	slice := w.Slice()
+	toBuffer := w.ToBuffer()
+
+	if !bytes.Equal(slice, toBuffer) {
+		t.Errorf("Slice() = %v, ToBuffer() = %v — mismatch", slice, toBuffer)
+	}
+	if len(slice) != 5 {
+		t.Errorf("expected 5 bytes, got %d", len(slice))
+	}
+}
+
+func TestSliceEmptyWriter(t *testing.T) {
+	w := NewSSHDataWriter(make([]byte, 16))
+	slice := w.Slice()
+	if len(slice) != 0 {
+		t.Errorf("expected empty slice, got %d bytes", len(slice))
+	}
+}
+
+func TestSliceAliasesInternalBuffer(t *testing.T) {
+	w := NewSSHDataWriter(make([]byte, 16))
+	w.WriteUInt32(0x12345678)
+	slice := w.Slice()
+
+	// Mutating the slice should affect internal buffer (zero-copy).
+	slice[0] = 0xFF
+	slice2 := w.Slice()
+	if slice2[0] != 0xFF {
+		t.Error("Slice() did not alias internal buffer")
+	}
+}
+
+func TestSliceAfterReset(t *testing.T) {
+	w := NewSSHDataWriter(make([]byte, 64))
+	w.WriteUInt32(0xDEADBEEF)
+	if len(w.Slice()) != 4 {
+		t.Fatalf("expected 4 bytes before reset, got %d", len(w.Slice()))
+	}
+
+	w.Position = 0 // Reset
+	if len(w.Slice()) != 0 {
+		t.Errorf("expected 0 bytes after reset, got %d", len(w.Slice()))
+	}
+
+	// Write new data after reset.
+	_ = w.WriteByte(0x01)
+	_ = w.WriteByte(0x02)
+	slice := w.Slice()
+	if len(slice) != 2 {
+		t.Errorf("expected 2 bytes after re-write, got %d", len(slice))
+	}
+	if slice[0] != 0x01 || slice[1] != 0x02 {
+		t.Errorf("unexpected data: %v", slice)
+	}
+}

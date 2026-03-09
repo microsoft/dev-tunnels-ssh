@@ -330,6 +330,10 @@ class KeygenBenchmark : Benchmark
 	public override Task VerifyAsync()
 	{
 		using var keyPair = algorithm.GenerateKeyPair(keySizeInBits);
+
+		// Verify the generated key has the expected bit size.
+		KeySizeVerification.VerifyKeySize(keyPair, keySizeInBits, algorithm.KeyAlgorithmName);
+
 		using var signer = algorithm.CreateSigner(keyPair);
 		using var verifier = algorithm.CreateVerifier(keyPair);
 
@@ -401,6 +405,10 @@ class SignatureBenchmark : Benchmark
 	public override Task VerifyAsync()
 	{
 		using var keyPair = algorithm.GenerateKeyPair(keySizeInBits);
+
+		// Verify the generated key has the expected bit size.
+		KeySizeVerification.VerifyKeySize(keyPair, keySizeInBits, algorithm.KeyAlgorithmName);
+
 		using var signer = algorithm.CreateSigner(keyPair);
 		using var verifier = algorithm.CreateVerifier(keyPair);
 
@@ -427,5 +435,53 @@ class SignatureBenchmark : Benchmark
 #else
 		return ValueTask.CompletedTask;
 #endif
+	}
+}
+
+/// <summary>
+/// Verifies that a generated key pair has the expected bit size by inspecting
+/// the SSH public key bytes. For RSA, checks that the public key byte length
+/// is consistent with the expected modulus size.
+/// </summary>
+static class KeySizeVerification
+{
+	public static void VerifyKeySize(IKeyPair keyPair, int expectedSizeInBits, string keyAlgorithmName)
+	{
+		var pubKeyBytes = keyPair.GetPublicKeyBytes(keyAlgorithmName);
+
+		if (keyAlgorithmName == "ssh-rsa")
+		{
+			// RSA public key SSH wire format: [string "ssh-rsa"] [mpint e] [mpint n]
+			// The modulus n determines the key size. Expected total byte count:
+			//   ~11 (algo string) + ~7 (exponent) + 5 (mpint header) + keySizeInBits/8.
+			int expectedModulusBytes = expectedSizeInBits / 8;
+			int minExpectedLength = expectedModulusBytes + 10;
+			int maxExpectedLength = expectedModulusBytes + 25;
+
+			if (pubKeyBytes.Count < minExpectedLength || pubKeyBytes.Count > maxExpectedLength)
+			{
+				throw new Exception(
+					$"Expected {expectedSizeInBits}-bit RSA key (pub key ~{minExpectedLength}-{maxExpectedLength} bytes), " +
+					$"but got {pubKeyBytes.Count} bytes. Key size mismatch.");
+			}
+		}
+		else if (keyAlgorithmName.StartsWith("ecdsa-sha2-"))
+		{
+			// ECDSA public key SSH wire format: [string algo] [string curve] [string Q]
+			// Q is uncompressed: 0x04 || X || Y, so Q length = 1 + 2*ceil(bits/8).
+			int coordBytes = (expectedSizeInBits + 7) / 8;
+			int expectedQLen = 1 + 2 * coordBytes;
+			// Total: 4+algo.Length + 4+curve.Length + 4+Q.Length
+			int algoLen = keyAlgorithmName.Length;
+			string curveName = keyAlgorithmName.Substring("ecdsa-sha2-".Length);
+			int expectedTotal = (4 + algoLen) + (4 + curveName.Length) + (4 + expectedQLen);
+			// Allow small tolerance for encoding variations.
+			if (pubKeyBytes.Count < expectedTotal - 2 || pubKeyBytes.Count > expectedTotal + 2)
+			{
+				throw new Exception(
+					$"Expected {expectedSizeInBits}-bit ECDSA key (pub key ~{expectedTotal} bytes), " +
+					$"but got {pubKeyBytes.Count} bytes. Key size mismatch.");
+			}
+		}
 	}
 }

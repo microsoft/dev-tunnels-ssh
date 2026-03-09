@@ -8,6 +8,7 @@ import (
 	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/rsa"
+	"fmt"
 	"testing"
 )
 
@@ -114,6 +115,50 @@ func TestGenerateKeyPairEcdsaP521(t *testing.T) {
 // TestGenerateKeyPairUnsupported tests that unsupported algorithm returns error.
 func TestGenerateKeyPairUnsupported(t *testing.T) {
 	_, err := GenerateKeyPair("unsupported-algo")
+	if err == nil {
+		t.Error("expected error for unsupported algorithm")
+	}
+}
+
+// TestGenerateKeyPairWithSizeRsa tests generating RSA key pairs with explicit sizes.
+func TestGenerateKeyPairWithSizeRsa(t *testing.T) {
+	tests := []struct {
+		algo    string
+		bits    int
+	}{
+		{AlgoPKRsaSha256, 2048},
+		{AlgoPKRsaSha256, 4096},
+		{AlgoPKRsaSha512, 2048},
+		{AlgoPKRsaSha512, 4096},
+	}
+	for _, tc := range tests {
+		t.Run(fmt.Sprintf("%s-%d", tc.algo, tc.bits), func(t *testing.T) {
+			kp, err := GenerateKeyPairWithSize(tc.algo, tc.bits)
+			if err != nil {
+				t.Fatalf("GenerateKeyPairWithSize failed: %v", err)
+			}
+			rsaKP := kp.(*RsaKeyPair)
+			if rsaKP.PublicKey().N.BitLen() < tc.bits {
+				t.Errorf("expected key size >= %d bits, got %d", tc.bits, rsaKP.PublicKey().N.BitLen())
+			}
+		})
+	}
+}
+
+// TestGenerateKeyPairWithSizeEcdsaIgnoresSize tests that ECDSA ignores the size parameter.
+func TestGenerateKeyPairWithSizeEcdsaIgnoresSize(t *testing.T) {
+	kp, err := GenerateKeyPairWithSize(AlgoPKEcdsaSha2P256, 9999)
+	if err != nil {
+		t.Fatalf("GenerateKeyPairWithSize failed: %v", err)
+	}
+	if kp.KeyAlgorithmName() != AlgoPKEcdsaSha2P256 {
+		t.Errorf("expected algorithm %q, got %q", AlgoPKEcdsaSha2P256, kp.KeyAlgorithmName())
+	}
+}
+
+// TestGenerateKeyPairWithSizeUnsupported tests that unsupported algorithms return an error.
+func TestGenerateKeyPairWithSizeUnsupported(t *testing.T) {
+	_, err := GenerateKeyPairWithSize("unsupported-algo", 2048)
 	if err == nil {
 		t.Error("expected error for unsupported algorithm")
 	}

@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 	"sync"
+	"sync/atomic"
 
 	"github.com/microsoft/dev-tunnels-ssh/src/go/ssh/algorithms"
 	sshio "github.com/microsoft/dev-tunnels-ssh/src/go/ssh/io"
@@ -62,11 +63,7 @@ type keyExchangeService struct {
 	mu          sync.Mutex
 	session     *Session
 	ctx         *exchangeContext
-	exchanging  bool
-
-	// newKeysSent is closed after our NewKeys message has been sent on the wire.
-	// This ensures we don't activate send encryption before NewKeys is sent.
-	newKeysSent chan struct{}
+	exchanging  int32 // atomic: 0=not exchanging, 1=exchanging
 
 	// hostKey stores the server's host key after verification (client side only).
 	hostKeyValue KeyPair
@@ -127,7 +124,7 @@ func (svc *keyExchangeService) startKeyExchange(isInitialExchange bool) (kexInit
 	svc.ctx = &exchangeContext{
 		isInitialExchange: isInitialExchange,
 	}
-	svc.exchanging = true
+	atomic.StoreInt32(&svc.exchanging, 1)
 
 	kexInit := svc.session.buildKexInitMessage()
 
@@ -184,7 +181,7 @@ func (svc *keyExchangeService) startKeyExchange(isInitialExchange bool) (kexInit
 // so no mutex is needed for the exchanging flag. The caller (activateNewKeys)
 // is responsible for holding s.mu when storing the returned algorithms.
 func (svc *keyExchangeService) finishKeyExchange() *sessionAlgorithms {
-	svc.exchanging = false
+	atomic.StoreInt32(&svc.exchanging, 0)
 	algs := svc.ctx.newAlgorithms
 	return algs
 }
@@ -193,7 +190,7 @@ func (svc *keyExchangeService) finishKeyExchange() *sessionAlgorithms {
 func (svc *keyExchangeService) abortKeyExchange() {
 	svc.mu.Lock()
 	defer svc.mu.Unlock()
-	svc.exchanging = false
+	atomic.StoreInt32(&svc.exchanging, 0)
 	svc.ctx = nil
 }
 
@@ -207,7 +204,7 @@ func (svc *keyExchangeService) handleKexInit(msg *messages.KeyExchangeInitMessag
 		svc.ctx = &exchangeContext{
 			isInitialExchange: svc.session.SessionID == nil,
 		}
-		svc.exchanging = true
+		atomic.StoreInt32(&svc.exchanging, 1)
 
 		// Build our own KexInit.
 		ourKexInit := svc.session.buildKexInitMessage()
@@ -520,22 +517,16 @@ func (svc *keyExchangeService) handleDhInit(msg *messages.KeyExchangeDhInitMessa
 	replyPayload := replyMsg.ToBuffer()
 	newKeysPayload := (&messages.NewKeysMessage{}).ToBuffer()
 
-	// Send DhReply + NewKeys in a goroutine to avoid deadlock with io.Pipe.
-	// Both sides' dispatch loops try to send NewKeys simultaneously;
-	// using a goroutine lets the dispatch loop continue reading.
-	svc.newKeysSent = make(chan struct{})
-	session := svc.session
-	go func() {
-		defer close(svc.newKeysSent)
-		if err := session.protocol.sendMessage(replyPayload); err != nil {
-			session.close(messages.DisconnectProtocolError, err.Error(), false, false)
-			return
-		}
-		if err := session.protocol.sendMessage(newKeysPayload); err != nil {
-			session.close(messages.DisconnectProtocolError, err.Error(), false, false)
-			return
-		}
-	}()
+	// Send DhReply + NewKeys inline from the dispatch loop. This is safe
+	// because server sends first (while client dispatch loop is reading),
+	// so there's no deadlock even with zero-buffered streams like io.Pipe.
+	// Sending inline avoids the extra latency of goroutine-based sends.
+	if err := svc.session.protocol.sendMessage(replyPayload); err != nil {
+		return err
+	}
+	if err := svc.session.protocol.sendMessage(newKeysPayload); err != nil {
+		return err
+	}
 
 	return nil
 }
@@ -602,19 +593,13 @@ func (svc *keyExchangeService) handleDhReply(msg *messages.KeyExchangeDhReplyMes
 	algs.IsExtensionInfoRequested = svc.ctx.isExtensionInfoRequested
 	svc.ctx.newAlgorithms = algs
 
-	// Send NewKeys in a goroutine to avoid deadlock with io.Pipe.
-	// Both sides' dispatch loops try to send NewKeys simultaneously;
-	// using a goroutine lets the dispatch loop continue reading.
+	// Send NewKeys inline from the dispatch loop. The server has already
+	// sent its DhReply + NewKeys (which the client just processed), so
+	// sending client NewKeys inline is safe — no simultaneous sends.
 	newKeysPayload := (&messages.NewKeysMessage{}).ToBuffer()
-	svc.newKeysSent = make(chan struct{})
-	session := svc.session
-	go func() {
-		defer close(svc.newKeysSent)
-		if err := session.protocol.sendMessage(newKeysPayload); err != nil {
-			session.close(messages.DisconnectProtocolError, err.Error(), false, false)
-			return
-		}
-	}()
+	if err := svc.session.protocol.sendMessage(newKeysPayload); err != nil {
+		return err
+	}
 
 	return nil
 }
@@ -1065,12 +1050,9 @@ func containsString(slice []string, s string) bool {
 
 // ConsiderReExchange checks if key rotation is needed and starts re-exchange if so.
 func (svc *keyExchangeService) considerReExchange(bytesSent, bytesReceived uint64) error {
-	svc.mu.Lock()
-	if svc.exchanging {
-		svc.mu.Unlock()
+	if atomic.LoadInt32(&svc.exchanging) != 0 {
 		return nil
 	}
-	svc.mu.Unlock()
 
 	threshold := svc.session.Config.KeyRotationThreshold
 	if threshold <= 0 {
@@ -1107,7 +1089,7 @@ func (svc *keyExchangeService) sendExtensionInfo() error {
 		msg.Extensions[ext] = ""
 	}
 
-	return svc.session.protocol.sendMessage(msg.ToBuffer())
+	return svc.session.SendMessage(msg)
 }
 
 // zeroBytes overwrites a byte slice with zeros, used to clear sensitive key material
