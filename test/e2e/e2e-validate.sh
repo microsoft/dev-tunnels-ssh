@@ -188,6 +188,14 @@ run_suite "Go Concurrent Requests Test" "$SCRIPT_DIR/e2e-go-concurrent-requests.
 
 run_suite "Go Pipe Request Test" "$SCRIPT_DIR/e2e-go-pipe-request.sh"
 
+run_suite "Go Signals Test" "$SCRIPT_DIR/e2e-go-signals.sh"
+
+run_suite "Go Extended Data Test" "$SCRIPT_DIR/e2e-go-extended-data.sh"
+
+run_suite "Go Rekey Test" "$SCRIPT_DIR/e2e-go-rekey.sh"
+
+run_suite "Go Keyboard-Interactive Auth Test" "$SCRIPT_DIR/e2e-go-kbdinteractive.sh"
+
 # ─── Step 8: Cross-implementation interop ───
 
 run_suite "Cross-Implementation Interop" "$SCRIPT_DIR/e2e-interop.sh"

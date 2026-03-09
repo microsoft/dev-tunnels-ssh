@@ -10,6 +10,10 @@
 //   portfwd         — port forwarding test (client requires echo_port as 8th arg)
 //   reconnect       — reconnection test over TCP
 //   pipe-request    — channel request forwarding through piped sessions
+//   signals         — exit-status, exit-signal, and standalone signal delivery
+//   extended-data   — extended data (stderr) send/receive
+//   rekey           — key rotation mid-session with low threshold
+//   kbdinteractive  — keyboard-interactive authentication
 //
 // Protocol:
 //   Server prints "LISTENING" when ready, "ECHOED <n>" when echoing data.
@@ -56,11 +60,15 @@ func main() {
 		testMode = os.Args[7]
 	}
 
-	// Use reconnect-enabled config for reconnect mode, default config otherwise.
+	// Use reconnect-enabled config for reconnect mode, low-threshold config for
+	// rekey mode, default config otherwise.
 	var config *ssh.SessionConfig
-	if testMode == "reconnect" {
+	switch testMode {
+	case "reconnect":
 		config = createReconnectConfig(kex, pk, enc, hmac)
-	} else {
+	case "rekey":
+		config = createRekeyConfig(kex, pk, enc, hmac)
+	default:
 		config = createConfig(kex, pk, enc, hmac)
 	}
 
@@ -76,6 +84,14 @@ func main() {
 			exitCode = runServerConcurrentRequests(config, port, pk)
 		case "pipe-request":
 			exitCode = runServerPipeRequest(config, port, pk)
+		case "signals":
+			exitCode = runServerSignals(config, port, pk)
+		case "extended-data":
+			exitCode = runServerExtendedData(config, port, pk)
+		case "rekey":
+			exitCode = runServerRekey(config, port, pk)
+		case "kbdinteractive":
+			exitCode = runServerKbdInteractive(config, port, pk)
 		default:
 			exitCode = runServer(config, port, pk, testMode)
 		}
@@ -108,6 +124,14 @@ func main() {
 			exitCode = runClientConcurrentRequests(config, port)
 		case "pipe-request":
 			exitCode = runClientPipeRequest(config, port)
+		case "signals":
+			exitCode = runClientSignals(config, port)
+		case "extended-data":
+			exitCode = runClientExtendedData(config, port)
+		case "rekey":
+			exitCode = runClientRekey(config, port)
+		case "kbdinteractive":
+			exitCode = runClientKbdInteractive(config, port)
 		default:
 			fmt.Fprintf(os.Stderr, "Unknown test mode: %s\n", testMode)
 			exitCode = 1
@@ -134,6 +158,13 @@ func createReconnectConfig(kex, pk, enc, hmac string) *ssh.SessionConfig {
 	config.PublicKeyAlgorithms = []string{pk}
 	config.EncryptionAlgorithms = []string{enc}
 	config.HmacAlgorithms = []string{hmac}
+	return config
+}
+
+func createRekeyConfig(kex, pk, enc, hmac string) *ssh.SessionConfig {
+	config := createConfig(kex, pk, enc, hmac)
+	// Set a very low key rotation threshold (4 KB) so rekey triggers quickly.
+	config.KeyRotationThreshold = 4 * 1024
 	return config
 }
 
@@ -1152,15 +1183,66 @@ func runClientConcurrentRequests(config *ssh.SessionConfig, port int) int {
 	return 0
 }
 
-// pipeRWC wraps an io.PipeReader and io.PipeWriter into an io.ReadWriteCloser.
+// pipeRWC wraps an io.PipeReader and io.PipeWriter into an io.ReadWriteCloser
+// with buffered async writes. The write buffer prevents deadlocks when both
+// sides of a pipe try to write simultaneously (io.Pipe is unbuffered).
 type pipeRWC struct {
-	r *io.PipeReader
-	w *io.PipeWriter
+	r         *io.PipeReader
+	w         *io.PipeWriter
+	wch       chan []byte
+	wdone     chan struct{}
+	closeCh   chan struct{}
+	closeOnce sync.Once
 }
 
-func (p *pipeRWC) Read(b []byte) (int, error)  { return p.r.Read(b) }
-func (p *pipeRWC) Write(b []byte) (int, error) { return p.w.Write(b) }
+func newPipeRWC(r *io.PipeReader, w *io.PipeWriter) *pipeRWC {
+	p := &pipeRWC{
+		r:       r,
+		w:       w,
+		wch:     make(chan []byte, 256),
+		wdone:   make(chan struct{}),
+		closeCh: make(chan struct{}),
+	}
+	go p.writePump()
+	return p
+}
+
+func (p *pipeRWC) writePump() {
+	defer close(p.wdone)
+	for {
+		select {
+		case data := <-p.wch:
+			if _, err := p.w.Write(data); err != nil {
+				p.closeOnce.Do(func() { close(p.closeCh) })
+				return
+			}
+		case <-p.closeCh:
+			return
+		}
+	}
+}
+
+func (p *pipeRWC) Read(b []byte) (int, error) { return p.r.Read(b) }
+
+func (p *pipeRWC) Write(b []byte) (int, error) {
+	select {
+	case <-p.closeCh:
+		return 0, io.ErrClosedPipe
+	default:
+	}
+	data := make([]byte, len(b))
+	copy(data, b)
+	select {
+	case p.wch <- data:
+		return len(b), nil
+	case <-p.closeCh:
+		return 0, io.ErrClosedPipe
+	}
+}
+
 func (p *pipeRWC) Close() error {
+	p.closeOnce.Do(func() { close(p.closeCh) })
+	<-p.wdone
 	p.r.Close()
 	return p.w.Close()
 }
@@ -1195,8 +1277,8 @@ func runServerPipeRequest(config *ssh.SessionConfig, port int, pkName string) in
 			// Create an internal pipe pair for server B.
 			r1, w1 := io.Pipe()
 			r2, w2 := io.Pipe()
-			internalClientConn := &pipeRWC{r: r1, w: w2}
-			internalServerConn := &pipeRWC{r: r2, w: w1}
+			internalClientConn := newPipeRWC(r1, w2)
+			internalServerConn := newPipeRWC(r2, w1)
 
 			// Server B: no-security, handles channel requests + echoes data.
 			serverB := ssh.NewServerSession(nil)
@@ -1357,6 +1439,666 @@ func runClientPipeRequest(config *ssh.SessionConfig, port int) int {
 		} else {
 			fmt.Fprintf(os.Stderr, "Echo mismatch: got %q, expected %q\n",
 				string(echoed), string(testData))
+			return 1
+		}
+	case <-echoCtx.Done():
+		fmt.Fprintf(os.Stderr, "Echo timeout\n")
+		return 1
+	}
+
+	fmt.Println("DONE")
+	ch.Close()
+	session.Close()
+	return 0
+}
+
+// ─── Signals mode ───
+
+// runServerSignals accepts a channel, receives a standalone signal, then closes
+// the channel with exit-status 42. Verifies signal delivery + exit status propagation.
+func runServerSignals(config *ssh.SessionConfig, port int, pkName string) int {
+	hostKey, err := ssh.GenerateKeyPair(pkName)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "ERROR: failed to generate host key: %v\n", err)
+		return 1
+	}
+
+	server := tcp.NewServer(config)
+	server.Credentials = &ssh.ServerCredentials{
+		PublicKeys: []ssh.KeyPair{hostKey},
+	}
+
+	server.OnSessionAuthenticating = func(e *ssh.AuthenticatingEventArgs) {
+		e.AuthenticationResult = true
+	}
+
+	sessionDone := make(chan struct{}, 1)
+
+	server.OnSessionOpened = func(session *ssh.ServerSession) {
+		session.OnChannelOpening = func(e *ssh.ChannelOpeningEventArgs) {
+			ch := e.Channel
+
+			// Handle standalone signal requests.
+			ch.OnRequest = func(args *ssh.RequestEventArgs) {
+				fmt.Printf("SIGNAL_RECEIVED: %s\n", args.RequestType)
+				args.IsAuthorized = true
+			}
+
+			// After receiving data (trigger from client), close with exit-status.
+			ch.SetDataReceivedHandler(func(data []byte) {
+				cmd := string(data)
+				sendCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+				defer cancel()
+				if cmd == "CLOSE_WITH_STATUS" {
+					fmt.Println("CLOSING_WITH_STATUS_42")
+					ch.CloseWithStatus(sendCtx, 42)
+				} else if cmd == "CLOSE_WITH_SIGNAL" {
+					fmt.Println("CLOSING_WITH_SIGNAL_KILL")
+					ch.CloseWithSignal(sendCtx, "KILL", "process killed")
+				}
+			})
+		}
+
+		session.OnClosed = func(e *ssh.SessionClosedEventArgs) {
+			select {
+			case sessionDone <- struct{}{}:
+			default:
+			}
+		}
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	acceptErr := make(chan error, 1)
+	go func() {
+		acceptErr <- server.AcceptSessions(ctx, port, "127.0.0.1")
+	}()
+
+	time.Sleep(50 * time.Millisecond)
+	if server.ListenPort() == 0 {
+		time.Sleep(200 * time.Millisecond)
+	}
+
+	fmt.Println("LISTENING")
+
+	select {
+	case <-sessionDone:
+	case <-ctx.Done():
+	case err := <-acceptErr:
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Accept error: %v\n", err)
+		}
+	}
+
+	server.Close()
+	return 0
+}
+
+func runClientSignals(config *ssh.SessionConfig, port int) int {
+	session, ctx, cancel, code := connectAndAuth(config, port)
+	if code != 0 {
+		return code
+	}
+	defer cancel()
+
+	// --- Test 1: Standalone signal + exit-status ---
+	ch1, err := session.OpenChannel(ctx)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "ERROR: failed to open channel 1: %v\n", err)
+		return 1
+	}
+	fmt.Println("CHANNEL_OPEN")
+
+	// Send a standalone signal.
+	if err := ch1.SendSignal(ctx, "TERM"); err != nil {
+		fmt.Fprintf(os.Stderr, "ERROR: SendSignal failed: %v\n", err)
+		return 1
+	}
+	fmt.Println("SIGNAL_SENT")
+
+	// Small delay to let the signal arrive before closing.
+	time.Sleep(100 * time.Millisecond)
+
+	// Set up closed handler to capture exit-status.
+	closedCh := make(chan *ssh.ChannelClosedEventArgs, 1)
+	ch1.SetClosedHandler(func(args *ssh.ChannelClosedEventArgs) {
+		closedCh <- args
+	})
+
+	// Tell server to close with exit-status 42.
+	if err := ch1.Send(ctx, []byte("CLOSE_WITH_STATUS")); err != nil {
+		fmt.Fprintf(os.Stderr, "ERROR: failed to send close command: %v\n", err)
+		return 1
+	}
+
+	// Wait for channel close event.
+	closeCtx, closeCancel := context.WithTimeout(ctx, 10*time.Second)
+	defer closeCancel()
+
+	select {
+	case args := <-closedCh:
+		if args.ExitStatus != nil && *args.ExitStatus == 42 {
+			fmt.Println("EXIT_STATUS_OK")
+		} else if args.ExitStatus != nil {
+			fmt.Fprintf(os.Stderr, "EXIT_STATUS wrong: got %d, want 42\n", *args.ExitStatus)
+			return 1
+		} else {
+			fmt.Fprintf(os.Stderr, "EXIT_STATUS nil, expected 42\n")
+			return 1
+		}
+	case <-closeCtx.Done():
+		fmt.Fprintf(os.Stderr, "Timeout waiting for channel close\n")
+		return 1
+	}
+
+	// --- Test 2: Exit-signal on a second channel ---
+	ch2, err := session.OpenChannel(ctx)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "ERROR: failed to open channel 2: %v\n", err)
+		return 1
+	}
+
+	closedCh2 := make(chan *ssh.ChannelClosedEventArgs, 1)
+	ch2.SetClosedHandler(func(args *ssh.ChannelClosedEventArgs) {
+		closedCh2 <- args
+	})
+
+	// Tell server to close with exit-signal KILL.
+	if err := ch2.Send(ctx, []byte("CLOSE_WITH_SIGNAL")); err != nil {
+		fmt.Fprintf(os.Stderr, "ERROR: failed to send close-signal command: %v\n", err)
+		return 1
+	}
+
+	closeCtx2, closeCancel2 := context.WithTimeout(ctx, 10*time.Second)
+	defer closeCancel2()
+
+	select {
+	case args := <-closedCh2:
+		if args.ExitSignal == "KILL" && args.ErrorMessage == "process killed" {
+			fmt.Println("EXIT_SIGNAL_OK")
+		} else {
+			fmt.Fprintf(os.Stderr, "EXIT_SIGNAL wrong: signal=%q, msg=%q\n", args.ExitSignal, args.ErrorMessage)
+			return 1
+		}
+	case <-closeCtx2.Done():
+		fmt.Fprintf(os.Stderr, "Timeout waiting for channel 2 close\n")
+		return 1
+	}
+
+	fmt.Println("DONE")
+	session.Close()
+	return 0
+}
+
+// ─── Extended data mode ───
+
+// runServerExtendedData accepts a channel, receives stderr extended data, and
+// echoes it back as regular data. Then sends its own stderr data to the client.
+func runServerExtendedData(config *ssh.SessionConfig, port int, pkName string) int {
+	hostKey, err := ssh.GenerateKeyPair(pkName)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "ERROR: failed to generate host key: %v\n", err)
+		return 1
+	}
+
+	server := tcp.NewServer(config)
+	server.Credentials = &ssh.ServerCredentials{
+		PublicKeys: []ssh.KeyPair{hostKey},
+	}
+
+	server.OnSessionAuthenticating = func(e *ssh.AuthenticatingEventArgs) {
+		e.AuthenticationResult = true
+	}
+
+	sessionDone := make(chan struct{}, 1)
+
+	server.OnSessionOpened = func(session *ssh.ServerSession) {
+		session.OnChannelOpening = func(e *ssh.ChannelOpeningEventArgs) {
+			ch := e.Channel
+
+			// Handle extended data (stderr) from client.
+			ch.SetExtendedDataReceivedHandler(func(dataType ssh.SSHExtendedDataType, data []byte) {
+				fmt.Printf("EXTENDED_DATA_RECEIVED: type=%d len=%d\n", dataType, len(data))
+				ch.AdjustWindow(uint32(len(data)))
+
+				// Echo back as regular channel data.
+				sendCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+				defer cancel()
+				ch.Send(sendCtx, data)
+			})
+
+			// Handle regular data as commands.
+			ch.SetDataReceivedHandler(func(data []byte) {
+				cmd := string(data)
+				if cmd == "SEND_STDERR" {
+					// Send stderr extended data back to client.
+					sendCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+					defer cancel()
+					stderrData := []byte("SERVER_STDERR_OUTPUT")
+					if err := ch.SendExtendedData(sendCtx, ssh.ExtendedDataStderr, stderrData); err != nil {
+						fmt.Fprintf(os.Stderr, "SendExtendedData error: %v\n", err)
+					} else {
+						fmt.Println("STDERR_SENT")
+					}
+				}
+			})
+		}
+
+		session.OnClosed = func(e *ssh.SessionClosedEventArgs) {
+			select {
+			case sessionDone <- struct{}{}:
+			default:
+			}
+		}
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	acceptErr := make(chan error, 1)
+	go func() {
+		acceptErr <- server.AcceptSessions(ctx, port, "127.0.0.1")
+	}()
+
+	time.Sleep(50 * time.Millisecond)
+	if server.ListenPort() == 0 {
+		time.Sleep(200 * time.Millisecond)
+	}
+
+	fmt.Println("LISTENING")
+
+	select {
+	case <-sessionDone:
+	case <-ctx.Done():
+	case err := <-acceptErr:
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Accept error: %v\n", err)
+		}
+	}
+
+	server.Close()
+	return 0
+}
+
+func runClientExtendedData(config *ssh.SessionConfig, port int) int {
+	session, ctx, cancel, code := connectAndAuth(config, port)
+	if code != 0 {
+		return code
+	}
+	defer cancel()
+
+	ch, err := session.OpenChannel(ctx)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "ERROR: failed to open channel: %v\n", err)
+		return 1
+	}
+	fmt.Println("CHANNEL_OPEN")
+
+	// --- Test 1: Client sends stderr, server echoes as regular data ---
+	echoCh := make(chan []byte, 1)
+	ch.SetDataReceivedHandler(func(data []byte) {
+		received := append([]byte(nil), data...)
+		select {
+		case echoCh <- received:
+		default:
+		}
+	})
+
+	stderrPayload := []byte("CLIENT_STDERR_DATA")
+	if err := ch.SendExtendedData(ctx, ssh.ExtendedDataStderr, stderrPayload); err != nil {
+		fmt.Fprintf(os.Stderr, "ERROR: SendExtendedData failed: %v\n", err)
+		return 1
+	}
+
+	echoCtx, echoCancel := context.WithTimeout(ctx, 10*time.Second)
+	defer echoCancel()
+
+	select {
+	case echoed := <-echoCh:
+		if string(echoed) == string(stderrPayload) {
+			fmt.Println("EXTENDED_DATA_SEND_OK")
+		} else {
+			fmt.Fprintf(os.Stderr, "Extended data echo mismatch: got %q, want %q\n",
+				string(echoed), string(stderrPayload))
+			return 1
+		}
+	case <-echoCtx.Done():
+		fmt.Fprintf(os.Stderr, "Extended data echo timeout\n")
+		return 1
+	}
+
+	// --- Test 2: Server sends stderr, client receives via extended data handler ---
+	extDataCh := make(chan []byte, 1)
+	ch.SetExtendedDataReceivedHandler(func(dataType ssh.SSHExtendedDataType, data []byte) {
+		if dataType == ssh.ExtendedDataStderr {
+			received := append([]byte(nil), data...)
+			ch.AdjustWindow(uint32(len(data)))
+			select {
+			case extDataCh <- received:
+			default:
+			}
+		}
+	})
+
+	// Tell server to send stderr.
+	if err := ch.Send(ctx, []byte("SEND_STDERR")); err != nil {
+		fmt.Fprintf(os.Stderr, "ERROR: failed to send SEND_STDERR command: %v\n", err)
+		return 1
+	}
+
+	extCtx, extCancel := context.WithTimeout(ctx, 10*time.Second)
+	defer extCancel()
+
+	select {
+	case data := <-extDataCh:
+		if string(data) == "SERVER_STDERR_OUTPUT" {
+			fmt.Println("EXTENDED_DATA_RECV_OK")
+		} else {
+			fmt.Fprintf(os.Stderr, "Server stderr mismatch: got %q\n", string(data))
+			return 1
+		}
+	case <-extCtx.Done():
+		fmt.Fprintf(os.Stderr, "Server stderr timeout\n")
+		return 1
+	}
+
+	fmt.Println("DONE")
+	ch.Close()
+	session.Close()
+	return 0
+}
+
+// ─── Rekey mode ───
+
+// runServerRekey uses a low KeyRotationThreshold (4 KB) and echoes all data.
+// The rekey happens transparently; the test passes if the session survives.
+func runServerRekey(config *ssh.SessionConfig, port int, pkName string) int {
+	// Use the default echo server — the low threshold in config will trigger rekey.
+	return runServer(config, port, pkName, "")
+}
+
+func runClientRekey(config *ssh.SessionConfig, port int) int {
+	session, ctx, cancel, code := connectAndAuth(config, port)
+	if code != 0 {
+		return code
+	}
+	defer cancel()
+
+	ch, err := session.OpenChannel(ctx)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "ERROR: failed to open channel: %v\n", err)
+		return 1
+	}
+	fmt.Println("CHANNEL_OPEN")
+
+	// Send 16 KB of data in 1 KB chunks (4x the 4 KB threshold, triggers multiple rekeys).
+	const chunkSize = 1024
+	const numChunks = 16
+
+	var mu sync.Mutex
+	received := make([]byte, 0, chunkSize*numChunks)
+	done := make(chan struct{})
+
+	ch.SetDataReceivedHandler(func(data []byte) {
+		mu.Lock()
+		received = append(received, data...)
+		total := len(received)
+		mu.Unlock()
+		if total >= chunkSize*numChunks {
+			select {
+			case done <- struct{}{}:
+			default:
+			}
+		}
+	})
+
+	// Build deterministic data.
+	sendData := make([]byte, chunkSize*numChunks)
+	for i := range sendData {
+		sendData[i] = byte(i % 256)
+	}
+
+	// Send all data.
+	if err := ch.Send(ctx, sendData); err != nil {
+		fmt.Fprintf(os.Stderr, "ERROR: failed to send data: %v\n", err)
+		return 1
+	}
+
+	// Wait for all echoed data.
+	echoCtx, echoCancel := context.WithTimeout(ctx, 15*time.Second)
+	defer echoCancel()
+
+	select {
+	case <-done:
+	case <-echoCtx.Done():
+		mu.Lock()
+		got := len(received)
+		mu.Unlock()
+		fmt.Fprintf(os.Stderr, "Rekey data echo timeout: received %d/%d bytes\n", got, chunkSize*numChunks)
+		return 1
+	}
+
+	// Verify data integrity.
+	mu.Lock()
+	sendHash := sha256.Sum256(sendData)
+	recvHash := sha256.Sum256(received[:chunkSize*numChunks])
+	mu.Unlock()
+
+	if sendHash == recvHash {
+		fmt.Println("REKEY_DATA_OK")
+	} else {
+		fmt.Fprintf(os.Stderr, "Rekey data hash mismatch\n")
+		return 1
+	}
+
+	// Post-rekey echo test: verify the session is still healthy.
+	postEchoCh := make(chan []byte, 1)
+	ch.SetDataReceivedHandler(func(data []byte) {
+		cp := append([]byte(nil), data...)
+		select {
+		case postEchoCh <- cp:
+		default:
+		}
+	})
+
+	postData := []byte("POST_REKEY_ECHO")
+	if err := ch.Send(ctx, postData); err != nil {
+		fmt.Fprintf(os.Stderr, "ERROR: post-rekey send failed: %v\n", err)
+		return 1
+	}
+
+	postCtx, postCancel := context.WithTimeout(ctx, 10*time.Second)
+	defer postCancel()
+
+	select {
+	case echoed := <-postEchoCh:
+		if string(echoed) == string(postData) {
+			fmt.Println("POST_REKEY_ECHO_OK")
+		} else {
+			fmt.Fprintf(os.Stderr, "Post-rekey echo mismatch: got %q\n", string(echoed))
+			return 1
+		}
+	case <-postCtx.Done():
+		fmt.Fprintf(os.Stderr, "Post-rekey echo timeout\n")
+		return 1
+	}
+
+	fmt.Println("DONE")
+	ch.Close()
+	session.Close()
+	return 0
+}
+
+// ─── Keyboard-interactive mode ───
+
+// runServerKbdInteractive only accepts keyboard-interactive auth. It sends a
+// prompt, validates the response, and then runs a basic echo channel.
+func runServerKbdInteractive(config *ssh.SessionConfig, port int, pkName string) int {
+	hostKey, err := ssh.GenerateKeyPair(pkName)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "ERROR: failed to generate host key: %v\n", err)
+		return 1
+	}
+
+	// Only allow keyboard-interactive auth.
+	config.AuthenticationMethods = []string{ssh.AuthMethodKeyboardInteractive}
+
+	server := tcp.NewServer(config)
+	server.Credentials = &ssh.ServerCredentials{
+		PublicKeys: []ssh.KeyPair{hostKey},
+	}
+
+	sessionDone := make(chan struct{}, 1)
+
+	server.OnSessionAuthenticating = func(args *ssh.AuthenticatingEventArgs) {
+		if args.AuthenticationType == ssh.AuthClientInteractive {
+			if args.InfoRequest == nil && args.InfoResponse == nil {
+				// First callback: send prompt to client.
+				args.InfoRequest = &messages.AuthenticationInfoRequestMessage{
+					Instruction: "Please answer the security question",
+					Prompts: []messages.AuthenticationInfoRequestPrompt{
+						{Prompt: "Enter code: ", Echo: true},
+					},
+				}
+				// Don't set AuthenticationResult yet — wait for response.
+			} else if args.InfoResponse != nil {
+				// Second callback: validate response.
+				if len(args.InfoResponse.Responses) > 0 && args.InfoResponse.Responses[0] == "secret42" {
+					fmt.Println("KBD_AUTH_VERIFIED")
+					args.AuthenticationResult = true
+				} else {
+					fmt.Println("KBD_AUTH_REJECTED")
+					args.AuthenticationResult = false
+				}
+			}
+		}
+	}
+
+	server.OnSessionOpened = func(session *ssh.ServerSession) {
+		session.OnChannelOpening = func(e *ssh.ChannelOpeningEventArgs) {
+			ch := e.Channel
+			ch.SetDataReceivedHandler(func(data []byte) {
+				buf := append([]byte(nil), data...)
+				sendCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+				defer cancel()
+				ch.Send(sendCtx, buf)
+				fmt.Printf("ECHOED %d\n", len(buf))
+			})
+		}
+
+		session.OnClosed = func(e *ssh.SessionClosedEventArgs) {
+			select {
+			case sessionDone <- struct{}{}:
+			default:
+			}
+		}
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	acceptErr := make(chan error, 1)
+	go func() {
+		acceptErr <- server.AcceptSessions(ctx, port, "127.0.0.1")
+	}()
+
+	time.Sleep(50 * time.Millisecond)
+	if server.ListenPort() == 0 {
+		time.Sleep(200 * time.Millisecond)
+	}
+
+	fmt.Println("LISTENING")
+
+	select {
+	case <-sessionDone:
+	case <-ctx.Done():
+	case err := <-acceptErr:
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Accept error: %v\n", err)
+		}
+	}
+
+	server.Close()
+	return 0
+}
+
+func runClientKbdInteractive(config *ssh.SessionConfig, port int) int {
+	ctx, cancel := context.WithTimeout(context.Background(), 25*time.Second)
+	defer cancel()
+
+	// Only allow keyboard-interactive auth on client side too.
+	config.AuthenticationMethods = []string{ssh.AuthMethodKeyboardInteractive}
+
+	client := tcp.NewClient(config)
+	session, err := client.OpenSession(ctx, "127.0.0.1", port)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "ERROR: failed to open session: %v\n", err)
+		return 1
+	}
+
+	// Accept server host key.
+	session.OnAuthenticating = func(e *ssh.AuthenticatingEventArgs) {
+		if e.AuthenticationType == ssh.AuthServerPublicKey {
+			e.AuthenticationResult = true
+			return
+		}
+		// Handle keyboard-interactive info requests from server.
+		if e.AuthenticationType == ssh.AuthClientInteractive && e.InfoRequest != nil {
+			e.InfoResponse = &messages.AuthenticationInfoResponseMessage{
+				Responses: []string{"secret42"},
+			}
+		}
+	}
+
+	authenticated, err := session.Authenticate(ctx, &ssh.ClientCredentials{
+		Username: "testuser",
+	})
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "ERROR: authentication error: %v\n", err)
+		return 1
+	}
+	if !authenticated {
+		fmt.Fprintf(os.Stderr, "Keyboard-interactive authentication failed\n")
+		return 1
+	}
+
+	fmt.Println("KBD_AUTH_OK")
+	fmt.Println("AUTHENTICATED")
+
+	// Verify session is functional with an echo test.
+	ch, err := session.OpenChannel(ctx)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "ERROR: failed to open channel: %v\n", err)
+		return 1
+	}
+	fmt.Println("CHANNEL_OPEN")
+
+	testData := []byte("KBD_ECHO_TEST")
+	echoCh := make(chan []byte, 1)
+
+	ch.SetDataReceivedHandler(func(data []byte) {
+		received := append([]byte(nil), data...)
+		select {
+		case echoCh <- received:
+		default:
+		}
+	})
+
+	if err := ch.Send(ctx, testData); err != nil {
+		fmt.Fprintf(os.Stderr, "ERROR: failed to send data: %v\n", err)
+		return 1
+	}
+
+	echoCtx, echoCancel := context.WithTimeout(ctx, 10*time.Second)
+	defer echoCancel()
+
+	select {
+	case echoed := <-echoCh:
+		if string(echoed) == string(testData) {
+			fmt.Println("ECHO_OK")
+		} else {
+			fmt.Fprintf(os.Stderr, "Echo mismatch: got %q\n", string(echoed))
 			return 1
 		}
 	case <-echoCtx.Done():
