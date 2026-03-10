@@ -76,6 +76,12 @@ export interface ECParameters extends KeyPairParameters {
 	d?: BigInt;
 }
 
+export interface EdDSAParameters extends KeyPairParameters {
+	curve: { name: string };
+	publicKey: Buffer;
+	privateKey?: Buffer;
+}
+
 /**
  * Given a public key, provides the corresponding private key.
  */
