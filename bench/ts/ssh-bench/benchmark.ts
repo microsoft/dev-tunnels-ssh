@@ -7,8 +7,17 @@ import chalk from 'chalk';
 export abstract class Benchmark {
 	public readonly measurements = new Map<string, number[]>();
 	public readonly higherIsBetter = new Map<string, boolean>();
+	public readonly category: string;
+	public readonly tags: Record<string, string>;
 
-	protected constructor(public readonly title: string) {}
+	protected constructor(
+		public readonly title: string,
+		category: string = '',
+		tags: Record<string, string> = {},
+	) {
+		this.category = category;
+		this.tags = tags;
+	}
 
 	protected addMeasurement(measurement: string, value: number): void {
 		let list = this.measurements.get(measurement);
@@ -68,6 +77,10 @@ export abstract class Benchmark {
 	}
 
 	public abstract run(): Promise<void>;
+
+	public async verify(): Promise<void> {
+		// Default no-op; subclasses override to add correctness checks.
+	}
 
 	public abstract dispose(): Promise<void>;
 }

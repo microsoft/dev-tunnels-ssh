@@ -58,6 +58,10 @@ jobs:
         with:
           node-version: '20.x'
 
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.21'
+
       - name: Restore npm packages
         run: npm install
 
@@ -69,6 +73,9 @@ jobs:
 
       - name: Build dotnet packages
         run: dotnet build -c Release --no-restore
+
+      - name: Build Go
+        run: npm run build-go
 
       - name: Pack TypeScript packages
         run: npm run pack-ts
@@ -87,6 +94,15 @@ jobs:
       - name: Test .NET Framework 4.8
         if: matrix.os == 'windows-latest'
         run: npm run test-cs -- --release --serial --framework net48
+        continue-on-error: true
+
+      - name: Test Go
+        run: npm run test-go -- --race
+        continue-on-error: true
+
+      - name: E2E tests
+        run: ./test/e2e/e2e-validate.sh
+        if: matrix.os == 'macOS-latest'
         continue-on-error: true
 
       - name: Start SSH debug session
