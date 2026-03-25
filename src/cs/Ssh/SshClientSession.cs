@@ -340,12 +340,7 @@ public class SshClientSession : SshSession
 			throw new InvalidOperationException($"{this} already connected.");
 		}
 
-		var protocol = this.Protocol;
-		if (protocol == null)
-		{
-			throw new InvalidOperationException("The session was never previously connected.");
-		}
-
+		var protocol = Protocol ?? throw new ObjectDisposedException(nameof(SshClientSession));
 		lock (protocol)
 		{
 			if (Reconnecting)
@@ -388,7 +383,8 @@ public class SshClientSession : SshSession
 			SessionId = null;
 			await ConnectAsync(stream, cancellation).ConfigureAwait(false);
 
-			if (SessionId == null || Algorithms == null || Algorithms.Signer == null)
+			var algorithms = Algorithms;
+			if (SessionId == null || algorithms == null || algorithms.Signer == null)
 			{
 				throw new SshConnectionException(IsClosed ?
 					"Connection lost while encrypting." : "Session is not encrypted.");
@@ -481,10 +477,11 @@ public class SshClientSession : SshSession
 				message, SshReconnectFailureReason.ClientDroppedMessages);
 		}
 
+		var protocol = Protocol ?? throw new ObjectDisposedException(nameof(SshClientSession));
 		int count = 0;
 		foreach (var message in messagesToResend)
 		{
-			await Protocol!.SendMessageAsync(message, cancellation).ConfigureAwait(false);
+			await protocol.SendMessageAsync(message, cancellation).ConfigureAwait(false);
 			count++;
 		}
 
