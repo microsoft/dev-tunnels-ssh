@@ -312,8 +312,8 @@ public class ECDsa : PublicKeyAlgorithm
 			var y = BigInt.FromByteArray(signatureBuffer.Slice(n, n).ToArray(), unsigned: true);
 			var keySizeInBytes = (algorithm.KeySize + 7) / 8;
 			var signatureWriter = new SshDataWriter(signature);
-			signatureWriter.WriteBinary(x.ToBuffer(unsigned: true, length: keySizeInBytes + 1));
-			signatureWriter.WriteBinary(y.ToBuffer(unsigned: true, length: keySizeInBytes + 1));
+			signatureWriter.Write(x);  // Fix: use mpint format (RFC 4251) for ECDSA sig per RFC 5656
+			signatureWriter.Write(y);  // Fix: use mpint format (RFC 4251) for ECDSA sig per RFC 5656
 		}
 
 		public bool Verify(Buffer data, Buffer signature)
