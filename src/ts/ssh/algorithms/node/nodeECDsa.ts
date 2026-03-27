@@ -354,14 +354,13 @@ class NodeECDsaSignerVerifier implements Signer, Verifier {
 		signer.update(data);
 		let signature = signer.sign(this.keyPair.privateKey);
 
-		// Reformat the signature integer bytes as required by SSH.
+		// Reformat the signature as two mpint big-ints per RFC 5656 / RFC 4251.
 		const signatureReader = new DerReader(signature);
 		const x = signatureReader.readInteger();
 		const y = signatureReader.readInteger();
-		const keySizeInBytes = Math.ceil(this.keyPair.curve.keySize / 8);
 		const signatureWriter = new SshDataWriter(Buffer.alloc(this.digestLength));
-		signatureWriter.writeBinary(x.toBytes({ unsigned: true, length: keySizeInBytes + 1 }));
-		signatureWriter.writeBinary(y.toBytes({ unsigned: true, length: keySizeInBytes + 1 }));
+		signatureWriter.writeBigInt(x);
+		signatureWriter.writeBigInt(y);
 		signature = signatureWriter.toBuffer();
 
 		return signature;

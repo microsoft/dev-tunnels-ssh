@@ -41,7 +41,7 @@ public abstract class PublicKeyAlgorithm : SshAlgorithm
 		return signature;
 	}
 
-	public Buffer CreateSignatureData(Buffer signature)
+	public virtual Buffer CreateSignatureData(Buffer signature)
 	{
 		var writer = new SshDataWriter();
 		writer.Write(Name, Encoding.ASCII);

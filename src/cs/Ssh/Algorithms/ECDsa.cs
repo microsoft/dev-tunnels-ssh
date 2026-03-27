@@ -46,6 +46,20 @@ public class ECDsa : PublicKeyAlgorithm
 		return new SignerVerifier(ecdsaKeyPair, ConvertHashAlgorithmName(HashAlgorithmName));
 	}
 
+	/// <summary>
+	/// Wraps a variable-length ECDSA signature (two mpints) in a signature data blob,
+	/// trimming the fixed-size signer buffer to the actual written content.
+	/// </summary>
+	public override Buffer CreateSignatureData(Buffer signature)
+	{
+		// The signature buffer was allocated at DigestLength (maximum possible size).
+		// Read the two canonical mpints to find the actual end, then trim.
+		var reader = new SshDataReader(signature);
+		reader.ReadBigInt();
+		reader.ReadBigInt();
+		return base.CreateSignatureData(signature.Slice(0, reader.Position));
+	}
+
 	public override IVerifier CreateVerifier(IKeyPair keyPair)
 	{
 		var ecdsaKeyPair = keyPair as KeyPair;
@@ -306,14 +320,13 @@ public class ECDsa : PublicKeyAlgorithm
 					$"Unexpected signature size: {signatureBuffer.Count}");
 			}
 
-			// Reformat the signature as two big-ints as required by SSH.
+			// Reformat the signature as two mpint big-ints per RFC 5656 / RFC 4251.
 			var n = signatureBuffer.Count / 2;
 			var x = BigInt.FromByteArray(signatureBuffer.Slice(0, n).ToArray(), unsigned: true);
 			var y = BigInt.FromByteArray(signatureBuffer.Slice(n, n).ToArray(), unsigned: true);
-			var keySizeInBytes = (algorithm.KeySize + 7) / 8;
 			var signatureWriter = new SshDataWriter(signature);
-			signatureWriter.Write(x);  // Fix: use mpint format (RFC 4251) for ECDSA sig per RFC 5656
-			signatureWriter.Write(y);  // Fix: use mpint format (RFC 4251) for ECDSA sig per RFC 5656
+			signatureWriter.Write(x);
+			signatureWriter.Write(y);
 		}
 
 		public bool Verify(Buffer data, Buffer signature)
