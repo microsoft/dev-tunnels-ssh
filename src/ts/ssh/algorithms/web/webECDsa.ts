@@ -299,14 +299,14 @@ class WebECDsaSignerVerifier implements Signer, Verifier {
 			throw new Error(`Unexpected signature length: ${signature.length}`);
 		}
 
-		// Reformat the signature integer bytes as required by SSH.
+		// Reformat the signature as two mpint big-ints per RFC 5656 / RFC 4251.
 		const x = BigInt.fromBytes(signature.slice(0, keySizeInBytes), { unsigned: true });
 		const y = BigInt.fromBytes(signature.slice(keySizeInBytes, signature.length), {
 			unsigned: true,
 		});
 		const signatureWriter = new SshDataWriter(Buffer.alloc(this.digestLength));
-		signatureWriter.writeBinary(x.toBytes({ unsigned: true, length: keySizeInBytes + 1 }));
-		signatureWriter.writeBinary(y.toBytes({ unsigned: true, length: keySizeInBytes + 1 }));
+		signatureWriter.writeBigInt(x);
+		signatureWriter.writeBigInt(y);
 		signature = signatureWriter.toBuffer();
 
 		return signature;
