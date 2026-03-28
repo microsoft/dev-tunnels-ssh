@@ -385,7 +385,9 @@ public class InteropTests
 				$" -o \"AuthorizedKeysFile={authorizedKeysFile}\"" +
 				$" -o \"StrictModes=no\"" + // Do not check permissions on key file/dir
 				$" -o \"PidFile={pidFile}\"" +
-				$" -o \"HostKey={hostKeyFile}\"";
+				$" -o \"HostKey={hostKeyFile}\"" +
+				// Re-enable legacy DH kex algorithms dropped from sshd defaults in OpenSSH 9.x+
+				$" -o \"KexAlgorithms=+diffie-hellman-group14-sha256,diffie-hellman-group16-sha512\"";
 			TestTS.TraceInformation($"{exePath} {args}");
 			processOutput.AppendLine($"{exePath} {args}");
 
@@ -537,7 +539,9 @@ public class InteropTests
 				$" -o \"AuthorizedKeysFile={authorizedKeysFile}\"" +
 				$" -o \"StrictModes=no\"" + // Do not check permissions on key file/dir
 				$" -o \"PidFile={pidFile}\"" +
-				$" -o \"HostKey={hostKeyFile}\"";
+				$" -o \"HostKey={hostKeyFile}\"" +
+				// Re-enable legacy DH kex algorithms dropped from sshd defaults in OpenSSH 9.x+
+				$" -o \"KexAlgorithms=+diffie-hellman-group14-sha256,diffie-hellman-group16-sha512\"";
 			TestTS.TraceInformation($"{sshdExePath} {args}");
 			sshdProcessOutput.AppendLine($"{sshdExePath} {args}");
 

@@ -233,6 +233,17 @@ yargs.command('test-cs', 'Run C# tests', async (yargs) => {
 		command += ` --filter ${yargs.argv.filter}`;
 	}
 
+	// On macOS, use a .runsettings file to inject DYLD_FALLBACK_LIBRARY_PATH into the test
+	// host process, so .NET can find OpenSSL libraries needed for AES-GCM and ECDH algorithms.
+	// Setting the env var on the parent process is not sufficient because macOS SIP strips
+	// DYLD_* variables when spawning child processes through a shell.
+	if (process.platform === 'darwin') {
+		const runsettingsPath = path.join(__dirname, 'test', 'cs', 'Ssh.Test', 'test.runsettings');
+		if (fs.existsSync(runsettingsPath)) {
+			command += ` --settings "${runsettingsPath}"`;
+		}
+	}
+
 	await executeCommand(__dirname, command);
 
 	if (yargs.argv.coverage && fs.existsSync(coverageSummaryFile)) {
