@@ -729,6 +729,10 @@ public class SshSession : IDisposable
 
 	private async Task CloseAsync(SshDisconnectReason reason, string message, Exception? ex)
 	{
+		// Capture the protocol reference atomically with IsConnected = false
+		// to prevent a race where a concurrent reconnect replaces Protocol
+		// before the old CloseAsync can disconnect it.
+		SshProtocol? protocolToDisconnect;
 		lock (this.disposeCancellationSource)
 		{
 			if (IsClosed || !IsConnected)
@@ -737,6 +741,7 @@ public class SshSession : IDisposable
 			}
 
 			IsConnected = false;
+			protocolToDisconnect = Protocol;
 		}
 
 		Trace.TraceEvent(
@@ -752,7 +757,7 @@ public class SshSession : IDisposable
 		else if (OnDisconnected())
 		{
 			// Keep the session in a disconnected (but not closed) state.
-			Protocol?.Disconnect();
+			protocolToDisconnect?.Disconnect();
 
 			this.Trace.TraceEvent(
 				TraceEventType.Information,
