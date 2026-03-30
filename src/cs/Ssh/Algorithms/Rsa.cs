@@ -1,4 +1,4 @@
-﻿// Copyright (c) Microsoft. All rights reserved.
+// Copyright (c) Microsoft. All rights reserved.
 
 using System;
 using System.Security.Cryptography;
@@ -80,7 +80,17 @@ public class Rsa : PublicKeyAlgorithm
 		{
 		}
 
-		private KeyPair(RSA algorithm)
+		/// <summary>
+		/// Creates a key pair that wraps an existing RSA instance.
+		/// </summary>
+		/// <remarks>
+		/// Use this constructor when the RSA private key is non-exportable
+		/// (for example, backed by CNG/KSP from a certificate imported by the
+		/// Azure Key Vault VM extension). The SSH library will call
+		/// <see cref="RSA.SignData"/> and <see cref="RSA.VerifyData"/> on the
+		/// provided instance directly, without ever needing to export raw key material.
+		/// </remarks>
+		public KeyPair(RSA algorithm)
 		{
 			if (algorithm == null)
 			{
