@@ -211,8 +211,6 @@ jobs:
     variables:
       - name: Codeql.SkipTaskAutoInjection
         value: true
-      - name: DYLD_FALLBACK_LIBRARY_PATH
-        value: $(DYLD_FALLBACK_LIBRARY_PATH):/usr/local/lib
     steps:
       - checkout: self
         fetchDepth: -1
