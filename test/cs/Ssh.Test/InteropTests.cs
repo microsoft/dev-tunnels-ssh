@@ -641,6 +641,11 @@ public class InteropTests
 			{
 				throw new Exception("SSH Process did not exit");
 			}
+
+			// WaitForExit(timeout) does not wait for async output handlers to finish.
+			// Call WaitForExit() (no timeout) to flush pending OutputDataReceived events.
+			sshProcess.WaitForExit();
+
 			if (!foundTestCommand)
 			{
 				throw new Exception("Did not execute test command \"echo abc\"");
