@@ -386,8 +386,8 @@ internal class KeyExchangeService : SshService
 		var serverExchangeValue = keyExchange.StartKeyExchange();
 		var sharedSecret = keyExchange.DecryptKeyExchange(clientExchangeValue);
 		// RFC 8332 §3: Host key blob MUST use "ssh-rsa", not the signature algorithm name.
-// PuTTY-based clients (FileZilla, WinSCP) reject host keys with wrong key type.
-var hostKeyAndCerts = privateKey.GetPublicKeyBytes(publicKeyAlg.KeyAlgorithmName);
+		// PuTTY-based clients (FileZilla, WinSCP) reject host keys with wrong key type.
+		var hostKeyAndCerts = privateKey.GetPublicKeyBytes(publicKeyAlg.KeyAlgorithmName);
 		var exchangeHash = ComputeExchangeHash(
 			keyExchange, hostKeyAndCerts, clientExchangeValue, serverExchangeValue, sharedSecret);
 
