@@ -406,7 +406,7 @@ export class KeyExchangeService extends SshService {
 		const clientExchangeValue = message.e || Buffer.alloc(0);
 		const serverExchangeValue = await keyExchange.startKeyExchange();
 		const sharedSecret = await keyExchange.decryptKeyExchange(clientExchangeValue);
-		const hostKeyAndCerts = await privateKey.getPublicKeyBytes(publicKeyAlg.name);
+		const hostKeyAndCerts = await privateKey.getPublicKeyBytes(publicKeyAlg.keyAlgorithmName);
 		if (!hostKeyAndCerts) {
 			throw new SshConnectionError('Public key not set.', SshDisconnectReason.keyExchangeFailed);
 		}
