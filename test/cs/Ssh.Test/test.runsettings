@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<RunSettings>
+  <RunConfiguration>
+    <EnvironmentVariables>
+      <DYLD_FALLBACK_LIBRARY_PATH>/opt/homebrew/opt/openssl@3/lib:/usr/local/lib</DYLD_FALLBACK_LIBRARY_PATH>
+    </EnvironmentVariables>
+  </RunConfiguration>
+</RunSettings>

@@ -356,6 +356,9 @@ export class InteropTests {
 				'PidFile=' + pidFile,
 				'-o',
 				'HostKey=' + hostKeyFile,
+				// Re-enable legacy DH kex algorithms dropped from sshd defaults in OpenSSH 9.x+
+				'-o',
+				'KexAlgorithms=+diffie-hellman-group14-sha256,diffie-hellman-group16-sha512',
 			];
 			trace(`${InteropTests.sshdExe} ${args.join(' ')}`);
 			processOutput += `${InteropTests.sshdExe} ${args.join(' ')}\n`;

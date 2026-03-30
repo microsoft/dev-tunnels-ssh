@@ -21,6 +21,7 @@
 	},
 	"files.insertFinalNewline": false,
 	"dotnetCoreExplorer.searchpatterns": "out/bin/Debug/*/net8.0/*.Test.dll",
+	"dotnet.unitTests.runSettingsPath": "test/cs/Ssh.Test/test.runsettings",
 	"typescript.tsdk": "node_modules/typescript/lib",
 	"mochaExplorer.debuggerConfig": "Attach Debugger",
 	"mochaExplorer.env": {
