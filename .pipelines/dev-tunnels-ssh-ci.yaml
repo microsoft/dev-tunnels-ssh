@@ -20,6 +20,9 @@ variables:
     value: '1.1.0-beta2-23052-02'
 
 parameters:
+  - name: 'PublishNpmPackage'
+    type: boolean
+    default: false
   - name: 'PublishNugetPackage'
     type: boolean
     default: false
@@ -203,6 +206,22 @@ jobs:
           publishFeedCredentials: 'dev-tunnels-nuget'
           publishPackageMetadata: true
 
+      - task: EsrpRelease@11
+        condition: and(succeeded(), eq('${{ parameters.PublishNpmPackage }}', 'true'))
+        inputs:
+          connectedservicename: 'Devtunnels-esrp-ame-msi'
+          usemanagedidentity: true
+          keyvaultname: 'tunnels-ppe-esrp-kv'
+          signcertname: 'esrp-sign'
+          clientid: '142047f4-eda8-4853-8776-c2e81803ea13'
+          intent: 'PackageDistribution'
+          contenttype: 'npm'
+          folderlocation: '$(System.DefaultWorkingDirectory)/out/pkg'
+          owners: 'jfullerton@microsoft.com'
+          approvers: 'jasongin@microsoft.com, debekoe@microsoft.com, ilbiryuk@microsoft.com'
+          mainpublisher: 'ESRPRELPACMAN'
+          domaintenantid: '33e01921-4d64-4f8c-a055-5bdaffd5e33d'
+
   - job: mac
     displayName: SSH Mac
     timeoutInMinutes: 90
@@ -211,8 +230,6 @@ jobs:
     variables:
       - name: Codeql.SkipTaskAutoInjection
         value: true
-      - name: DYLD_FALLBACK_LIBRARY_PATH
-        value: $(DYLD_FALLBACK_LIBRARY_PATH):/usr/local/lib
     steps:
       - checkout: self
         fetchDepth: -1
