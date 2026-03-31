@@ -19,7 +19,7 @@ namespace Microsoft.DevTunnels.Ssh.IO;
 /// <summary>
 /// Implements the base SSH protocol (sending and receiving messages) over a Stream.
 /// </summary>
-internal class SshProtocol : IDisposable
+public class SshProtocol : IDisposable
 {
 	private const uint MaxPacketLength = 1024 * 1024; // 1 MB
 	private const byte PacketLengthSize = 4;
@@ -43,6 +43,7 @@ internal class SshProtocol : IDisposable
 	private uint inboundFlow;
 	private uint outboundFlow;
 	private long lastIncomingTimestamp;
+	private bool disposed;
 
 	private struct SequencedMessage
 	{
@@ -856,15 +857,31 @@ internal class SshProtocol : IDisposable
 
 	public void Dispose()
 	{
-		this.Disconnect();
-		Algorithms?.Dispose();
+		Dispose(true);
+		GC.SuppressFinalize(this);
+	}
 
-		// SemaphoreSlim.Dispose() is not thread-safe and may cause WaitAsync(CancellationToken) not being cancelled
-		// when SemaphoreSlim.Dispose is invoked immediately after CancellationTokenSource.Cancel.
-		// See https://github.com/dotnet/runtime/issues/59639
-		// SemaphoreSlim.Dispose() only disposes it's wait handle, which is not initialized unless its AvailableWaitHandle
-		// property is read, which we don't use.
+	protected virtual void Dispose(bool waitForPendingOperations)
+	{
+		if (this.disposed)
+		{
+			return;
+		}
 
-		// this.sessionSemaphore.Dispose();
+		this.disposed = true;
+
+		if (waitForPendingOperations)
+		{
+			this.Disconnect();
+			Algorithms?.Dispose();
+
+			// SemaphoreSlim.Dispose() is not thread-safe and may cause WaitAsync(CancellationToken) not being cancelled
+			// when SemaphoreSlim.Dispose is invoked immediately after CancellationTokenSource.Cancel.
+			// See https://github.com/dotnet/runtime/issues/59639
+			// SemaphoreSlim.Dispose() only disposes it's wait handle, which is not initialized unless its AvailableWaitHandle
+			// property is read, which we don't use.
+
+			// this.sessionSemaphore.Dispose();
+		}
 	}
 }

@@ -204,7 +204,7 @@ public class SshSession : IDisposable
 	/// </remarks>
 	public ClaimsPrincipal? Principal { get; internal set; }
 
-	internal SshProtocol? Protocol { get; set; }
+	public SshProtocol? Protocol { get; set; }
 
 	internal bool Reconnecting { get; set; }
 

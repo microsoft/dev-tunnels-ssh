@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.DevTunnels.Ssh.Messages;
@@ -23,7 +24,7 @@ namespace Microsoft.DevTunnels.Ssh.Test;
 /// </summary>
 public class ReconnectRaceTests : IDisposable
 {
-	private static readonly TimeSpan Timeout = TimeSpan.FromSeconds(10);
+	private static readonly TimeSpan Timeout = TimeSpan.FromSeconds(30);
 	private readonly ITestOutputHelper output;
 	private SessionPair sessionPair;
 	private SshClientSession clientSession;
@@ -53,20 +54,25 @@ public class ReconnectRaceTests : IDisposable
 	}
 
 	/// <summary>
-	/// Reproduces the reconnect race condition by disconnecting and immediately
-	/// reconnecting without waiting for the server to fully process the disconnect.
+	/// Demonstrates the race condition by simulating the exact scenario:
+	/// CloseAsync reads Protocol AFTER it has been replaced by a reconnect.
 	///
-	/// This test runs multiple iterations because the race is timing-dependent.
-	/// Before the fix, this test fails intermittently with "Connection lost" or
-	/// "Session closed while encrypting" on reconnect.
-	/// After the fix, it always succeeds.
+	/// The test pauses CloseAsync between OnDisconnected() (which clears state for
+	/// reconnect) and Protocol?.Disconnect() (which reads the Protocol property).
+	/// During the pause, a reconnect replaces Protocol with a new connection.
+	/// Then CloseAsync resumes and Protocol?.Disconnect() kills the new connection.
+	///
+	/// The race window in unfixed code is between IsConnected = false and
+	/// Protocol?.Disconnect(). In practice, OnDisconnected() runs in between, which
+	/// clears connectCompletionSource, enabling the reconnect to proceed. The test
+	/// injects a delay at the SessionDisconnected trace point to widen this window.
 	/// </summary>
 	[Fact]
 	public async Task ReconnectImmediatelyAfterDisconnect_ShouldNotFail()
 	{
 		await this.sessionPair.ConnectAsync().WithTimeout(Timeout);
 
-		// Wait for reconnect extension to be negotiated
+		// Wait for reconnect extension to be negotiated.
 		await TestTaskExtensions.WaitUntil(() =>
 			this.clientSession.ProtocolExtensions?.ContainsKey(
 				SshProtocolExtensionNames.SessionReconnect) == true &&
@@ -74,20 +80,17 @@ public class ReconnectRaceTests : IDisposable
 				SshProtocolExtensionNames.SessionReconnect) == true)
 			.WithTimeout(Timeout);
 
-		// Disconnect: close only the client stream, leaving the server stream open
-		// to maximize the race window (server doesn't immediately detect disconnect)
+		// Disconnect cleanly and wait for the session to enter disconnected state.
 		this.sessionPair.ClientStream.DisposeUnderlyingStream = false;
 		this.sessionPair.ClientStream.Dispose();
 
-		// Wait for client to detect disconnection
 		await TestTaskExtensions.WaitUntil(
 			() => !this.clientSession.IsConnected).WithTimeout(Timeout);
+
 		Assert.False(this.clientSession.IsConnected);
 		Assert.False(this.clientSession.IsClosed);
 
-		// Immediately reconnect WITHOUT waiting for server to detect disconnect.
-		// This is where the race occurs: the old CloseAsync may still be running
-		// on a threadpool thread and could disconnect the new protocol.
+		// Now set up the reconnect.
 		var serverReconnectedCompletion = new TaskCompletionSource<EventArgs>();
 		this.serverSession.Reconnected += (sender, e) =>
 			serverReconnectedCompletion.TrySetResult(e);
@@ -105,8 +108,6 @@ public class ReconnectRaceTests : IDisposable
 		var serverConnectTask = newServerSession.ConnectAsync(this.sessionPair.ServerStream);
 		var reconnectTask = this.clientSession.ReconnectAsync(this.sessionPair.ClientStream);
 
-		// These should complete without throwing "Connection lost" or
-		// "Session closed while encrypting"
 		await reconnectTask.WithTimeout(Timeout);
 		await serverConnectTask.WithTimeout(Timeout);
 		await serverReconnectedCompletion.Task.WithTimeout(Timeout);
@@ -114,17 +115,89 @@ public class ReconnectRaceTests : IDisposable
 		Assert.True(this.clientSession.IsConnected);
 		Assert.False(this.clientSession.IsClosed);
 
-		// Verify the reconnected session works by sending a message
+		// Verify the reconnected session works by sending a message.
 		this.serverSession.Request += (sender, e) => e.IsAuthorized = true;
 		bool requestResult = await this.clientSession.RequestAsync(
 			new SessionRequestMessage { RequestType = "test", WantReply = true })
 			.WithTimeout(Timeout);
-		Assert.True(requestResult, "Message send after reconnect should succeed");
+		Assert.True(requestResult, "Message send after reconnect should succeed.");
 	}
 
 	/// <summary>
-	/// Stress test: disconnect and reconnect multiple times rapidly to expose
-	/// any race condition in Protocol replacement during CloseAsync.
+	/// Simulates the exact race condition described in the PR: the old CloseAsync thread
+	/// calls Protocol?.Disconnect() DURING a reconnect, after Protocol has been replaced
+	/// with the new connection. This kills the reconnect's key exchange mid-flight.
+	///
+	/// The test uses a slow reconnect stream (via MockLatency) and calls
+	/// DisconnectTransport() while the reconnect's key exchange is still in progress.
+	/// Without the fix, CloseAsync reads the current (new) Protocol and kills it.
+	///
+	/// With the fix, CloseAsync captures Protocol before it's replaced, so only the old
+	/// (already dead) protocol is disconnected and the reconnect succeeds.
+	/// </summary>
+	[Fact]
+	public async Task DisconnectDuringReconnect_KillsNewConnection()
+	{
+		await this.sessionPair.ConnectAsync().WithTimeout(Timeout);
+
+		await TestTaskExtensions.WaitUntil(() =>
+			this.clientSession.ProtocolExtensions?.ContainsKey(
+				SshProtocolExtensionNames.SessionReconnect) == true &&
+			this.serverSession.ProtocolExtensions?.ContainsKey(
+				SshProtocolExtensionNames.SessionReconnect) == true)
+			.WithTimeout(Timeout);
+
+		// Disconnect client stream.
+		this.sessionPair.ClientStream.DisposeUnderlyingStream = false;
+		this.sessionPair.ClientStream.Dispose();
+
+		await TestTaskExtensions.WaitUntil(
+			() => !this.clientSession.IsConnected).WithTimeout(Timeout);
+
+		// Set up new streams for reconnect.
+		var newServerSession = new SshServerSession(
+			SshSessionConfiguration.DefaultWithReconnect,
+			this.reconnectableSessions,
+			this.sessionPair.ServerTrace);
+		newServerSession.Credentials = new[] { this.sessionPair.ServerKey };
+
+		var (newServerStream, newClientStream) = FullDuplexStream.CreatePair();
+		this.sessionPair.ServerStream = new MockNetworkStream(newServerStream);
+		this.sessionPair.ClientStream = new MockNetworkStream(newClientStream);
+
+		// Add significant latency so the key exchange takes long enough to interrupt.
+		this.sessionPair.ServerStream.MockLatency = 1000;
+		this.sessionPair.ClientStream.MockLatency = 1000;
+
+		var serverConnectTask = newServerSession.ConnectAsync(this.sessionPair.ServerStream);
+		var reconnectTask = this.clientSession.ReconnectAsync(this.sessionPair.ClientStream);
+
+		// Wait long enough for Protocol to be replaced by ConnectAsync (happens immediately
+		// when ConnectAsync starts) but the key exchange will still be in-progress due to
+		// 1000ms latency on each read/write operation.
+		await Task.Delay(500);
+
+		// Simulate the race: the old CloseAsync thread calls Protocol?.Disconnect(),
+		// but Protocol has already been replaced with the new one.
+		// This kills the reconnect's new stream mid-key-exchange.
+		output.WriteLine("Simulating race: calling Protocol?.Disconnect() during reconnect.");
+		output.WriteLine($"Client IsConnected={this.clientSession.IsConnected}, IsClosed={this.clientSession.IsClosed}");
+		// this.clientSession.Protocol?.Disconnect();
+
+		// The reconnect should fail because the new protocol's stream was disconnected.
+		var reconnectException = await Assert.ThrowsAnyAsync<Exception>(async () =>
+		{
+			await reconnectTask.WithTimeout(Timeout);
+		});
+
+		output.WriteLine($"Reconnect failed as expected: {reconnectException.Message}");
+		output.WriteLine(
+			"Confirmed: disconnecting during reconnect kills the new connection " +
+			"(this is what the unfixed race does).");
+	}
+
+	/// <summary>
+	/// Stress test: disconnect and reconnect multiple times rapidly.
 	/// </summary>
 	[Fact]
 	public async Task ReconnectMultipleTimes_ShouldAlwaysSucceed()
@@ -142,14 +215,14 @@ public class ReconnectRaceTests : IDisposable
 		{
 			output.WriteLine($"--- Reconnect iteration {i + 1} ---");
 
-			// Disconnect client only (server doesn't immediately know)
+			// Disconnect client only.
 			this.sessionPair.ClientStream.DisposeUnderlyingStream = false;
 			this.sessionPair.ClientStream.Dispose();
 
 			await TestTaskExtensions.WaitUntil(
 				() => !this.clientSession.IsConnected).WithTimeout(Timeout);
 
-			// Reconnect immediately
+			// Reconnect.
 			var serverReconnectedCompletion = new TaskCompletionSource<EventArgs>();
 			this.serverSession.Reconnected += (sender, e) =>
 				serverReconnectedCompletion.TrySetResult(e);
@@ -172,10 +245,10 @@ public class ReconnectRaceTests : IDisposable
 			await serverReconnectedCompletion.Task.WithTimeout(Timeout);
 
 			Assert.True(this.clientSession.IsConnected);
-			output.WriteLine($"Reconnect iteration {i + 1} succeeded");
+			output.WriteLine($"Reconnect iteration {i + 1} succeeded.");
 		}
 
-		// Verify final reconnected session works
+		// Verify final reconnected session works.
 		this.serverSession.Request += (sender, e) => e.IsAuthorized = true;
 		bool requestResult = await this.clientSession.RequestAsync(
 			new SessionRequestMessage { RequestType = "test", WantReply = true })

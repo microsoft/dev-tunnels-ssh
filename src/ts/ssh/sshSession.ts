@@ -1345,6 +1345,10 @@ export class SshSession implements Disposable {
 			return;
 		}
 
+		// Capture the protocol reference atomically with connected = false
+		// to prevent a race where a concurrent reconnect replaces protocol
+		// before the old close can disconnect it.
+		const protocolToDispose = this.protocol;
 		this.connected = false;
 
 		this.trace(
@@ -1358,13 +1362,13 @@ export class SshSession implements Disposable {
 				const disconnectMessage = new DisconnectMessage();
 				disconnectMessage.reasonCode = reason;
 				disconnectMessage.description = message || '';
-				await this.protocol?.sendMessage(disconnectMessage);
+				await protocolToDispose?.sendMessage(disconnectMessage);
 			} catch (e) {
 				// Already disconnected.
 			}
 		} else if (this.handleDisconnected()) {
 			// Keep the session in a disconnected (but not closed) state.
-			this.protocol?.dispose();
+			protocolToDispose?.dispose();
 
 			this.trace(TraceLevel.Info, SshTraceEventIds.sessionDisconnected, `${this} disconnected.`);
 			this.disconnectedEmitter.fire();
