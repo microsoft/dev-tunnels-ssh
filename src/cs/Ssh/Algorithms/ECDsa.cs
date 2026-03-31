@@ -130,9 +130,9 @@ public class ECDsa : PublicKeyAlgorithm
 		/// Use this constructor when the ECDSA private key is non-exportable
 		/// (for example, backed by CNG/KSP from a certificate imported by the
 		/// Azure Key Vault VM extension). The SSH library will call
-		/// <see cref="System.Security.Cryptography.ECDsa.SignData"/> and
-		/// <see cref="System.Security.Cryptography.ECDsa.VerifyData"/> on the
-		/// provided instance directly, without ever needing to export raw key material.
+		/// <see cref="System.Security.Cryptography.ECDsa.SignData(byte[], int, int, HashAlgorithmName)"/> and
+		/// <see cref="System.Security.Cryptography.ECDsa.VerifyData(byte[], int, int, byte[], HashAlgorithmName)"/>
+		/// on the provided instance directly, without ever needing to export raw key material.
 		/// </remarks>
 		public KeyPair(System.Security.Cryptography.ECDsa algorithm)
 		{
@@ -143,7 +143,9 @@ public class ECDsa : PublicKeyAlgorithm
 
 			// Determine the curve from the public key parameters (always exportable).
 			var p = algorithm.ExportParameters(false);
+#pragma warning disable CA1308 // Normalize strings to uppercase
 			var curveName = p.Curve.Oid?.FriendlyName?.ToLowerInvariant() ?? string.Empty;
+#pragma warning restore CA1308 // Normalize strings to uppercase
 			if (curveName.StartsWith("ecdsa_p", StringComparison.Ordinal))
 			{
 				curveName = "nistp" + curveName.Substring(7);
