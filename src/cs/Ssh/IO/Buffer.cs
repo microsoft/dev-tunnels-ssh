@@ -130,8 +130,8 @@ public struct Buffer : IEquatable<Buffer>, ICollection<byte>
 		return Copy().Array;
 	}
 
-#if SSH_ENABLE_SPAN
 #pragma warning disable CA2225 // Operator overloads have named alternates
+#if SSH_ENABLE_SPAN
 
 	public Span<byte> Span => new Span<byte>(Array, Offset, Count);
 
@@ -141,13 +141,13 @@ public struct Buffer : IEquatable<Buffer>, ICollection<byte>
 
 	public static implicit operator Memory<byte>(Buffer buffer) => buffer.Memory;
 
-#pragma warning restore CA2225 // Operator overloads have named alternates
 #endif
 
 	public static implicit operator Buffer(byte[] array)
 	{
 		return Buffer.From(array ?? System.Array.Empty<byte>());
 	}
+#pragma warning restore CA2225 // Operator overloads have named alternates
 
 	public override bool Equals(object? obj)
 	{

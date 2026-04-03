@@ -87,8 +87,9 @@ public class Rsa : PublicKeyAlgorithm
 		/// Use this constructor when the RSA private key is non-exportable
 		/// (for example, backed by CNG/KSP from a certificate imported by the
 		/// Azure Key Vault VM extension). The SSH library will call
-		/// <see cref="RSA.SignData"/> and <see cref="RSA.VerifyData"/> on the
-		/// provided instance directly, without ever needing to export raw key material.
+		/// <see cref="RSA.SignData(byte[], int, int, HashAlgorithmName, RSASignaturePadding)"/> and
+		/// <see cref="RSA.VerifyData(byte[], int, int, byte[], HashAlgorithmName, RSASignaturePadding)"/>
+		/// on the provided instance directly, without ever needing to export raw key material.
 		/// </remarks>
 		public KeyPair(RSA algorithm)
 		{
