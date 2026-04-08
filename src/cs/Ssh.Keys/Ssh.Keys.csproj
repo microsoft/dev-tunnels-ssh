@@ -7,6 +7,8 @@
 		<DocumentationFile>$(TargetDirectory)$(AssemblyName).xml</DocumentationFile>
 		<Description>.NET SSH Library - Extensions for importing and exporting keys</Description>
 		<IncludeBuildOutput>true</IncludeBuildOutput>
+
+		<PackageReadmeFile>README.md</PackageReadmeFile>
 	</PropertyGroup>
 
 	<ItemGroup>
@@ -15,5 +17,7 @@
 
 	<ItemGroup>
 		<None Remove="Microsoft.DevTunnels.Ssh.Keys.xml" />
+
+		<None Include="..\README.md" Pack="true" PackagePath="" />
 	</ItemGroup>
 </Project>
