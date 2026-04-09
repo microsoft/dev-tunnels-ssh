@@ -850,25 +850,79 @@ func TestForwardedPortFields(t *testing.T) {
 
 // --- relayStreams bidirectional shutdown tests ---
 
-// duplexStream is a bidirectional stream made from two io.Pipe pairs.
-type duplexStream struct {
-	reader *io.PipeReader
-	writer *io.PipeWriter
+// asyncPipeRWC wraps an io.Pipe with a buffered write path. Writes copy data
+// into a channel and return immediately; a background goroutine drains the
+// channel into the underlying PipeWriter. This provides the write buffering
+// that real OS transports (TCP sockets) offer via kernel buffers, which
+// io.Pipe lacks. Without this, SSH Connect deadlocks when both sides pipeline
+// version + kexInit writes through synchronous pipes.
+type asyncPipeRWC struct {
+	r         *io.PipeReader
+	w         *io.PipeWriter
+	wch       chan []byte
+	wdone     chan struct{}
+	closeCh   chan struct{}
+	closeOnce sync.Once
 }
 
-func (d *duplexStream) Read(p []byte) (int, error)  { return d.reader.Read(p) }
-func (d *duplexStream) Write(p []byte) (int, error) { return d.writer.Write(p) }
-func (d *duplexStream) Close() error {
-	d.reader.Close()
-	d.writer.Close()
-	return nil
+func newAsyncPipeRWC(r *io.PipeReader, w *io.PipeWriter) *asyncPipeRWC {
+	p := &asyncPipeRWC{
+		r:       r,
+		w:       w,
+		wch:     make(chan []byte, 256),
+		wdone:   make(chan struct{}),
+		closeCh: make(chan struct{}),
+	}
+	go p.writePump()
+	return p
 }
 
-// createDuplexStreams creates a pair of connected bidirectional streams.
+func (p *asyncPipeRWC) writePump() {
+	defer close(p.wdone)
+	for {
+		select {
+		case data := <-p.wch:
+			if _, err := p.w.Write(data); err != nil {
+				p.closeOnce.Do(func() { close(p.closeCh) })
+				return
+			}
+		case <-p.closeCh:
+			return
+		}
+	}
+}
+
+func (p *asyncPipeRWC) Read(b []byte) (int, error) { return p.r.Read(b) }
+
+func (p *asyncPipeRWC) Write(b []byte) (int, error) {
+	select {
+	case <-p.closeCh:
+		return 0, io.ErrClosedPipe
+	default:
+	}
+	data := make([]byte, len(b))
+	copy(data, b)
+	select {
+	case p.wch <- data:
+		return len(b), nil
+	case <-p.closeCh:
+		return 0, io.ErrClosedPipe
+	}
+}
+
+func (p *asyncPipeRWC) Close() error {
+	p.closeOnce.Do(func() { close(p.closeCh) })
+	<-p.wdone
+	p.r.Close()
+	return p.w.Close()
+}
+
+// createDuplexStreams creates a pair of connected bidirectional streams
+// with async-buffered writes to simulate real TCP socket behavior.
 func createDuplexStreams() (io.ReadWriteCloser, io.ReadWriteCloser) {
 	r1, w1 := io.Pipe()
 	r2, w2 := io.Pipe()
-	return &duplexStream{reader: r1, writer: w2}, &duplexStream{reader: r2, writer: w1}
+	return newAsyncPipeRWC(r1, w2), newAsyncPipeRWC(r2, w1)
 }
 
 // createSessionPairWithChannel creates a no-security session pair over io.Pipe,
