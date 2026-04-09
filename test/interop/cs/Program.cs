@@ -7,6 +7,7 @@
 //   Client prints "AUTHENTICATED", "CHANNEL_OPEN", "ECHO_OK", "DONE".
 
 using System;
+using System.Diagnostics;
 using System.Linq;
 using System.Net;
 using System.Security.Claims;
@@ -106,7 +107,8 @@ class Program
 		var pkAlg = config.PublicKeyAlgorithms.First(a => a != null);
 		var hostKey = pkAlg!.GenerateKeyPair();
 
-		var server = new SshServer(config);
+		var trace = new TraceSource(nameof(SshServer));
+		var server = new SshServer(config, trace);
 		server.Credentials = new[] { hostKey };
 
 		var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
@@ -129,7 +131,7 @@ class Program
 					{
 						var copy = data.ToArray();
 						await channel.SendAsync(
-							new Buffer(copy), cts.Token);
+								Microsoft.DevTunnels.Ssh.Buffer.From(copy), cts.Token);
 						Console.WriteLine($"ECHOED {copy.Length}");
 						Console.Out.Flush();
 					}
@@ -164,7 +166,8 @@ class Program
 	static async Task<int> RunClient(SshSessionConfiguration config, int port)
 	{
 		var cts = new CancellationTokenSource(TimeSpan.FromSeconds(25));
-		var client = new SshClient(config);
+		var trace = new TraceSource(nameof(SshClient));
+		var client = new SshClient(config, trace);
 		var session = await client.OpenSessionAsync("127.0.0.1", port);
 
 		session.Authenticating += (_, e) =>
@@ -197,7 +200,7 @@ class Program
 			recvDone.TrySetResult(received.ToArray());
 		};
 
-		await channel.SendAsync(new Buffer(testData), cts.Token);
+		await channel.SendAsync(Microsoft.DevTunnels.Ssh.Buffer.From(testData), cts.Token);
 
 		// Wait for echo.
 		var echoed = await Task.WhenAny(recvDone.Task, Task.Delay(TimeSpan.FromSeconds(10)));
