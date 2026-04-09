@@ -16,6 +16,16 @@ CS_AVAILABLE=false
 
 export NODE_PATH="$REPO_ROOT/out/lib/node_modules"
 
+# On macOS, .NET needs DYLD_FALLBACK_LIBRARY_PATH to find libssl for ECDH algorithms.
+if [ "$(uname)" = "Darwin" ] && [ -z "${DYLD_FALLBACK_LIBRARY_PATH:-}" ]; then
+  for p in /opt/homebrew/opt/openssl@3/lib /opt/homebrew/opt/openssl/lib /usr/local/opt/openssl@3/lib /usr/local/opt/openssl/lib; do
+    if [ -d "$p" ]; then
+      export DYLD_FALLBACK_LIBRARY_PATH="$p"
+      break
+    fi
+  done
+fi
+
 # Global tracking for trap cleanup.
 SERVER_LOG=""
 CLIENT_LOG=""
