@@ -8,13 +8,23 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
-GO_BINARY="$REPO_ROOT/test/go/interop/go/go-ssh-interop"
-TS_SCRIPT="$REPO_ROOT/test/go/interop/ts/interop-helper.js"
-CS_PROJ="$REPO_ROOT/test/go/interop/cs/InteropHelper.csproj"
+GO_BINARY="$REPO_ROOT/test/interop/go/go-ssh-interop"
+TS_SCRIPT="$REPO_ROOT/test/interop/ts/interop-helper.js"
+CS_PROJ="$REPO_ROOT/test/interop/cs/InteropHelper.csproj"
 TIMEOUT=15
 CS_AVAILABLE=false
 
 export NODE_PATH="$REPO_ROOT/out/lib/node_modules"
+
+# On macOS, .NET needs DYLD_FALLBACK_LIBRARY_PATH to find libssl for ECDH algorithms.
+if [ "$(uname)" = "Darwin" ] && [ -z "${DYLD_FALLBACK_LIBRARY_PATH:-}" ]; then
+  for p in /opt/homebrew/opt/openssl@3/lib /opt/homebrew/opt/openssl/lib /usr/local/opt/openssl@3/lib /usr/local/opt/openssl/lib; do
+    if [ -d "$p" ]; then
+      export DYLD_FALLBACK_LIBRARY_PATH="$p"
+      break
+    fi
+  done
+fi
 
 # Global tracking for trap cleanup.
 SERVER_LOG=""

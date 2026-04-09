@@ -7,7 +7,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
-INTEROP_SCRIPT="$REPO_ROOT/test/go/interop/ts/interop-helper.js"
+INTEROP_SCRIPT="$REPO_ROOT/test/interop/ts/interop-helper.js"
 TIMEOUT=15
 
 export NODE_PATH="$REPO_ROOT/out/lib/node_modules"

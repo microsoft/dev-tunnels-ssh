@@ -177,7 +177,7 @@ verify the server echoes it back. The 3 feature mode tests exercise:
 
 **3 tests**: 3 algorithm combos (basic echo only).
 
-Uses `node interop-helper.js` from `test/go/interop/ts/`. The TS helper
+Uses `node interop-helper.js` from `test/interop/ts/`. The TS helper
 supports only the default echo mode — no feature modes.
 
 Requires `NODE_PATH` pointing to built TS libraries at `out/lib/node_modules`.
@@ -186,7 +186,7 @@ Requires `NODE_PATH` pointing to built TS libraries at `out/lib/node_modules`.
 
 **3 tests**: 3 algorithm combos (basic echo only).
 
-Uses `dotnet run --project InteropHelper.csproj` from `test/go/interop/cs/`.
+Uses `dotnet run --project InteropHelper.csproj` from `test/interop/cs/`.
 The C# helper supports only the default echo mode.
 
 **Skipped automatically** if `dotnet` is not on PATH.
@@ -296,7 +296,7 @@ implements.
 The E2E scripts don't run the SSH libraries directly — they use small helper
 programs that wrap each implementation into a consistent CLI interface.
 
-### Go Helper (`test/go/interop/go/main.go`)
+### Go Helper (`test/interop/go/main.go`)
 
 ```bash
 go-ssh-interop <role> <port> <kex> <pk> <enc> <hmac> [mode] [extra_arg]
@@ -306,9 +306,9 @@ go-ssh-interop <role> <port> <kex> <pk> <enc> <hmac> [mode] [extra_arg]
 - **Modes:** (none), `large`, `multi`, `pkauth`, `portfwd`, `reconnect`,
   `concurrent-requests`, `pipe-request`
 - **Extra arg:** echo port (portfwd client mode only)
-- **Build:** `cd test/go/interop/go && go build -o go-ssh-interop .`
+- **Build:** `cd test/interop/go && go build -o go-ssh-interop .`
 
-### TS Helper (`test/go/interop/ts/interop-helper.js`)
+### TS Helper (`test/interop/ts/interop-helper.js`)
 
 ```bash
 node interop-helper.js <role> <port> <kex> <pk> <enc> <hmac>
@@ -318,7 +318,7 @@ node interop-helper.js <role> <port> <kex> <pk> <enc> <hmac>
 - **Modes:** Default echo only (no feature modes)
 - **Requires:** `NODE_PATH` set to `out/lib/node_modules`
 
-### C# Helper (`test/go/interop/cs/Program.cs`)
+### C# Helper (`test/interop/cs/Program.cs`)
 
 ```bash
 dotnet run --project InteropHelper.csproj -c Release --no-build -- \
@@ -385,12 +385,12 @@ Failed tests print both client and server logs inline:
 PORT=9876
 
 # Terminal 1: start server
-./test/go/interop/go/go-ssh-interop server $PORT \
+./test/interop/go/go-ssh-interop server $PORT \
   ecdh-sha2-nistp384 ecdsa-sha2-nistp384 \
   aes256-gcm@openssh.com hmac-sha2-256
 
 # Terminal 2: run client
-./test/go/interop/go/go-ssh-interop client $PORT \
+./test/interop/go/go-ssh-interop client $PORT \
   ecdh-sha2-nistp384 ecdsa-sha2-nistp384 \
   aes256-gcm@openssh.com hmac-sha2-256
 ```

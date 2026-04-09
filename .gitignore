@@ -19,3 +19,6 @@ test/go/**/*.test
 
 # Go compiled benchmark binary
 bench/go/cmd/bench/bench
+
+# Go compiled interop binary
+test/interop/go/go-ssh-interop

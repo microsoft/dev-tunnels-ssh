@@ -6,6 +6,11 @@
 		<AssemblyName>InteropHelper</AssemblyName>
 		<RootNamespace>InteropHelper</RootNamespace>
 		<IsPackable>false</IsPackable>
+		<!-- TargetFramework is not yet set when Directory.Build.props imports config.props,
+		     so the conditional defines from config.props are not applied to this project.
+		     Re-declare them here so that #if SSH_ENABLE_ECDH / SSH_ENABLE_AESGCM guards
+		     in Program.cs compile correctly. -->
+		<DefineConstants>$(DefineConstants);SSH_ENABLE_ECDH;SSH_ENABLE_AESGCM</DefineConstants>
 	</PropertyGroup>
 
 	<ItemGroup>
