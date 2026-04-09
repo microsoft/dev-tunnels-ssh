@@ -16,6 +16,13 @@ type channelOpenResult struct {
 	err     error
 }
 
+const (
+	// maxAcceptQueueSize is the maximum number of unaccepted channels that can
+	// be queued before new channel opens are rejected. This prevents unbounded
+	// growth when a server selectively accepts certain channel types.
+	maxAcceptQueueSize = 64
+)
+
 // pendingChannelOpen tracks a pending channel open request, storing both the
 // original Channel created during OpenChannel and the result channel used to
 // deliver the confirmation/failure back to the caller.
@@ -477,6 +484,22 @@ func (s *Session) handleChannelOpen(payload []byte) error {
 
 	// Add channel to active channels and start request handler.
 	s.mu.Lock()
+	acceptQueueLen := len(s.acceptQueue)
+	s.mu.Unlock()
+
+	if acceptQueueLen >= maxAcceptQueueSize {
+		s.trace(TraceLevelWarning, TraceEventChannelOpenFailed,
+			fmt.Sprintf("Channel open rejected: accept queue full (%d), type=%s",
+				acceptQueueLen, msg.ChannelType))
+		failMsg := &messages.ChannelOpenFailureMessage{
+			RecipientChannel: msg.SenderChannel,
+			ReasonCode:       messages.ChannelOpenFailureResourceShortage,
+			Description:      "accept queue full",
+		}
+		return s.protocol.sendMessage(failMsg.ToBuffer())
+	}
+
+	s.mu.Lock()
 	s.channels[localID] = ch
 	s.mu.Unlock()
 	ch.startRequestHandler()
@@ -719,11 +742,12 @@ func (s *Session) handleChannelRequest(payload []byte) error {
 
 	if !ch.enqueueRequest(req) {
 		// Queue is full — reject with channel-failure if want_reply.
+		ch.metrics.addDroppedRequest()
 		if basicMsg.WantReply {
 			reply := &messages.ChannelFailureMessage{
 				RecipientChannel: ch.RemoteChannelID,
 			}
-			_ = s.protocol.sendMessage(reply.ToBuffer())
+			_ = s.SendMessage(reply)
 		} else {
 			log.Printf("ssh: dropped fire-and-forget channel request %q on channel %d (queue full)",
 				basicMsg.RequestType, ch.ChannelID)

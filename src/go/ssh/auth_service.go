@@ -424,8 +424,8 @@ func (s *authenticationService) sendAuthFailure() error {
 		maxAttempts = 5
 	}
 	if s.failureCount >= maxAttempts {
-		s.session.close(messages.DisconnectNoMoreAuthMethodsAvailable,
-			"Authentication failed.", true, true)
+		s.session.closeImpl(messages.DisconnectNoMoreAuthMethodsAvailable,
+			"Authentication failed.", true, true, nil)
 	}
 
 	return nil

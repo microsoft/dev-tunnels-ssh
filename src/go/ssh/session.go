@@ -279,8 +279,8 @@ func (s *Session) Connect(ctx context.Context, stream io.ReadWriteCloser) error 
 	s.mu.Lock()
 	p.trace = s.Trace
 	s.protocol = p
-	s.mu.Unlock()
 	s.done = make(chan struct{})
+	s.mu.Unlock()
 	// Don't reinitialize channels during reconnect — preserve existing channel state.
 	if !isReconnecting {
 		s.initChannels()
@@ -294,8 +294,8 @@ func (s *Session) Connect(ctx context.Context, stream io.ReadWriteCloser) error 
 	// Per RFC 4253, KexInit can be sent immediately after the version string.
 	s.mu.Lock()
 	s.kexService = newKeyExchangeService(s)
-	s.mu.Unlock()
 	s.kexDone = make(chan struct{})
+	s.mu.Unlock()
 	kexInitPayload, guessPayload := s.kexService.startKeyExchange(true)
 
 	// Pipeline version string + KexInit in a background goroutine, matching
@@ -368,7 +368,7 @@ func (s *Session) Connect(ctx context.Context, stream io.ReadWriteCloser) error 
 	case <-s.done:
 		return fmt.Errorf("session closed during key exchange")
 	case <-ctx.Done():
-		s.close(messages.DisconnectByApplication, "connect context cancelled", false, false)
+		s.closeImpl(messages.DisconnectByApplication, "connect context cancelled", false, false, nil)
 		return ctx.Err()
 	}
 }
@@ -442,7 +442,7 @@ func (s *Session) getPublicKeyAlgorithms() []string {
 // Close closes the session gracefully with DisconnectByApplication reason.
 // Implements io.Closer. Returns nil; close errors are reported via OnClosed.
 func (s *Session) Close() error {
-	s.close(messages.DisconnectByApplication, "Session closed by application.", true, false)
+	s.closeImpl(messages.DisconnectByApplication, "Session closed by application.", true, false, nil)
 	return nil
 }
 
@@ -451,15 +451,16 @@ var _ io.Closer = (*Session)(nil)
 
 // CloseWithReason closes the session with a specific disconnect reason and message.
 func (s *Session) CloseWithReason(ctx context.Context, reason messages.SSHDisconnectReason, msg string) error {
-	s.close(reason, msg, true, false)
+	s.closeImpl(reason, msg, true, false, nil)
 	return nil
 }
 
-// close is the internal close implementation.
+// closeImpl is the unified internal close implementation.
 // sendDisconnect controls whether a disconnect message is sent to the remote side.
 // fromDispatchLoop must be true when called from within the dispatch loop goroutine
 // to avoid deadlocking on the done channel.
-func (s *Session) close(reason messages.SSHDisconnectReason, msg string, sendDisconnect bool, fromDispatchLoop bool) {
+// customErr, if non-nil, is propagated to channel and session OnClosed callbacks.
+func (s *Session) closeImpl(reason messages.SSHDisconnectReason, msg string, sendDisconnect bool, fromDispatchLoop bool, customErr error) {
 	s.mu.Lock()
 	if s.isClosed {
 		s.mu.Unlock()
@@ -476,7 +477,7 @@ func (s *Session) close(reason messages.SSHDisconnectReason, msg string, sendDis
 
 	wasConnected := s.isConnected
 	s.isConnected = false
-s.isClosed = true
+	s.isClosed = true
 
 	// Signal keep-alive goroutine to stop (it listens on s.done).
 	s.keepAliveResetCh = nil
@@ -512,8 +513,16 @@ s.isClosed = true
 		_ = s.protocol.close()
 	}
 
-	// Notify all channels of session close.
+	// Use custom error if provided, otherwise create ConnectionError.
 	sessionErr := &ConnectionError{Reason: reason, Msg: msg}
+	var channelErr error
+	if customErr != nil {
+		channelErr = customErr
+	} else {
+		channelErr = sessionErr
+	}
+
+	// Notify all channels of session close.
 	s.mu.Lock()
 	channelsCopy := make([]*Channel, 0, len(s.channels))
 	for _, ch := range s.channels {
@@ -527,7 +536,7 @@ s.isClosed = true
 	s.mu.Unlock()
 
 	for _, ch := range channelsCopy {
-		ch.handleSessionClose(sessionErr)
+		ch.handleSessionClose(channelErr)
 	}
 
 	// Wait for dispatch loop to finish (unless we're called from within it).
@@ -555,97 +564,16 @@ s.isClosed = true
 		onClosed(&SessionClosedEventArgs{
 			Reason:  reason,
 			Message: msg,
-			Err:     &ConnectionError{Reason: reason, Msg: msg},
+			Err:     channelErr,
 		})
 	}
 }
-
-
-
 
 // CloseWithError closes the session with a specific disconnect reason and a custom error
 // that is propagated to channel OnClosed callbacks.
 func (s *Session) CloseWithError(reason messages.SSHDisconnectReason, msg string, err error) error {
-	s.closeWithError(reason, msg, true, false, err)
+	s.closeImpl(reason, msg, true, false, err)
 	return nil
-}
-
-// closeWithError is the internal close implementation that supports passing a custom error.
-func (s *Session) closeWithError(reason messages.SSHDisconnectReason, msg string, sendDisconnect bool, fromDispatchLoop bool, customErr error) {
-	s.mu.Lock()
-	if s.isClosed {
-		s.mu.Unlock()
-		return
-	}
-	wasConnected := s.isConnected
-	s.isConnected = false
-s.isClosed = true
-	s.mu.Unlock()
-
-	// Try to send disconnect message (ignore errors, stream may already be closed).
-	if sendDisconnect && wasConnected && s.protocol != nil {
-		disconnectMsg := &messages.DisconnectMessage{
-			ReasonCode:  reason,
-			Description: msg,
-		}
-		_ = s.protocol.sendMessage(disconnectMsg.ToBuffer())
-	}
-
-	// Use custom error if provided, otherwise create ConnectionError.
-	var channelErr error
-	if customErr != nil {
-		channelErr = customErr
-	} else {
-		channelErr = &ConnectionError{Reason: reason, Msg: msg}
-	}
-
-	s.mu.Lock()
-	channelsCopy := make([]*Channel, 0, len(s.channels))
-	for _, ch := range s.channels {
-		channelsCopy = append(channelsCopy, ch)
-	}
-	// Complete any pending channel opens with an error.
-	sessionErr := &ConnectionError{Reason: reason, Msg: msg}
-	for id, pending := range s.pendingOpens {
-		pending.resultCh <- &channelOpenResult{err: sessionErr}
-		delete(s.pendingOpens, id)
-	}
-	s.mu.Unlock()
-
-	for _, ch := range channelsCopy {
-		ch.handleSessionClose(channelErr)
-	}
-
-	// Close the protocol/stream (unblocks the dispatch loop read).
-	if s.protocol != nil {
-		_ = s.protocol.close()
-	}
-
-	// Wait for dispatch loop to finish (unless we're called from within it).
-	if !fromDispatchLoop && s.done != nil {
-		<-s.done
-	}
-
-	// Close all activated services.
-	s.closeServices()
-
-	// Fire OnClosed callback exactly once.
-	s.mu.Lock()
-	if s.closedEventFired {
-		s.mu.Unlock()
-		return
-	}
-	s.closedEventFired = true
-	onClosed := s.OnClosed
-	s.mu.Unlock()
-
-	if onClosed != nil {
-		onClosed(&SessionClosedEventArgs{
-			Reason:  reason,
-			Message: msg,
-			Err:     &ConnectionError{Reason: reason, Msg: msg},
-		})
-	}
 }
 
 // SendRawMessage sends a raw byte payload through the protocol layer.

@@ -29,8 +29,13 @@ var (
 	oidAES256CBC  = asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 1, 42}
 )
 
-// Pbkdf2Iterations is the number of iterations for PBKDF2 when encrypting keys.
-var Pbkdf2Iterations = 100000
+// DefaultPbkdf2Iterations is the recommended number of PBKDF2 iterations for key encryption.
+const DefaultPbkdf2Iterations = 100000
+
+// Pbkdf2Iterations controls the number of PBKDF2 iterations used when encrypting keys.
+// Defaults to DefaultPbkdf2Iterations. This should only be changed in tests —
+// modifying it affects all subsequent key encryption operations in the process.
+var Pbkdf2Iterations = DefaultPbkdf2Iterations
 
 // importPkcs8PrivateKey parses a private key from PKCS#8 DER data.
 func importPkcs8PrivateKey(der []byte) (ssh.KeyPair, error) {

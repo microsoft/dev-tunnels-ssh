@@ -3,7 +3,7 @@
 package algorithms
 
 import (
-	"crypto/elliptic"
+	"crypto/ecdh"
 	"crypto/rand"
 	"crypto/sha256"
 	"crypto/sha512"
@@ -22,7 +22,7 @@ func NewECDHP256SHA256() *KeyExchangeAlgorithm {
 		HashAlgorithmName: "SHA-256",
 		HashDigestLength:  32,
 		createFunc: func() (KeyExchange, error) {
-			return newECDHKeyExchange(elliptic.P256(), sha256.New)
+			return newECDHKeyExchange(ecdh.P256(), sha256.New)
 		},
 	}
 }
@@ -35,7 +35,7 @@ func NewECDHP384SHA384() *KeyExchangeAlgorithm {
 		HashAlgorithmName: "SHA-384",
 		HashDigestLength:  48,
 		createFunc: func() (KeyExchange, error) {
-			return newECDHKeyExchange(elliptic.P384(), sha512.New384)
+			return newECDHKeyExchange(ecdh.P384(), sha512.New384)
 		},
 	}
 }
@@ -48,22 +48,21 @@ func NewECDHP521SHA512() *KeyExchangeAlgorithm {
 		HashAlgorithmName: "SHA-512",
 		HashDigestLength:  64,
 		createFunc: func() (KeyExchange, error) {
-			return newECDHKeyExchange(elliptic.P521(), sha512.New)
+			return newECDHKeyExchange(ecdh.P521(), sha512.New)
 		},
 	}
 }
 
 // ecdhKeyExchange is a stateful ECDH key exchange instance.
+// Uses crypto/ecdh for constant-time operations on all curves.
 type ecdhKeyExchange struct {
-	curve      elliptic.Curve
-	privateKey []byte   // scalar d
-	publicX    *big.Int // public key X coordinate
-	publicY    *big.Int // public key Y coordinate
+	curve      ecdh.Curve
+	privateKey *ecdh.PrivateKey
 	hash       hash.Hash
 }
 
-func newECDHKeyExchange(curve elliptic.Curve, hashFunc func() hash.Hash) (*ecdhKeyExchange, error) {
-	privateKey, x, y, err := elliptic.GenerateKey(curve, rand.Reader)
+func newECDHKeyExchange(curve ecdh.Curve, hashFunc func() hash.Hash) (*ecdhKeyExchange, error) {
+	privateKey, err := curve.GenerateKey(rand.Reader)
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate ECDH key: %w", err)
 	}
@@ -71,8 +70,6 @@ func newECDHKeyExchange(curve elliptic.Curve, hashFunc func() hash.Hash) (*ecdhK
 	return &ecdhKeyExchange{
 		curve:      curve,
 		privateKey: privateKey,
-		publicX:    x,
-		publicY:    y,
 		hash:       hashFunc(),
 	}, nil
 }
@@ -82,22 +79,34 @@ func (kex *ecdhKeyExchange) DigestLength() int {
 }
 
 func (kex *ecdhKeyExchange) StartKeyExchange() ([]byte, error) {
-	// Return uncompressed point format: 0x04 || X || Y
-	return elliptic.Marshal(kex.curve, kex.publicX, kex.publicY), nil
+	// Returns SEC 1 uncompressed point format: 0x04 || X || Y (for NIST curves).
+	return kex.privateKey.PublicKey().Bytes(), nil
 }
 
 func (kex *ecdhKeyExchange) DecryptKeyExchange(exchangeValue []byte) ([]byte, error) {
-	// Parse the remote party's public key from uncompressed point bytes.
-	otherX, otherY := elliptic.Unmarshal(kex.curve, exchangeValue)
-	if otherX == nil {
-		return nil, fmt.Errorf("failed to parse ECDH public key: invalid point encoding")
+	// Parse and validate the remote party's public key.
+	// NewPublicKey validates that the point is on the expected curve.
+	remoteKey, err := kex.curve.NewPublicKey(exchangeValue)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse ECDH public key: %w", err)
 	}
 
 	// Compute the shared secret (x-coordinate of the resulting point).
-	sharedX, _ := kex.curve.ScalarMult(otherX, otherY, kex.privateKey)
+	// crypto/ecdh provides constant-time guarantees on all curves.
+	sharedBytes, err := kex.privateKey.ECDH(remoteKey)
+	if err != nil {
+		return nil, fmt.Errorf("ECDH computation failed: %w", err)
+	}
 
 	// Convert to SSH mpint format (unsigned big-endian with sign padding).
-	return sshio.BigIntToSSHBytes(sharedX), nil
+	result := sshio.BigIntToSSHBytes(new(big.Int).SetBytes(sharedBytes))
+
+	// Zero the intermediate shared secret.
+	for i := range sharedBytes {
+		sharedBytes[i] = 0
+	}
+
+	return result, nil
 }
 
 func (kex *ecdhKeyExchange) Sign(data []byte) ([]byte, error) {
