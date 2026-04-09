@@ -271,7 +271,7 @@ The Go interop helper (`interop/go/main.go`) supports 8 test modes:
 
 ```bash
 # Build the Go interop helper
-cd test/go/interop/go
+cd test/interop/go
 go build -o go-ssh-interop .
 
 # Run a manual echo test

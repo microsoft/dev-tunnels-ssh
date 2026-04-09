@@ -6,7 +6,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
-INTEROP_PROJ="$REPO_ROOT/test/go/interop/cs/InteropHelper.csproj"
+INTEROP_PROJ="$REPO_ROOT/test/interop/cs/InteropHelper.csproj"
 TIMEOUT=15
 
 # Global tracking for trap cleanup.

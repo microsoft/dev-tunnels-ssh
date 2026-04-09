@@ -8,9 +8,9 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
-GO_BINARY="$REPO_ROOT/test/go/interop/go/go-ssh-interop"
-TS_SCRIPT="$REPO_ROOT/test/go/interop/ts/interop-helper.js"
-CS_PROJ="$REPO_ROOT/test/go/interop/cs/InteropHelper.csproj"
+GO_BINARY="$REPO_ROOT/test/interop/go/go-ssh-interop"
+TS_SCRIPT="$REPO_ROOT/test/interop/ts/interop-helper.js"
+CS_PROJ="$REPO_ROOT/test/interop/cs/InteropHelper.csproj"
 TIMEOUT=15
 CS_AVAILABLE=false
 
