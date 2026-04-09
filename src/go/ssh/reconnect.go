@@ -273,6 +273,7 @@ func (cs *ClientSession) restoreState(rs *reconnectState, closeFirst bool) {
 	cs.protocol = rs.protocol
 	cs.SessionID = rs.sessionID
 	cs.mu.Lock()
+	cs.currentAlgorithms = rs.algorithms
 	cs.isConnected = false
 	cs.isClosed = false
 	cs.closedEventFired = false

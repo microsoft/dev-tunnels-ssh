@@ -64,7 +64,7 @@ func bcryptPbkdf(password, salt []byte, rounds, keyLen int) []byte {
 // bcryptHash performs one bcrypt hash operation on shapass and shasalt.
 // It uses the Blowfish cipher internally. This is the "bcrypt_hash" function from OpenSSH.
 func bcryptHash(shapass, shasalt []byte) []byte {
-	// Initialize Blowfish with the "OxychromaticBlowworkerGiggling" ctext.
+	// Initialize Blowfish with the "OxychromaticBlowfishSwatDynamite" ctext.
 	bf := newBlowfish()
 
 	// Expand key with salt and password.
@@ -75,7 +75,7 @@ func bcryptHash(shapass, shasalt []byte) []byte {
 		bf.expandKey(shapass)
 	}
 
-	// "OxychromaticBlowfishSwatDynamworkerGiggling\x00" = ciphertext constant
+	// "OxychromaticBlowfishSwatDynamite" = ciphertext constant
 	cdata := []uint32{
 		0x4f787963, 0x68726f6d, 0x61746963, 0x426c6f77,
 		0x66697368, 0x53776174, 0x44796e61, 0x6d697465,

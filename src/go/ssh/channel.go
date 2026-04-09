@@ -164,6 +164,25 @@ func (c *Channel) Metrics() *ChannelMetrics {
 	return &c.metrics
 }
 
+// newSessionContext returns a context that is cancelled when the session's
+// dispatch loop exits (session.Done() is closed). Callers must call the
+// returned cancel function when done (typically via defer).
+func (c *Channel) newSessionContext() (context.Context, context.CancelFunc) {
+	ctx, cancel := context.WithCancel(context.Background())
+	done := c.session.Done()
+	if done == nil {
+		return ctx, cancel
+	}
+	go func() {
+		select {
+		case <-done:
+			cancel()
+		case <-ctx.Done():
+		}
+	}()
+	return ctx, cancel
+}
+
 // OpenMessage returns the message that requested opening the channel.
 // It is non-nil after the channel is opened.
 func (c *Channel) OpenMessage() *messages.ChannelOpenMessage {
@@ -419,7 +438,9 @@ func (c *Channel) AdjustWindow(messageLength uint32) {
 			RecipientChannel: c.RemoteChannelID,
 			BytesToAdd:       bytesToAdd,
 		}
-		_ = c.session.SendMessage(msg)
+		if err := c.session.SendMessage(msg); err != nil {
+			log.Printf("ssh: failed to send window adjust for channel %d: %v", c.ChannelID, err)
+		}
 	} else {
 		c.mu.Unlock()
 	}
@@ -667,12 +688,15 @@ func (c *Channel) handleRequest(msg *messages.ChannelRequestMessage) (success bo
 		principal := c.session.Principal
 		c.session.mu.Unlock()
 
+		ctx, cancel := c.newSessionContext()
+		defer cancel()
+
 		args := &RequestEventArgs{
 			RequestType:  msg.RequestType,
 			Request:      msg,
 			IsAuthorized: false,
 			Principal:    principal,
-			Ctx:          context.Background(),
+			Ctx:          ctx,
 		}
 		handler(args)
 		return args.IsAuthorized
@@ -738,12 +762,15 @@ func (c *Channel) processRequest(req *pendingRequest) {
 				principal := c.session.Principal
 				c.session.mu.Unlock()
 
+				ctx, cancel := c.newSessionContext()
+				defer cancel()
+
 				args := &RequestEventArgs{
 					RequestType:  req.basicMsg.RequestType,
 					Request:      req.basicMsg,
 					IsAuthorized: false,
 					Principal:    principal,
-					Ctx:          context.Background(),
+					Ctx:          ctx,
 				}
 				svc.OnChannelRequest(c, args)
 				success = args.IsAuthorized
@@ -828,12 +855,15 @@ func (c *Channel) handleSignalRequest(msg *messages.ChannelSignalMessage) (succe
 		principal := c.session.Principal
 		c.session.mu.Unlock()
 
+		ctx, cancel := c.newSessionContext()
+		defer cancel()
+
 		args := &RequestEventArgs{
 			RequestType:  msg.RequestType,
 			Request:      msg,
 			IsAuthorized: false,
 			Principal:    principal,
-			Ctx:          context.Background(),
+			Ctx:          ctx,
 		}
 		handler(args)
 		return args.IsAuthorized
@@ -943,6 +973,10 @@ func (c *Channel) handleClose() {
 	wasLocallyClosed := c.localClosed
 
 	// Cancel all pending requests.
+	// These are buffered channels with capacity 1. The writes are safe because
+	// both handleRequestResponse (which sends true/false) and handleClose (here)
+	// are called exclusively from the single-threaded dispatch loop, so at most
+	// one value is ever sent to each channel.
 	for _, ch := range c.pendingRequests {
 		ch <- false
 	}
