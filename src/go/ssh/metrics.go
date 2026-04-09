@@ -12,8 +12,9 @@ const microsecondsPerMillisecond = 1000.0
 
 // ChannelMetrics tracks byte counters for a single SSH channel.
 type ChannelMetrics struct {
-	bytesSent     int64
-	bytesReceived int64
+	bytesSent       int64
+	bytesReceived   int64
+	droppedRequests int64
 }
 
 // BytesSent returns the total number of data bytes sent on this channel.
@@ -26,6 +27,11 @@ func (m *ChannelMetrics) BytesReceived() int64 {
 	return atomic.LoadInt64(&m.bytesReceived)
 }
 
+// DroppedRequests returns the number of channel requests dropped due to a full queue.
+func (m *ChannelMetrics) DroppedRequests() int64 {
+	return atomic.LoadInt64(&m.droppedRequests)
+}
+
 // addBytesSent atomically adds to the bytes sent counter.
 func (m *ChannelMetrics) addBytesSent(count int64) {
 	atomic.AddInt64(&m.bytesSent, count)
@@ -34,6 +40,11 @@ func (m *ChannelMetrics) addBytesSent(count int64) {
 // addBytesReceived atomically adds to the bytes received counter.
 func (m *ChannelMetrics) addBytesReceived(count int64) {
 	atomic.AddInt64(&m.bytesReceived, count)
+}
+
+// addDroppedRequest atomically increments the dropped requests counter.
+func (m *ChannelMetrics) addDroppedRequest() {
+	atomic.AddInt64(&m.droppedRequests, 1)
 }
 
 // SessionMetrics tracks byte, message, and latency counters for an SSH session.

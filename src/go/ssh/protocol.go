@@ -697,7 +697,16 @@ func (p *SSHProtocol) receiveMessage() ([]byte, error) {
 				}
 
 				// Remove the oldest message (shift slice).
+				p.recentSentMessages[0] = SequencedMessage{} // clear reference for GC
 				p.recentSentMessages = p.recentSentMessages[1:]
+			}
+
+			// Compact the slice when more than half the capacity is wasted,
+			// preventing the underlying array from growing monotonically.
+			if n := len(p.recentSentMessages); n > 0 && cap(p.recentSentMessages) > 2*n {
+				compacted := make([]SequencedMessage, n)
+				copy(compacted, p.recentSentMessages)
+				p.recentSentMessages = compacted
 			}
 			p.cacheMu.Unlock()
 		}

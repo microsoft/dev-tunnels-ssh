@@ -26,7 +26,7 @@ func (s *Session) runDispatchLoop() {
 			if !closed {
 				s.trace(TraceLevelWarning, TraceEventReceiveMessageFailed,
 					fmt.Sprintf("Receive message failed: %v", err))
-				s.close(messages.DisconnectConnectionLost, "Connection lost.", false, true)
+				s.closeImpl(messages.DisconnectConnectionLost, "Connection lost.", false, true, nil)
 			}
 			return
 		}
@@ -52,14 +52,14 @@ func (s *Session) runDispatchLoop() {
 		if err := s.handleMessage(msgType, payload); err != nil {
 			s.trace(TraceLevelError, TraceEventHandleMessageFailed,
 				fmt.Sprintf("Handle message failed (type %d): %v", msgType, err))
-			s.close(messages.DisconnectProtocolError, err.Error(), false, true)
+			s.closeImpl(messages.DisconnectProtocolError, err.Error(), false, true, nil)
 			return
 		}
 
 		// After handling a KEX message that may have completed the exchange
 		// (NewKeys or KexInit for kex:none), replay any queued messages.
 		if err := s.replayKexBlockedQueue(); err != nil {
-			s.close(messages.DisconnectProtocolError, err.Error(), false, true)
+			s.closeImpl(messages.DisconnectProtocolError, err.Error(), false, true, nil)
 			return
 		}
 
@@ -81,7 +81,7 @@ func (s *Session) runDispatchLoop() {
 				atomic.LoadUint64(&s.protocol.BytesSent),
 				atomic.LoadUint64(&s.protocol.BytesReceived),
 			); err != nil {
-				s.close(messages.DisconnectProtocolError, err.Error(), false, true)
+				s.closeImpl(messages.DisconnectProtocolError, err.Error(), false, true, nil)
 				return
 			}
 		}
@@ -100,7 +100,7 @@ func (s *Session) handleMessage(msgType byte, payload []byte) error {
 			fmt.Sprintf("Session disconnected by remote: reason=%d %s",
 				msg.ReasonCode, msg.Description))
 		// Close without sending a disconnect back.
-		s.close(msg.ReasonCode, msg.Description, false, true)
+		s.closeImpl(msg.ReasonCode, msg.Description, false, true, nil)
 		return nil
 
 	case messages.MsgNumIgnore:
@@ -262,8 +262,8 @@ func (s *Session) handleServiceRequest(payload []byte) error {
 	}
 
 	// No service found — disconnect per SSH spec.
-	s.close(messages.DisconnectServiceNotAvailable,
-		fmt.Sprintf("Service %q not available", msg.ServiceName), true, true)
+	s.closeImpl(messages.DisconnectServiceNotAvailable,
+		fmt.Sprintf("Service %q not available", msg.ServiceName), true, true, nil)
 	return nil
 }
 
