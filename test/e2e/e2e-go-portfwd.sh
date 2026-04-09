@@ -6,7 +6,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
-INTEROP_DIR="$REPO_ROOT/test/go/interop/go"
+INTEROP_DIR="$REPO_ROOT/test/interop/go"
 BINARY="$INTEROP_DIR/go-ssh-interop"
 TIMEOUT=15
 

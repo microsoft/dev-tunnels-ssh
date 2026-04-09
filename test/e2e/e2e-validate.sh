@@ -113,7 +113,7 @@ echo "Go build OK"
 
 echo ""
 echo "--- Building Go interop binary ---"
-GO_INTEROP_DIR="$REPO_ROOT/test/go/interop/go"
+GO_INTEROP_DIR="$REPO_ROOT/test/interop/go"
 (cd "$GO_INTEROP_DIR" && go build -o go-ssh-interop .) || {
   echo -e "${RED}FAIL: Go interop binary build failed${NC}"
   exit 1
@@ -134,14 +134,16 @@ echo "TS build OK"
 
 echo ""
 echo "--- Building C# interop helper ---"
-CS_PROJ="$REPO_ROOT/test/go/interop/cs/InteropHelper.csproj"
+CS_PROJ="$REPO_ROOT/test/interop/cs/InteropHelper.csproj"
 if command -v dotnet &>/dev/null; then
-  dotnet build "$CS_PROJ" -c Release --nologo -v q || {
+  if dotnet build "$CS_PROJ" -c Release --nologo -v q; then
+    echo "C# build OK"
+    CS_AVAILABLE=true
+  else
     echo -e "${YELLOW}WARN: C# build failed (dotnet SDK may not be available)${NC}"
     echo "C# tests will be skipped"
-  }
-  echo "C# build OK"
-  CS_AVAILABLE=true
+    CS_AVAILABLE=false
+  fi
 else
   echo -e "${YELLOW}WARN: dotnet not found, C# tests will be skipped${NC}"
   CS_AVAILABLE=false
