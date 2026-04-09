@@ -479,6 +479,11 @@ func (s *Session) closeImpl(reason messages.SSHDisconnectReason, msg string, sen
 	s.isConnected = false
 	s.isClosed = true
 
+	// Capture the protocol reference atomically with isConnected = false
+	// to prevent a race where a concurrent reconnect replaces s.protocol
+	// before this close finishes using the old one.
+	proto := s.protocol
+
 	// Signal keep-alive goroutine to stop (it listens on s.done).
 	s.keepAliveResetCh = nil
 	traceHandler := s.Trace
@@ -492,14 +497,14 @@ func (s *Session) closeImpl(reason messages.SSHDisconnectReason, msg string, sen
 	// Try to send disconnect message (ignore errors, stream may already be closed).
 	// Send with a short timeout to avoid blocking if a concurrent goroutine holds
 	// the send lock while blocked on a pipe write.
-	if sendDisconnect && wasConnected && s.protocol != nil {
+	if sendDisconnect && wasConnected && proto != nil {
 		disconnectMsg := &messages.DisconnectMessage{
 			ReasonCode:  reason,
 			Description: msg,
 		}
 		sendDone := make(chan struct{})
 		go func() {
-			_ = s.protocol.sendMessage(disconnectMsg.ToBuffer())
+			_ = proto.sendMessage(disconnectMsg.ToBuffer())
 			close(sendDone)
 		}()
 		select {
@@ -509,8 +514,8 @@ func (s *Session) closeImpl(reason messages.SSHDisconnectReason, msg string, sen
 	}
 
 	// Close the protocol/stream (unblocks the dispatch loop read and any pending writes).
-	if s.protocol != nil {
-		_ = s.protocol.close()
+	if proto != nil {
+		_ = proto.close()
 	}
 
 	// Use custom error if provided, otherwise create ConnectionError.
