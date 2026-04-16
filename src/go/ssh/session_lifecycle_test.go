@@ -280,3 +280,57 @@ func TestMetricsAfterConnect(t *testing.T) {
 		t.Error("server MessagesReceived() = 0, want > 0")
 	}
 }
+
+// TestCloseBeforeDispatchLoop verifies that Close does not deadlock when called
+// while Connect is still in the version exchange phase (before the dispatch loop
+// starts). This is a regression test for a race where closeImpl waited on
+// s.done which was never closed because the dispatch loop was never started.
+func TestCloseBeforeDispatchLoop(t *testing.T) {
+	clientStream, serverStream := duplexPipe()
+
+	server := NewServerSession(NewNoSecurityConfig())
+	server.OnAuthenticating = func(args *AuthenticatingEventArgs) {
+		args.AuthenticationResult = true
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	// Start Connect in a goroutine. It will block during version exchange
+	// because nothing is reading/writing the other end of the pipe.
+	connectDone := make(chan error, 1)
+	go func() {
+		connectDone <- server.Connect(ctx, serverStream)
+	}()
+
+	// Give Connect time to create s.done and start the version read.
+	time.Sleep(50 * time.Millisecond)
+
+	// Close the underlying stream to simulate a network failure, then
+	// close the session. Before the fix, Close() would deadlock here
+	// because s.done was never closed.
+	clientStream.Close()
+
+	closeDone := make(chan struct{})
+	go func() {
+		server.Close()
+		close(closeDone)
+	}()
+
+	select {
+	case <-closeDone:
+		// Success: Close returned without deadlocking.
+	case <-time.After(3 * time.Second):
+		t.Fatal("server.Close() deadlocked — s.done was never closed")
+	}
+
+	// Connect should also return with an error.
+	select {
+	case err := <-connectDone:
+		if err == nil {
+			t.Error("expected Connect to return an error after stream close")
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("timed out waiting for Connect to return")
+	}
+}

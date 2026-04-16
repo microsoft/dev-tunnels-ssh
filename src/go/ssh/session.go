@@ -279,8 +279,20 @@ func (s *Session) Connect(ctx context.Context, stream io.ReadWriteCloser) error 
 	s.mu.Lock()
 	p.trace = s.Trace
 	s.protocol = p
-	s.done = make(chan struct{})
+	done := make(chan struct{})
+	s.done = done
 	s.mu.Unlock()
+
+	// Ensure s.done is closed even if Connect returns before the dispatch loop starts.
+	// Only runDispatchLoop closes it normally via defer; this covers early-return paths
+	// so that closeImpl's <-s.done never blocks forever.
+	dispatchStarted := false
+	defer func() {
+		if !dispatchStarted {
+			close(done)
+		}
+	}()
+
 	// Don't reinitialize channels during reconnect — preserve existing channel state.
 	if !isReconnecting {
 		s.initChannels()
@@ -354,6 +366,7 @@ func (s *Session) Connect(ctx context.Context, stream io.ReadWriteCloser) error 
 	// Start dispatch loop after the version string has been consumed from the
 	// stream. The dispatch loop reads framed SSH messages (starting with the
 	// remote KexInit that was pipelined with the version string).
+	dispatchStarted = true
 	go s.runDispatchLoop()
 
 	// Wait for the initial key exchange to complete before returning.
