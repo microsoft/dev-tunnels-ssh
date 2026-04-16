@@ -19,7 +19,7 @@ import { CancellationToken } from 'vscode-jsonrpc';
 const ConnectTimeMeasurement = 'Connect time (ms)';
 const EncryptTimeMeasurement = 'Encrypt time (ms)';
 const AuthTimeMeasurement = 'Authenticate time (ms)';
-const ChannelTimeMeasurement = 'Channnel open time (ms)';
+const ChannelTimeMeasurement = 'Channel open time (ms)';
 const TotalTimeMeasurement = 'Total setup time (ms)';
 const LatencyMeasurement = 'Latency (ms)';
 
@@ -36,7 +36,11 @@ export class SessionSetupBenchmark extends Benchmark {
 	private readonly client: SshClient;
 
 	public constructor(withLatency: boolean) {
-		super('Session setup' + (withLatency ? ' with latency' : ''));
+		super(
+			'Session setup' + (withLatency ? ' with latency' : ''),
+			'session-setup',
+			{ latency: withLatency ? '100' : '0' },
+		);
 
 		this.higherIsBetter.set(ConnectTimeMeasurement, false);
 		this.higherIsBetter.set(EncryptTimeMeasurement, false);
@@ -94,16 +98,8 @@ export class SessionSetupBenchmark extends Benchmark {
 
 		await clientSession.authenticateServer();
 
-		let clientAuthCallback: (err?: Error, result?: boolean) => void;
-		const clientAuthPromise = new Promise((resolve, reject) => {
-			clientAuthCallback = (err, result) => {
-				if (err) reject(err);
-				else resolve(result);
-			};
-		});
-
 		const credentials: SshClientCredentials = { username: 'benchmark', password: 'benchmark' };
-		await clientSession.authenticateClient(credentials, clientAuthCallback!);
+		await clientSession.authenticateClient(credentials);
 
 		var authMark: hrtime = process.hrtime(startTime);
 
@@ -112,8 +108,6 @@ export class SessionSetupBenchmark extends Benchmark {
 
 		// Protocol extension: Send initial request when opening channel.
 		const clientChannel = await clientSession.openChannel(null, channelRequest);
-
-		await clientAuthPromise;
 
 		var channelMark: hrtime = process.hrtime(startTime);
 
@@ -131,6 +125,51 @@ export class SessionSetupBenchmark extends Benchmark {
 		await clientChannel.request(channelRequest2);
 
 		this.addMeasurement(LatencyMeasurement, clientSession.metrics.latencyAverageMs);
+	}
+
+	public async verify(): Promise<void> {
+		await this.initPromise;
+
+		// Set up server to echo data back
+		const serverDataPromise = new Promise<Buffer>((resolve) => {
+			const sessionReg = this.server.onSessionOpened((session) => {
+				sessionReg.dispose();
+				session.onChannelOpening((e) => {
+					e.channel.onDataReceived((data) => {
+						resolve(Buffer.from(data));
+					});
+				});
+			});
+		});
+
+		const clientSession = await this.client.openSession('localhost', this.port);
+
+		clientSession.onAuthenticating((e) => {
+			e.authenticationPromise = Promise.resolve({});
+		});
+
+		await clientSession.authenticateServer();
+
+		const credentials: SshClientCredentials = { username: 'benchmark', password: 'benchmark' };
+		await clientSession.authenticateClient(credentials);
+
+		const clientChannel = await clientSession.openChannel();
+
+		// Send test data through the channel
+		const testData = Buffer.from('verify-session-setup');
+		await clientChannel.send(testData);
+
+		// Wait for server to receive it (with timeout)
+		const received = await Promise.race([
+			serverDataPromise,
+			new Promise<Buffer>((_, reject) =>
+				setTimeout(() => reject(new Error('Timeout waiting for data')), 5000),
+			),
+		]);
+
+		if (!received.equals(testData)) {
+			throw new Error('Received data does not match sent data');
+		}
 	}
 
 	public async dispose(): Promise<void> {

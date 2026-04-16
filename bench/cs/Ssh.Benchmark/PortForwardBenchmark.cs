@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Net;
 using System.Net.Sockets;
@@ -27,7 +28,14 @@ class PortForwardBenchmark : Benchmark
 	private readonly SshClient client;
 
 	public PortForwardBenchmark(IPAddress listenAddress, string hostAddress)
-		: base($"Port forward to {hostAddress} ({listenAddress})")
+		: base(
+			$"Port forward to {hostAddress} ({listenAddress})",
+			"e2e-portforward",
+			new Dictionary<string, string>
+			{
+				{ "address", listenAddress.AddressFamily == System.Net.Sockets.AddressFamily.InterNetworkV6 ? "ipv6" : "ipv4" },
+				{ "host", hostAddress },
+			})
 	{
 		HigherIsBetter[ConnectTimeMeasurement] = false;
 

@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 using System.Net;
@@ -29,8 +30,23 @@ class ThroughputBenchmark : Benchmark
 	private readonly byte[] messageData;
 	private readonly bool withEncryption;
 
+	// Reuse a single session+channel across all runs (matching Go).
+	// Creating a fresh TCP+SSH session per run causes backpressure deadlocks
+	// with large encrypted messages where TCP send/receive buffers create
+	// a circular dependency between the client's send and the server's
+	// window update on a "cold" connection.
+	private SshClientSession clientSession;
+	private SshChannel channel;
+
 	public ThroughputBenchmark(TimeSpan duration, int messageSize, bool withEncryption)
-		: base($"Throughput - {messageSize} byte messages {(withEncryption ? "with" : "without")} encryption")
+		: base(
+			$"Throughput - {messageSize} byte messages {(withEncryption ? "with" : "without")} encryption",
+			"session-throughput",
+			new Dictionary<string, string>
+			{
+				{ "encryption", withEncryption ? "true" : "false" },
+				{ "size", messageSize.ToString() },
+			})
 	{
 		HigherIsBetter[BytesAllocatedMeasurement] = false;
 		HigherIsBetter[BytesCopiedMeasurement] = false;
@@ -53,7 +69,35 @@ class ThroughputBenchmark : Benchmark
 		this.server.SessionAuthenticating += OnServerSessionAuthenticating;
 		this.server.ChannelRequest += OnServerChannelRequest;
 
+		// Set up server-side data drain for all sessions.
+		this.server.SessionOpened += (_, serverSession) =>
+		{
+			serverSession.ChannelOpening += (__, e) =>
+			{
+				e.Channel.DataReceived += (___, data) =>
+				{
+					e.Channel.AdjustWindow((uint)data.Count);
+				};
+			};
+		};
+
 		this.serverTask = this.server.AcceptSessionsAsync(Benchmark.ServerPort, IPAddress.Loopback);
+	}
+
+	private async Task EnsureSessionAsync()
+	{
+		if (this.channel != null) return;
+
+		this.clientSession = await client.OpenSessionAsync(
+			IPAddress.Loopback.ToString(), ServerPort);
+
+		if (this.withEncryption)
+		{
+			this.clientSession.Authenticating += OnClientSessionAuthenticating;
+			await this.clientSession.AuthenticateAsync(("benchmark", "benchmark"));
+		}
+
+		this.channel = await this.clientSession.OpenChannelAsync();
 	}
 
 	protected override async Task RunAsync(Stopwatch stopwatch)
@@ -63,69 +107,67 @@ class ThroughputBenchmark : Benchmark
 		Buffer.Copies.Clear();
 #endif
 
-		EventHandler<SshServerSession> sessionOpenedHandler = null;
-		sessionOpenedHandler = (_, serverSession) =>
+		await EnsureSessionAsync();
+
+		// Safety timeout: 4x the benchmark duration catches true deadlocks
+		// caused by TCP buffer circular dependencies with large encrypted
+		// messages, without affecting normal runs.
+		using var cancellationSource = new CancellationTokenSource(
+			TimeSpan.FromSeconds(this.duration.TotalSeconds * 4));
+
+		bool deadlocked = false;
+		int messageCount = 0;
+		stopwatch.Restart();
+		while (stopwatch.Elapsed < this.duration)
 		{
-			this.server.SessionOpened -= sessionOpenedHandler;
-			serverSession.ChannelOpening += (__, e) =>
+			try
 			{
-				e.Channel.DataReceived += (___, data) =>
-				{
-					e.Channel.AdjustWindow((uint)data.Count);
-				};
-			};
-		};
-		this.server.SessionOpened += sessionOpenedHandler;
+				await this.channel.SendAsync(this.messageData, cancellationSource.Token);
+			}
+			catch (OperationCanceledException)
+			{
+				deadlocked = true;
+				break;
+			}
+			messageCount++;
+		}
 
-		using (var clientSession = await client.OpenSessionAsync(
-			IPAddress.Loopback.ToString(), ServerPort))
+		stopwatch.Stop();
+
+		// If the session deadlocked, reset it so the next run gets a fresh one.
+		if (deadlocked)
 		{
-			if (this.withEncryption)
-			{
-				clientSession.Authenticating += OnClientSessionAuthenticating;
-				await clientSession.AuthenticateAsync(("benchmark", "benchmark"));
-			}
+			this.clientSession?.Dispose();
+			this.clientSession = null;
+			this.channel = null;
+		}
 
-			var channel = await clientSession.OpenChannelAsync();
+		if (messageCount == 0) return;
 
-			var cancellationSource = new CancellationTokenSource(
-				TimeSpan.FromSeconds(this.duration.TotalSeconds * 2));
-
-			int messageCount = 0;
-			stopwatch.Restart();
-			while (stopwatch.Elapsed < this.duration)
-			{
-				await channel.SendAsync(this.messageData, cancellationSource.Token);
-				messageCount++;
-			}
-
-			stopwatch.Stop();
-
-			var elapsedSeconds = stopwatch.Elapsed.TotalSeconds;
-			double messagesPerSecond = messageCount / elapsedSeconds;
-			double bytesPerSecond = (messageCount * this.messageData.Length) / elapsedSeconds;
-			double megabytesPerSecond = bytesPerSecond / (1024 * 1024);
-			AddMeasurement(MessageCountMeasurement, messagesPerSecond);
-			AddMeasurement(ByteCountMeasurement, megabytesPerSecond);
+		var elapsedSeconds = stopwatch.Elapsed.TotalSeconds;
+		double messagesPerSecond = messageCount / elapsedSeconds;
+		double bytesPerSecond = (messageCount * this.messageData.Length) / elapsedSeconds;
+		double megabytesPerSecond = bytesPerSecond / (1024 * 1024);
+		AddMeasurement(MessageCountMeasurement, messagesPerSecond);
+		AddMeasurement(ByteCountMeasurement, megabytesPerSecond);
 
 #if DEBUG
-			lock (Buffer.Allocations)
-			{
-				long bytesAllocated = Buffer.Allocations.Values
-					.Select((list) => list.Select(count => (long)count).Sum()).Sum();
-				double kilobytesPerMessage = (double)bytesAllocated / 1024 / messageCount;
-				AddMeasurement(BytesAllocatedMeasurement, kilobytesPerMessage);
-			}
-
-			lock (Buffer.Copies)
-			{
-				long bytesCopied = Buffer.Copies.Values
-					.Select((list) => list.Select(count => (long)count).Sum()).Sum();
-				double kilobytesPerMessage = (double)bytesCopied / 1024 / messageCount;
-				AddMeasurement(BytesCopiedMeasurement, kilobytesPerMessage);
-			}
-#endif
+		lock (Buffer.Allocations)
+		{
+			long bytesAllocated = Buffer.Allocations.Values
+				.Select((list) => list.Select(count => (long)count).Sum()).Sum();
+			double kilobytesPerMessage = (double)bytesAllocated / 1024 / messageCount;
+			AddMeasurement(BytesAllocatedMeasurement, kilobytesPerMessage);
 		}
+
+		lock (Buffer.Copies)
+		{
+			long bytesCopied = Buffer.Copies.Values
+				.Select((list) => list.Select(count => (long)count).Sum()).Sum();
+			double kilobytesPerMessage = (double)bytesCopied / 1024 / messageCount;
+			AddMeasurement(BytesCopiedMeasurement, kilobytesPerMessage);
+		}
+#endif
 	}
 
 	private void OnClientSessionAuthenticating(object sender, SshAuthenticatingEventArgs e)
@@ -143,8 +185,56 @@ class ThroughputBenchmark : Benchmark
 		e.IsAuthorized = true;
 	}
 
+	public override async Task VerifyAsync()
+	{
+		// Send a known amount of data and verify the server receives the correct byte count.
+		int totalReceived = 0;
+		var receiveDone = new TaskCompletionSource<int>();
+
+		var expectedSize = this.messageData.Length;
+
+		EventHandler<SshServerSession> sessionOpenedHandler = null;
+		sessionOpenedHandler = (_, serverSession) =>
+		{
+			this.server.SessionOpened -= sessionOpenedHandler;
+			serverSession.ChannelOpening += (__, e) =>
+			{
+				e.Channel.DataReceived += (___, data) =>
+				{
+					e.Channel.AdjustWindow((uint)data.Count);
+					var newTotal = Interlocked.Add(ref totalReceived, data.Count);
+					if (newTotal >= expectedSize)
+						receiveDone.TrySetResult(newTotal);
+				};
+			};
+		};
+		this.server.SessionOpened += sessionOpenedHandler;
+
+		using var clientSession = await client.OpenSessionAsync(
+			IPAddress.Loopback.ToString(), ServerPort);
+
+		if (this.withEncryption)
+		{
+			clientSession.Authenticating += OnClientSessionAuthenticating;
+			await clientSession.AuthenticateAsync(("benchmark", "benchmark"));
+		}
+
+		var channel = await clientSession.OpenChannelAsync();
+
+		await channel.SendAsync(this.messageData, CancellationToken.None);
+
+		var completed = await Task.WhenAny(receiveDone.Task, Task.Delay(5000));
+		if (completed != receiveDone.Task)
+			throw new Exception($"Timed out: received {totalReceived} of {expectedSize} bytes");
+
+		var received = await receiveDone.Task;
+		if (received != expectedSize)
+			throw new Exception($"Byte count mismatch: expected {expectedSize}, got {received}");
+	}
+
 	public override async ValueTask DisposeAsync()
 	{
+		this.clientSession?.Dispose();
 		this.server.Dispose();
 		this.client.Dispose();
 		await this.serverTask;
