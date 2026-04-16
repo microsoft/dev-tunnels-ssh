@@ -247,7 +247,10 @@ func TestMeasureSessionLatency(t *testing.T) {
 	pair := createReconnectSessionPair(t)
 	defer pair.Close()
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	// Use a generous timeout: with -race on slow CI machines (especially Windows),
+	// the full key exchange with real crypto + reconnect extension handshake can
+	// take several seconds, so the previous 10s was too tight.
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
 	pair.Connect(ctx)
@@ -312,7 +315,7 @@ func TestClosedSessionHasNoLatency(t *testing.T) {
 	pair := createReconnectSessionPair(t)
 	defer pair.Close()
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
 	pair.Connect(ctx)
@@ -351,6 +354,16 @@ func TestRecordSessionContour(t *testing.T) {
 	defer cancel()
 
 	pair.Connect(ctx)
+
+	// Wait for reconnect extension to be fully enabled on both sides.
+	// Latency measurement requires IncomingMessagesHaveReconnectInfo to be set
+	// (which gates message caching) and OutgoingMessagesHaveLatencyInfo to be set
+	// (which appends timing info to messages). Without this wait, data sent on slow
+	// CI machines (especially Windows with -race) may not have latency info.
+	if err := ssh.WaitUntilReconnectEnabled(ctx, &pair.ClientSession.Session, &pair.ServerSession.Session); err != nil {
+		t.Fatalf("reconnect not enabled: %v", err)
+	}
+	time.Sleep(200 * time.Millisecond)
 
 	clientCh, serverCh := pair.OpenChannel(ctx)
 
