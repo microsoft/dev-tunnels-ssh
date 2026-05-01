@@ -40,6 +40,10 @@ jobs:
         clean: true
         fetchTags: false
 
+      - task: GoTool@0
+        inputs:
+          version: '1.26.2'
+
       - task: UseDotNet@2
         displayName: Install .NET 8 Runtime
         inputs:
@@ -246,6 +250,10 @@ jobs:
             export OPENSSL3_VERSION=$(brew list --versions openssl@3 | head -n 1 | sed "s/.* //")
             sudo ln -sfn $(brew --prefix)/Cellar/openssl\@3/$OPENSSL3_VERSION/lib/libssl.3.dylib /usr/local/lib/libssl.3.dylib
             sudo ln -sfn $(brew --prefix)/Cellar/openssl\@3/$OPENSSL3_VERSION/lib/libcrypto.3.dylib /usr/local/lib/libcrypto.3.dylib
+
+      - task: GoTool@0
+        inputs:
+          version: '1.26.2'
 
       - task: UseDotNet@2
         displayName: Install .NET 8 Runtime
