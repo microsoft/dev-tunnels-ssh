@@ -19,8 +19,24 @@ export class StreamForwarder implements Disposable {
 		if (!localStream) throw new TypeError('Local stream is required.');
 		if (!remoteStream) throw new TypeError('Remote stream is required.');
 
+		// Without these listeners, errors from either side of the forwarder
+		// propagate up to the Node process as unhandled 'error' events and
+		// crash the host. Node's pipe() does not propagate errors between
+		// streams, so each side must be handled independently.
+		localStream.on('error', (err) => this.onStreamError('local', err));
+		remoteStream.on('error', (err) => this.onStreamError('remote', err));
+
 		localStream.pipe(remoteStream);
 		remoteStream.pipe(localStream);
+	}
+
+	private onStreamError(side: 'local' | 'remote', err: Error): void {
+		this.trace(
+			TraceLevel.Warning,
+			SshTraceEventIds.unknownError,
+			`Stream forwarder ${side} stream error: ${err.message}`,
+		);
+		this.dispose();
 	}
 
 	private close(abort: boolean, errorMessage?: string): void {
