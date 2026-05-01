@@ -1,5 +1,6 @@
 
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
@@ -23,7 +24,7 @@ class SessionSetupBenchmark : Benchmark
 	private const string ConnectTimeMeasurement = "Connect time (ms)";
 	private const string EncryptTimeMeasurement = "Encrypt time (ms)";
 	private const string AuthTimeMeasurement = "Authenticate time (ms)";
-	private const string ChannelTimeMeasurement = "Channnel open time (ms)";
+	private const string ChannelTimeMeasurement = "Channel open time (ms)";
 	private const string TotalTimeMeasurement = "Total setup time (ms)";
 	private const string BytesAllocatedMeasurement = "Bytes allocated (KB)";
 	private const string BytesCopiedMeasurement = "Bytes copied (KB)";
@@ -36,7 +37,10 @@ class SessionSetupBenchmark : Benchmark
 	private readonly SshClient client;
 
 	public SessionSetupBenchmark(bool withLatency)
-		: base("Session setup" + (withLatency ? " with latency" : ""))
+		: base(
+			"Session setup" + (withLatency ? " with latency" : ""),
+			"session-setup",
+			new Dictionary<string, string> { { "latency", withLatency ? "100" : "0" } })
 	{
 		HigherIsBetter[ConnectTimeMeasurement] = false;
 		HigherIsBetter[EncryptTimeMeasurement] = false;
@@ -90,9 +94,7 @@ class SessionSetupBenchmark : Benchmark
 		clientSession.Authenticating += OnClientSessionAuthenticating;
 		await clientSession.AuthenticateServerAsync();
 
-		var clientAuthCompletion = new TaskCompletionSource<bool>();
-		await clientSession.AuthenticateClientAsync(
-			("benchmark", "benchmark"), clientAuthCompletion);
+		await clientSession.AuthenticateClientAsync(("benchmark", "benchmark"));
 
 		var authMark = stopwatch.Elapsed.TotalMilliseconds;
 
@@ -105,8 +107,6 @@ class SessionSetupBenchmark : Benchmark
 		// Protocol extension: Send initial request when opening channel.
 		var clientChannel = await clientSession.OpenChannelAsync(
 			new ChannelOpenMessage(), channelRequest);
-
-		await clientAuthCompletion.Task;
 
 		var channelMark = stopwatch.Elapsed.TotalMilliseconds;
 
@@ -155,6 +155,46 @@ class SessionSetupBenchmark : Benchmark
 	private void OnServerChannelRequest(object sender, SshRequestEventArgs<ChannelRequestMessage> e)
 	{
 		e.IsAuthorized = true;
+	}
+
+	public override async Task VerifyAsync()
+	{
+		// Open a fresh session, channel, and send/receive data to prove it works.
+		var tcs = new TaskCompletionSource<byte[]>();
+
+		EventHandler<SshServerSession> sessionOpenedHandler = null;
+		sessionOpenedHandler = (_, serverSession) =>
+		{
+			this.server.SessionOpened -= sessionOpenedHandler;
+			serverSession.ChannelOpening += (__, e) =>
+			{
+				e.Channel.DataReceived += (___, data) =>
+				{
+					tcs.TrySetResult(data.ToArray());
+				};
+			};
+		};
+		this.server.SessionOpened += sessionOpenedHandler;
+
+		using var clientSession = await client.OpenSessionAsync(
+			IPAddress.Loopback.ToString(), ServerPort);
+
+		clientSession.Authenticating += OnClientSessionAuthenticating;
+		await clientSession.AuthenticateServerAsync();
+		await clientSession.AuthenticateClientAsync(("benchmark", "benchmark"));
+
+		var channel = await clientSession.OpenChannelAsync();
+
+		var testData = new byte[] { 0xDE, 0xAD, 0xBE, 0xEF };
+		await channel.SendAsync(testData, CancellationToken.None);
+
+		var received = await Task.WhenAny(tcs.Task, Task.Delay(5000));
+		if (received != tcs.Task)
+			throw new Exception("Timed out waiting for data on server side");
+
+		var receivedData = await tcs.Task;
+		if (!receivedData.SequenceEqual(testData))
+			throw new Exception("Received data does not match sent data");
 	}
 
 	public override async ValueTask DisposeAsync()

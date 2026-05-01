@@ -33,7 +33,14 @@ export class PortForwardBenchmark extends Benchmark {
 	private readonly client: SshClient;
 
 	public constructor(listenAddress: string, hostAddress: string) {
-		super(`Port forward to ${hostAddress} (${listenAddress})`);
+		super(
+			`Port forward to ${hostAddress} (${listenAddress})`,
+			'e2e-portforward',
+			{
+				address: listenAddress.includes(':') ? 'ipv6' : 'ipv4',
+				host: hostAddress,
+			},
+		);
 
 		this.higherIsBetter.set(ConnectTimeMeasurement, false);
 
