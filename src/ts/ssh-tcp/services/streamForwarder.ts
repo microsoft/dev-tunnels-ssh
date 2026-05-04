@@ -9,15 +9,19 @@ import { Socket } from 'net';
 
 export class StreamForwarder implements Disposable {
 	private disposed: boolean = false;
+	private readonly onDisposedCallback?: (forwarder: StreamForwarder) => void;
 
 	/* @internal */
 	public constructor(
 		public readonly localStream: Duplex,
 		public readonly remoteStream: Duplex,
 		public readonly trace: Trace,
+		onDisposed?: (forwarder: StreamForwarder) => void,
 	) {
 		if (!localStream) throw new TypeError('Local stream is required.');
 		if (!remoteStream) throw new TypeError('Remote stream is required.');
+
+		this.onDisposedCallback = onDisposed;
 
 		// Without these listeners, errors from either side of the forwarder
 		// propagate up to the Node process as unhandled 'error' events and
@@ -26,6 +30,9 @@ export class StreamForwarder implements Disposable {
 		localStream.on('error', (err) => this.onStreamError('local', err));
 		remoteStream.on('error', (err) => this.onStreamError('remote', err));
 
+		// pipe() forwards 'end' (so EOF on one side gracefully ends the other),
+		// but does NOT forward 'error'. Error propagation is handled above
+		// by disposing the forwarder, which tears down both sides.
 		localStream.pipe(remoteStream);
 		remoteStream.pipe(localStream);
 	}
@@ -72,6 +79,18 @@ export class StreamForwarder implements Disposable {
 		if (!this.disposed) {
 			this.disposed = true;
 			this.close(true);
+			if (this.onDisposedCallback) {
+				try {
+					this.onDisposedCallback(this);
+				} catch (e) {
+					if (!(e instanceof Error)) throw e;
+					this.trace(
+						TraceLevel.Warning,
+						SshTraceEventIds.unknownError,
+						`Stream forwarder onDisposed callback threw: ${e.message}`,
+					);
+				}
+			}
 		}
 	}
 }

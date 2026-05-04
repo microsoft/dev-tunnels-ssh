@@ -4,6 +4,7 @@
 
 import { SshChannel } from './sshChannel';
 import { PromiseCompletionSource } from './util/promiseCompletionSource';
+import { TraceLevel, SshTraceEventIds } from './trace';
 import { Duplex } from 'stream';
 
 /**
@@ -132,7 +133,14 @@ export class SshStream extends Duplex {
 	 * Destroys the stream and closes the underlying SSH channel.
 	 */
 	public destroy(error?: Error) {
-		void this.channel.close().catch();
+		this.channel.close().catch((e) => {
+			if (!(e instanceof Error)) return;
+			this.channel.session.trace(
+				TraceLevel.Warning,
+				SshTraceEventIds.unknownError,
+				`${this} channel close on destroy failed: ${e.message}`,
+			);
+		});
 		super.destroy(error);
 		return this;
 	}
