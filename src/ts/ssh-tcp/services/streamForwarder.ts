@@ -11,7 +11,10 @@ export class StreamForwarder implements Disposable {
 	private disposed: boolean = false;
 	private readonly onDisposedCallback?: (forwarder: StreamForwarder) => void;
 
-	/* @internal */
+	public get isDisposed(): boolean {
+		return this.disposed;
+	}
+
 	public constructor(
 		public readonly localStream: Duplex,
 		public readonly remoteStream: Duplex,

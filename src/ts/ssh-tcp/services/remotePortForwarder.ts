@@ -14,6 +14,7 @@ import {
 	TraceLevel,
 	SshStream,
 } from '@microsoft/dev-tunnels-ssh';
+import { Duplex } from 'stream';
 import { StreamForwarder } from './streamForwarder';
 import { PortForwardingService } from './portForwardingService';
 import { RemotePortConnector } from './remotePortConnector';
@@ -92,12 +93,19 @@ export class RemotePortForwarder extends RemotePortConnector {
 		};
 		sshStream.on('error', channelErrorHandler);
 
-		const forwardedStream = await pfs.forwardedPortConnecting(
-			remotePort ?? localPort,
-			true,
-			sshStream,
-			cancellation,
-		);
+		let forwardedStream: Duplex | null;
+		try {
+			forwardedStream = await pfs.forwardedPortConnecting(
+				remotePort ?? localPort,
+				true,
+				sshStream,
+				cancellation,
+			);
+		} catch (e) {
+			sshStream.removeListener('error', channelErrorHandler);
+			sshStream.destroy();
+			throw e;
+		}
 
 		if (!forwardedStream) {
 			// The event handler rejected the connection.
@@ -140,6 +148,7 @@ export class RemotePortForwarder extends RemotePortConnector {
 				// The forwardedStream may be the user-substituted stream; close it
 				// so we don't leak the underlying SSH channel.
 				forwardedStream.destroy();
+				if (forwardedStream !== sshStream) sshStream.destroy();
 				throw e;
 			}
 
@@ -159,6 +168,7 @@ export class RemotePortForwarder extends RemotePortConnector {
 			// resources and (before PR #138) potentially crashing the host.
 			sshStream.removeListener('error', channelErrorHandler);
 			forwardedStream.destroy();
+			if (forwardedStream !== sshStream) sshStream.destroy();
 			return;
 		} finally {
 			cancellationRegistration?.dispose();
@@ -182,5 +192,8 @@ export class RemotePortForwarder extends RemotePortConnector {
 				`#${channel.channelId} connection to ${localHost}:${localPort}.`,
 		);
 		pfs.streamForwarders.add(streamForwarder);
+		if (streamForwarder.isDisposed) {
+			pfs.streamForwarders.delete(streamForwarder);
+		}
 	}
 }

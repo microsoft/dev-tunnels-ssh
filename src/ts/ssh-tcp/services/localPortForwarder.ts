@@ -14,6 +14,7 @@ import {
 	SshProtocolExtensionNames,
 	SshStream,
 } from '@microsoft/dev-tunnels-ssh';
+import { Duplex } from 'stream';
 import { StreamForwarder } from './streamForwarder';
 import { PortForwardingService } from './portForwardingService';
 
@@ -186,6 +187,7 @@ export class LocalPortForwarder extends SshService {
 
 			// TODO: Destroy the socket in a way that causes a connection reset:
 			// https://github.com/nodejs/node/issues/27428
+			socket.removeListener('error', acceptErrorHandler);
 			socket.destroy();
 
 			// Don't re-throw. This is an async event handler so the caller isn't awaiting.
@@ -194,16 +196,26 @@ export class LocalPortForwarder extends SshService {
 		}
 
 		// The event handler may return a transformed stream.
-		const forwardedStream = await this.pfs.forwardedPortConnecting(
-			this.remotePort ?? this.localPort,
-			false,
-			new SshStream(channel),
-		);
+		const sshStream = new SshStream(channel);
+		let forwardedStream: Duplex | null;
+		try {
+			forwardedStream = await this.pfs.forwardedPortConnecting(
+				this.remotePort ?? this.localPort,
+				false,
+				sshStream,
+			);
+		} catch (e) {
+			socket.removeListener('error', acceptErrorHandler);
+			socket.destroy();
+			sshStream.destroy();
+			throw e;
+		}
 
 		if (!forwardedStream) {
 			// The event handler rejected the connection.
 			socket.removeListener('error', acceptErrorHandler);
 			socket.destroy();
+			sshStream.destroy();
 			return;
 		}
 
@@ -216,7 +228,9 @@ export class LocalPortForwarder extends SshService {
 			channel.session.trace,
 			this.pfs.removeStreamForwarder,
 		);
-		this.pfs.streamForwarders.add(forwarder);
+		if (!forwarder.isDisposed) {
+			this.pfs.streamForwarders.add(forwarder);
+		}
 	}
 
 	public dispose() {
