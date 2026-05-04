@@ -110,6 +110,7 @@ export class RemotePortForwarder extends RemotePortConnector {
 		if (!forwardedStream) {
 			// The event handler rejected the connection.
 			sshStream.removeListener('error', channelErrorHandler);
+			sshStream.destroy();
 			request.failureReason = SshChannelOpenFailureReason.connectFailed;
 			return;
 		}

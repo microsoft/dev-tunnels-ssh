@@ -134,11 +134,11 @@ export class SshStream extends Duplex {
 	 */
 	public destroy(error?: Error) {
 		this.channel.close().catch((e) => {
-			if (!(e instanceof Error)) return;
+			const message = e instanceof Error ? e.message : String(e);
 			this.channel.session.trace(
 				TraceLevel.Warning,
 				SshTraceEventIds.unknownError,
-				`${this} channel close on destroy failed: ${e.message}`,
+				`${this} channel close on destroy failed: ${message}`,
 			);
 		});
 		super.destroy(error);

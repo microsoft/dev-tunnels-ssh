@@ -86,11 +86,11 @@ export class StreamForwarder implements Disposable {
 				try {
 					this.onDisposedCallback(this);
 				} catch (e) {
-					if (!(e instanceof Error)) throw e;
+					const errorMessage = e instanceof Error ? e.message : String(e);
 					this.trace(
 						TraceLevel.Warning,
 						SshTraceEventIds.unknownError,
-						`Stream forwarder onDisposed callback threw: ${e.message}`,
+						`Stream forwarder onDisposed callback threw: ${errorMessage}`,
 					);
 				}
 			}
