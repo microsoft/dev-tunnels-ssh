@@ -14,6 +14,7 @@ import {
 	TraceLevel,
 	SshStream,
 } from '@microsoft/dev-tunnels-ssh';
+import { Duplex } from 'stream';
 import { StreamForwarder } from './streamForwarder';
 import { PortForwardingService } from './portForwardingService';
 import { RemotePortConnector } from './remotePortConnector';
@@ -75,16 +76,41 @@ export class RemotePortForwarder extends RemotePortConnector {
 		cancellation?: CancellationToken,
 	): Promise<void> {
 		const channel = request.channel;
+		const sshStream = new SshStream(channel);
 
-		const forwardedStream = await pfs.forwardedPortConnecting(
-			remotePort ?? localPort,
-			true,
-			new SshStream(channel),
-			cancellation,
-		);
+		// Attach a temporary 'error' handler so a remote channel reset between
+		// channel-open and StreamForwarder construction (while we await
+		// forwardedPortConnecting and the local TCP connect) does not crash
+		// the host with an unhandled 'error' event. Removed once the forwarder
+		// takes over (or the connection is rejected/aborted below).
+		const channelErrorHandler = (e: Error) => {
+			trace(
+				TraceLevel.Warning,
+				SshTraceEventIds.portForwardConnectionFailed,
+				`PortForwardingService channel stream errored before forwarding started: ${e.message}`,
+				e,
+			);
+		};
+		sshStream.on('error', channelErrorHandler);
+
+		let forwardedStream: Duplex | null;
+		try {
+			forwardedStream = await pfs.forwardedPortConnecting(
+				remotePort ?? localPort,
+				true,
+				sshStream,
+				cancellation,
+			);
+		} catch (e) {
+			sshStream.removeListener('error', channelErrorHandler);
+			sshStream.destroy();
+			throw e;
+		}
 
 		if (!forwardedStream) {
 			// The event handler rejected the connection.
+			sshStream.removeListener('error', channelErrorHandler);
+			sshStream.destroy();
 			request.failureReason = SshChannelOpenFailureReason.connectFailed;
 			return;
 		}
@@ -119,6 +145,11 @@ export class RemotePortForwarder extends RemotePortConnector {
 			await connectCompletion.promise;
 		} catch (e) {
 			if (!(e instanceof Error) || cancellation?.isCancellationRequested) {
+				sshStream.removeListener('error', channelErrorHandler);
+				// The forwardedStream may be the user-substituted stream; close it
+				// so we don't leak the underlying SSH channel.
+				forwardedStream.destroy();
+				if (forwardedStream !== sshStream) sshStream.destroy();
 				throw e;
 			}
 
@@ -131,19 +162,39 @@ export class RemotePortForwarder extends RemotePortConnector {
 			);
 			request.failureReason = SshChannelOpenFailureReason.connectFailed;
 			request.failureDescription = e.message;
+
+			// Tear down the SSH side and abandon: do NOT proceed to construct a
+			// StreamForwarder around a destroyed socket. Pre-existing bug: the
+			// previous code fell through and built a forwarder anyway, leaking
+			// resources and (before PR #138) potentially crashing the host.
+			sshStream.removeListener('error', channelErrorHandler);
+			forwardedStream.destroy();
+			if (forwardedStream !== sshStream) sshStream.destroy();
+			return;
 		} finally {
 			cancellationRegistration?.dispose();
 		}
 
 		// TODO: Set socket options?
 
-		const streamForwarder = new StreamForwarder(socket, forwardedStream, channel.session.trace);
+		// Hand off SSH stream error handling to the StreamForwarder.
+		sshStream.removeListener('error', channelErrorHandler);
+
+		const streamForwarder = new StreamForwarder(
+			socket,
+			forwardedStream,
+			channel.session.trace,
+			pfs.removeStreamForwarder,
+		);
 		trace(
 			TraceLevel.Info,
 			SshTraceEventIds.portForwardConnectionOpened,
 			`${channel.session} PortForwardingService forwarded channel ` +
 				`#${channel.channelId} connection to ${localHost}:${localPort}.`,
 		);
-		pfs.streamForwarders.push(streamForwarder);
+		pfs.streamForwarders.add(streamForwarder);
+		if (streamForwarder.isDisposed) {
+			pfs.streamForwarders.delete(streamForwarder);
+		}
 	}
 }

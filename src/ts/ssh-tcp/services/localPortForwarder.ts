@@ -14,6 +14,7 @@ import {
 	SshProtocolExtensionNames,
 	SshStream,
 } from '@microsoft/dev-tunnels-ssh';
+import { Duplex } from 'stream';
 import { StreamForwarder } from './streamForwarder';
 import { PortForwardingService } from './portForwardingService';
 
@@ -157,6 +158,20 @@ export class LocalPortForwarder extends SshService {
 
 		// TODO: Set socket options?
 
+		// Attach a temporary 'error' handler so a peer reset between accept and
+		// StreamForwarder construction (while we await openChannel and the
+		// forwardedPortConnecting event handler) does not crash the host with
+		// an unhandled 'error' event. Removed once the forwarder takes over.
+		const acceptErrorHandler = (e: Error) => {
+			this.trace(
+				TraceLevel.Warning,
+				SshTraceEventIds.portForwardConnectionFailed,
+				`PortForwardingService accepted socket errored before forwarding started: ${e.message}`,
+				e,
+			);
+		};
+		socket.on('error', acceptErrorHandler);
+
 		let channel: SshChannel | null;
 		try {
 			channel = await this.pfs.openChannel(
@@ -172,6 +187,7 @@ export class LocalPortForwarder extends SshService {
 
 			// TODO: Destroy the socket in a way that causes a connection reset:
 			// https://github.com/nodejs/node/issues/27428
+			socket.removeListener('error', acceptErrorHandler);
 			socket.destroy();
 
 			// Don't re-throw. This is an async event handler so the caller isn't awaiting.
@@ -180,19 +196,41 @@ export class LocalPortForwarder extends SshService {
 		}
 
 		// The event handler may return a transformed stream.
-		const forwardedStream = await this.pfs.forwardedPortConnecting(
-			this.remotePort ?? this.localPort,
-			false,
-			new SshStream(channel),
-		);
+		const sshStream = new SshStream(channel);
+		let forwardedStream: Duplex | null;
+		try {
+			forwardedStream = await this.pfs.forwardedPortConnecting(
+				this.remotePort ?? this.localPort,
+				false,
+				sshStream,
+			);
+		} catch (e) {
+			socket.removeListener('error', acceptErrorHandler);
+			socket.destroy();
+			sshStream.destroy();
+			throw e;
+		}
 
 		if (!forwardedStream) {
 			// The event handler rejected the connection.
+			socket.removeListener('error', acceptErrorHandler);
+			socket.destroy();
+			sshStream.destroy();
 			return;
 		}
 
-		const forwarder = new StreamForwarder(socket, forwardedStream, channel.session.trace);
-		this.pfs.streamForwarders.push(forwarder);
+		// Hand off socket error handling to the StreamForwarder.
+		socket.removeListener('error', acceptErrorHandler);
+
+		const forwarder = new StreamForwarder(
+			socket,
+			forwardedStream,
+			channel.session.trace,
+			this.pfs.removeStreamForwarder,
+		);
+		if (!forwarder.isDisposed) {
+			this.pfs.streamForwarders.add(forwarder);
+		}
 	}
 
 	public dispose() {

@@ -89,7 +89,12 @@ export class PortForwardingService extends SshService {
 	private readonly remoteConnectors = new Map<number, RemotePortConnector>();
 
 	/* @internal */
-	public readonly streamForwarders: StreamForwarder[] = [];
+	public readonly streamForwarders: Set<StreamForwarder> = new Set<StreamForwarder>();
+
+	/* @internal */
+	public readonly removeStreamForwarder = (forwarder: StreamForwarder): void => {
+		this.streamForwarders.delete(forwarder);
+	};
 
 	/* @internal */
 	public constructor(session: SshSession) {
@@ -936,7 +941,7 @@ export class PortForwardingService extends SshService {
 			...this.remoteConnectors.values(),
 		];
 
-		this.streamForwarders.splice(0, this.streamForwarders.length);
+		this.streamForwarders.clear();
 		this.localForwarders.clear();
 		this.remoteConnectors.clear();
 
