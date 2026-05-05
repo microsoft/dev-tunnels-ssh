@@ -4,7 +4,7 @@
 
 import { SshAlgorithm } from './sshAlgorithm';
 import { KeyExchangeAlgorithm, KeyExchange } from './keyExchangeAlgorithm';
-import { PublicKeyAlgorithm, KeyPair, RsaParameters, ECParameters } from './publicKeyAlgorithm';
+import { PublicKeyAlgorithm, KeyPair, RsaParameters, ECParameters, EdDSAParameters } from './publicKeyAlgorithm';
 import { EncryptionAlgorithm, Cipher } from './encryptionAlgorithm';
 import {
 	HmacAlgorithm,
@@ -33,6 +33,7 @@ export {
 	CompressionAlgorithm,
 	RsaParameters,
 	ECParameters,
+	EdDSAParameters,
 };
 
 // Swap imports to node crypto implementations when web crypto is not available.
@@ -44,6 +45,7 @@ const useWebCrypto = typeof self === 'object' && !!(typeof crypto === 'object' &
 import { WebDiffieHellman, WebECDiffieHellman } from './web/webKeyExchange';
 import { WebRsa } from './web/webRsa';
 import { WebECDsa } from './web/webECDsa';
+import { WebEd25519 } from './web/webEd25519';
 import { WebEncryption } from './web/webEncryption';
 import { WebHmac } from './web/webHmac';
 import { WebRandom } from './web/webRandom';
@@ -61,6 +63,9 @@ const ECDiffieHellman: typeof WebECDiffieHellman = useWebCrypto
 	: require('./node/nodeKeyExchange').NodeECDiffieHellman;
 const Rsa: typeof WebRsa = useWebCrypto ? WebRsa : require('./node/nodeRsa').NodeRsa;
 const ECDsa: typeof WebECDsa = useWebCrypto ? WebECDsa : require('./node/nodeECDsa').NodeECDsa;
+const Ed25519: typeof WebEd25519 = useWebCrypto
+	? WebEd25519
+	: require('./node/nodeEd25519').NodeEd25519;
 const Encryption: typeof WebEncryption = useWebCrypto
 	? WebEncryption
 	: require('./node/nodeEncryption').NodeEncryption;
@@ -81,7 +86,13 @@ namespace ECDsa {
 	export type KeyPair = WebECDsa.KeyPair;
 }
 
-export { Rsa, ECDsa, Encryption };
+// eslint-disable-next-line no-redeclare
+namespace Ed25519 {
+	// eslint-disable-next-line no-shadow,@typescript-eslint/no-shadow
+	export type KeyPair = WebEd25519.KeyPair;
+}
+
+export { Rsa, ECDsa, Ed25519, Encryption };
 
 export class SshAlgorithms {
 	public static keyExchange: { [id: string]: KeyExchangeAlgorithm | null } = {
@@ -100,6 +111,7 @@ export class SshAlgorithms {
 		ecdsaSha2Nistp256: new ECDsa('ecdsa-sha2-nistp256', 'SHA2-256'),
 		ecdsaSha2Nistp384: new ECDsa('ecdsa-sha2-nistp384', 'SHA2-384'),
 		ecdsaSha2Nistp521: new ECDsa('ecdsa-sha2-nistp521', 'SHA2-512'),
+		ed25519: new Ed25519(),
 	};
 
 	public static encryption: { [id: string]: EncryptionAlgorithm | null } = {

@@ -116,7 +116,7 @@ Legend:
 | public-key   | `ecdsa-sha2-nistp256`           | ✔✔
 | public-key   | `ecdsa-sha2-nistp384`           | ✔✔
 | public-key   | `ecdsa-sha2-nistp521`           | ✔
-| public-key   | `ssh-ed25519`                   | ??   [1]
+| public-key   | `ssh-ed25519`                   | ✔    [4]
 | public-key   | `*-cert-v01@openssh.com`        | ??   [2]
 | | |
 | cipher       | `aes256-cbc`                    | ✔✔  [3]
@@ -137,11 +137,15 @@ Legend:
 
 [1] May require use of 3rd-party libs, though Curve25519 APIs are under
 consideration for [.NET](https://github.com/dotnet/runtime/issues/14741) and
-[web crypto](https://github.com/w3c/webcrypto/issues/233).  
+[web crypto](https://github.com/w3c/webcrypto/issues/233).
+Ed25519 is now supported in the TS library (see [4]).  
 [2] OpenSSH certificate support should be possible with some work.  
 [3] AES-CBC is not supported in browsers due to a [limitation](
 https://github.com/w3c/webcrypto/issues/73) of the web crypto API. AES-CTR or
-AES-GCM works fine.
+AES-GCM works fine.  
+[4] Ed25519 is supported in the TypeScript library only (Node.js and browsers
+via web crypto). Not yet enabled in the default session configuration; add
+`SshAlgorithms.publicKey.ed25519` to enable it.
 
 There is no plan to have built-in support for older algorithms known to be
 insecure (for example SHA-1), though in some cases these can be easily added by
@@ -156,10 +160,10 @@ or [src/ts/ssh-keys/README.md](src/ts/ssh-keys/README.md).
 
 | Key Format           | Key Algorithm | Password Protection | Format Description |
 | -------------------- | ------------- | ------------------- | ------------------ |
-| SSH public key       | RSA<br>ECDSA  | N/A                 | Single line key algorithm name, base64-encoded key bytes, and optional comment. Files conventionally end with `.pub`.
+| SSH public key       | RSA<br>ECDSA<br>Ed25519 | N/A          | Single line key algorithm name, base64-encoded key bytes, and optional comment. Files conventionally end with `.pub`.
 | PKCS#1               | RSA           | _import&nbsp;only_  | Starts with one of:<br>`-----BEGIN RSA PUBLIC KEY-----`<br>`-----BEGIN RSA PRIVATE KEY-----`
 | SEC1                 | ECDSA         | _import&nbsp;only_  | Starts with:<br>`-----BEGIN EC PRIVATE KEY-----`
-| PKCS#8               | RSA<br>ECDSA  | ✔                  | Starts with one of:<br>`-----BEGIN PUBLIC KEY-----`<br>`-----BEGIN PRIVATE KEY-----`<br>`-----BEGIN ENCRYPTED PRIVATE KEY-----`
+| PKCS#8               | RSA<br>ECDSA<br>Ed25519 | ✔             | Starts with one of:<br>`-----BEGIN PUBLIC KEY-----`<br>`-----BEGIN PRIVATE KEY-----`<br>`-----BEGIN ENCRYPTED PRIVATE KEY-----`
 | SSH2<br>_C# only_    | RSA           | ✔                  | Starts with one of:<br>`---- BEGIN SSH2 PUBLIC KEY ----`<br>`---- BEGIN SSH2 ENCRYPTED PRIVATE KEY ----`
 | OpenSSH<br>_C# only_ | RSA<br>ECDSA  | ✔                  | Starts with one of:<br>`-----BEGIN OPENSSH PUBLIC KEY-----`<br>`-----BEGIN OPENSSH PRIVATE KEY-----`
 | JWK<br>_TS only_     | RSA<br>ECDSA  | N/A                 | JSON with key algorithm name and parameters
@@ -176,3 +180,4 @@ The following RFCs define the SSH protocol:
  - [RFC 5647 - AES GCM for the SSH Protocol](https://tools.ietf.org/html/rfc5647)
  - [RFC 5656 - EC Algorithm Integration in SSH](https://tools.ietf.org/html/rfc5656)
  - [RFC 8308 - SSH Extension Negotiation](https://tools.ietf.org/html/rfc8308)
+ - [RFC 8709 - Ed25519 and Ed448 Public Key Algorithms for SSH](https://tools.ietf.org/html/rfc8709)
