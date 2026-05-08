@@ -49,6 +49,7 @@ export class CryptoTests {
 	@params({ pkAlg: 'ecdsa-sha2-nistp256' })
 	@params({ pkAlg: 'ecdsa-sha2-nistp384' })
 	@params({ pkAlg: 'ecdsa-sha2-nistp521' })
+	@params({ pkAlg: 'ssh-ed25519' })
 	@params.naming((p) => `signVerify(${p.pkAlg})`)
 	public async signVerify({ pkAlg, keySize }: { pkAlg: string; keySize?: number }) {
 		const alg = Object.values(SshAlgorithms.publicKey).find((a) => a?.name === pkAlg)!;

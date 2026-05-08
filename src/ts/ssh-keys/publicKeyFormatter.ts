@@ -2,7 +2,7 @@
 //  Copyright (c) Microsoft Corporation. All rights reserved.
 //
 
-import { SshAlgorithms, KeyPair, Rsa, ECDsa, SshDataReader } from '@microsoft/dev-tunnels-ssh';
+import { SshAlgorithms, KeyPair, Rsa, ECDsa, Ed25519, SshDataReader } from '@microsoft/dev-tunnels-ssh';
 import { KeyFormatter } from './keyFormatter';
 import { KeyData } from './keyData';
 
@@ -31,6 +31,8 @@ export class PublicKeyFormatter implements KeyFormatter {
 			keyPair = SshAlgorithms.publicKey.ecdsaSha2Nistp384!.createKeyPair();
 		} else if (keyData.keyType === ECDsa.ecdsaSha2Nistp521) {
 			keyPair = SshAlgorithms.publicKey.ecdsaSha2Nistp521!.createKeyPair();
+		} else if (keyData.keyType === Ed25519.keyAlgorithmName) {
+			keyPair = SshAlgorithms.publicKey.ed25519!.createKeyPair();
 		}
 
 		if (keyPair) {
