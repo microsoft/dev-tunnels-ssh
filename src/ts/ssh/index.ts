@@ -60,6 +60,8 @@ export {
 	ChannelRequestMessage,
 	ChannelRequestType,
 	CommandRequestMessage,
+	TerminalRequestMessage,
+	ShellRequestMessage,
 } from './messages/connectionMessages';
 
 export {
