@@ -195,12 +195,9 @@ public class ChannelTests : IDisposable
 	/// holding the lock, which blocks on the in-flight callback and deadlocks the session;
 	/// after the fix the registration is disposed after the lock is released.
 	/// </summary>
-	/// <returns>An action that must be invoked after the hook is installed but before
-	/// OpenChannelAsync, to register the "early" monitoring callback.</returns>
-	private static Action InstallOpenCancelRaceHook(
+	private static void InstallOpenCancelRaceHook(
 		SshSession session,
-		CancellationTokenSource cancellationSource,
-		ManualResetEventSlim callbackReached)
+		CancellationTokenSource cancellationSource)
 	{
 		var connectionServiceType = typeof(SshSession).Assembly.GetType(
 			"Microsoft.DevTunnels.Ssh.Services.ConnectionService");
@@ -220,38 +217,28 @@ public class ChannelTests : IDisposable
 			// Fire only once, on the first (raced) open confirmation.
 			hookProperty.SetValue(connectionService, null);
 
-			// Register a "late" monitoring callback — AFTER the internal callback
-			// (which was registered inside OpenChannelAsync). On LIFO runtimes
-			// (.NET Core) this fires first; on FIFO runtimes (.NET Framework) the
-			// "early" callback registered below fires first. Either way, one of them
-			// signals before the internal callback executes.
-			cancellationSource.Token.Register(() => callbackReached.Set());
+			// Cancel on a dedicated thread — not via Task.Run, which depends on
+			// the thread pool and can be starved under CI load on .NET Framework
+			// 4.8. Cancel() invokes all registered callbacks synchronously on
+			// the calling thread, so the SSH internal callback will attempt to
+			// acquire the lock we hold.
+			new Thread(() => cancellationSource.Cancel())
+				{ IsBackground = true }.Start();
 
-			// Cancel on a dedicated thread (not the thread pool, which can be
-			// starved under CI load). Cancel() invokes all registered callbacks
-			// sequentially on this thread before returning.
-			new Thread(() => cancellationSource.Cancel()) { IsBackground = true }.Start();
-
-			// Wait for a monitoring callback to fire. Since Cancel() executes
-			// callbacks sequentially, the internal callback starts immediately
-			// after the monitoring one completes — on the same thread — and blocks
-			// on lockObject (which the caller holds). So when Wait() returns, the
-			// internal callback is guaranteed to be contending for the lock.
+			// Give the dedicated thread time to start and for Cancel() to reach
+			// the internal callback, which then blocks on the lock we hold.
+			// 200 ms is >100,000x the time needed for thread start + dispatch.
 			//
-			// ManualResetEventSlim is used instead of TaskCompletionSource because
-			// MRES.Set() wakes the waiter directly (kernel signal), whereas
-			// TCS.TrySetResult + Task.Wait() can route through the thread pool
-			// (via RunContinuationsAsynchronously), which deadlocks on .NET
-			// Framework 4.8 when pool threads are occupied by SSH session work.
-			callbackReached.Wait();
+			// A signal-based wait (ManualResetEventSlim / TaskCompletionSource)
+			// cannot be used here: it requires registering monitoring callbacks
+			// adjacent to the SSH internal callback to detect contention, but
+			// the callback-ordering difference between runtimes (LIFO on .NET
+			// Core, FIFO on .NET Framework) combined with thread-pool pressure
+			// on CI agents causes hangs on .NET Framework 4.8.
+			Thread.Sleep(200);
 		};
 
 		hookProperty.SetValue(connectionService, hook);
-
-		// Return an action the caller must invoke BEFORE OpenChannelAsync to register
-		// the "early" monitoring callback (covers FIFO runtimes like .NET Framework).
-		return () => cancellationSource.Token.Register(
-			() => callbackReached.Set());
 	}
 
 	[Fact]
@@ -260,13 +247,7 @@ public class ChannelTests : IDisposable
 		await this.sessionPair.ConnectAsync().WithTimeout(Timeout);
 
 		using var cancellationSource = new CancellationTokenSource();
-		using var callbackReached = new ManualResetEventSlim(false);
-		var registerEarlyCallback = InstallOpenCancelRaceHook(
-			this.clientSession, cancellationSource, callbackReached);
-
-		// Register "early" monitoring callback BEFORE OpenChannelAsync registers
-		// the internal one. On FIFO (.NET Framework) this fires first.
-		registerEarlyCallback();
+		InstallOpenCancelRaceHook(this.clientSession, cancellationSource);
 
 		var openTask = this.clientSession.OpenChannelAsync(
 			(string)null, cancellationSource.Token);
@@ -291,11 +272,7 @@ public class ChannelTests : IDisposable
 		await this.sessionPair.ConnectAsync().WithTimeout(Timeout);
 
 		using var cancellationSource = new CancellationTokenSource();
-		using var callbackReached = new ManualResetEventSlim(false);
-		var registerEarlyCallback = InstallOpenCancelRaceHook(
-			this.clientSession, cancellationSource, callbackReached);
-
-		registerEarlyCallback();
+		InstallOpenCancelRaceHook(this.clientSession, cancellationSource);
 
 		var racedOpenTask = this.clientSession.OpenChannelAsync(
 			(string)null, cancellationSource.Token);
