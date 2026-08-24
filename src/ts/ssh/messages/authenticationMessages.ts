@@ -55,6 +55,19 @@ export class PublicKeyRequestMessage extends AuthenticationRequestMessage {
 	protected onRead(reader: SshDataReader): void {
 		super.onRead(reader);
 
+		if (this.methodName === AuthenticationMethod.hostBased) {
+			this.keyAlgorithmName = reader.readString('ascii');
+			this.publicKey = reader.readBinary();
+			this.clientHostname = reader.readString('ascii');
+			this.clientUsername = reader.readString('ascii');
+			this.signature = reader.readBinary();
+			this.payloadWithoutSignature = this.rawBytes!.slice(
+				0,
+				this.rawBytes!.length - this.signature.length - 4,
+			);
+			return;
+		}
+
 		const hasSignature = reader.readBoolean();
 		this.keyAlgorithmName = reader.readString('ascii');
 		this.publicKey = reader.readBinary();

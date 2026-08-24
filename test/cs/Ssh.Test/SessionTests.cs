@@ -3,10 +3,12 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using System.Security.Claims;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.DevTunnels.Ssh.Algorithms;
 using Microsoft.DevTunnels.Ssh.Events;
+using Microsoft.DevTunnels.Ssh.IO;
 using Microsoft.DevTunnels.Ssh.Messages;
 using Xunit;
 
@@ -372,6 +374,210 @@ public class SessionTests : IDisposable
 		Assert.False(serverRaisedClientAuthenticated);
 
 		await this.clientSession.CloseAsync(SshDisconnectReason.NoMoreAuthMethodsAvailable);
+	}
+
+	/// <summary>
+	/// Verifies that a public-key authentication request with a signature that does not match
+	/// the presented public key never reaches the application's Authenticating event handler,
+	/// and never results in an authenticated session.
+	/// </summary>
+	[Theory]
+	[InlineData(ECDsa.ECDsaSha2Nistp256)]
+	[InlineData(ECDsa.ECDsaSha2Nistp384)]
+	[InlineData(Rsa.RsaWithSha256, 2048)]
+	[InlineData(Rsa.RsaWithSha512, 2048)]
+	public async Task AuthenticateClientWithPublicKeyInvalidSignature(
+		string pkAlgorithmName, int? keySize = null)
+	{
+		var pkAlg = GetAlgorithmByName<PublicKeyAlgorithm>(
+			typeof(SshAlgorithms.PublicKey), pkAlgorithmName);
+		var presentedKey = pkAlg.GenerateKeyPair(keySize);
+		var signingKey = pkAlg.GenerateKeyPair(keySize);
+
+		var authenticationTypes = new List<SshAuthenticationType>();
+		this.serverSession.Authenticating += (sender, e) =>
+		{
+			authenticationTypes.Add(e.AuthenticationType);
+
+			// Approve anything that reaches the application callback, so that the assertions
+			// below fail if the callback is reached for a request with an invalid signature.
+			e.AuthenticationTask = Task.FromResult(new ClaimsPrincipal());
+		};
+
+		bool serverRaisedClientAuthenticated = false;
+		this.serverSession.ClientAuthenticated += (sender, e) =>
+		{
+			serverRaisedClientAuthenticated = true;
+		};
+
+		this.clientSession.Authenticating += (sender, e) =>
+		{
+			e.AuthenticationTask = Task.FromResult(new ClaimsPrincipal());
+		};
+
+		await this.sessionPair.ConnectAsync(authenticate: false).WithTimeout(Timeout);
+
+		// The request presents one public key, but the signature over the transcript that the
+		// server verifies is produced with a different key.
+		var request = new PublicKeyRequestMessage(
+			serviceName: "ssh-connection",
+			username: TestUsername,
+			pkAlg,
+			presentedKey)
+		{
+			Signature = CreateMismatchedSignature(
+				pkAlg,
+				signingKey,
+				this.clientSession.SessionId,
+				TestUsername,
+				presentedKey.GetPublicKeyBytes(pkAlg.Name)),
+		};
+
+		var bindingFlags = BindingFlags.NonPublic | BindingFlags.Instance;
+		var sendMessageAsync = typeof(SshSession).GetMethod("SendMessageAsync", bindingFlags);
+		await (Task)sendMessageAsync.Invoke(
+			this.clientSession,
+			new object[] { new ServiceRequestMessage { ServiceName = "ssh-userauth" }, default(CancellationToken) });
+		await (Task)sendMessageAsync.Invoke(
+			this.clientSession, new object[] { request, default(CancellationToken) });
+
+		// Allow ample time for the server to process the request before asserting that it
+		// did not authenticate the session.
+		for (int i = 0; i < 100 && this.serverSession.Principal == null; i++)
+		{
+			await Task.Delay(20);
+		}
+
+		Assert.Null(this.serverSession.Principal);
+		Assert.False(serverRaisedClientAuthenticated);
+		Assert.DoesNotContain(SshAuthenticationType.ClientPublicKey, authenticationTypes);
+		Assert.Empty(authenticationTypes);
+
+		await this.clientSession.CloseAsync(SshDisconnectReason.NoMoreAuthMethodsAvailable);
+	}
+
+	/// <summary>
+	/// Verifies that a host-based authentication request with a signature that does not match
+	/// the presented host public key never results in an authenticated session.
+	/// (RFC 4252 Section 9)
+	/// </summary>
+	/// <remarks>
+	/// Host-based authentication is opt-in, and the C# server currently rejects host-based
+	/// requests during message deserialization
+	/// (see <see cref="PublicKeyRequestMessage" />.OnRead), so today this test passes by way
+	/// of that earlier rejection rather than by exercising signature verification. It is
+	/// retained as a fail-closed guard: if host-based deserialization is ever enabled, this
+	/// test will then exercise the signature check in AuthenticationService and fail if that
+	/// check is missing.
+	/// </remarks>
+	[Fact]
+	public async Task AuthenticateClientHostBasedInvalidSignature()
+	{
+		var pkAlg = SshAlgorithms.PublicKey.ECDsaSha2Nistp384;
+		var presentedHostKey = pkAlg.GenerateKeyPair();
+		var signingKey = pkAlg.GenerateKeyPair();
+
+		this.serverSession.Config.AuthenticationMethods.Add(AuthenticationMethods.HostBased);
+
+		var authenticationTypes = new List<SshAuthenticationType>();
+		this.serverSession.Authenticating += (sender, e) =>
+		{
+			authenticationTypes.Add(e.AuthenticationType);
+			e.AuthenticationTask = Task.FromResult(new ClaimsPrincipal());
+		};
+
+		bool serverRaisedClientAuthenticated = false;
+		this.serverSession.ClientAuthenticated += (sender, e) =>
+		{
+			serverRaisedClientAuthenticated = true;
+		};
+
+		this.clientSession.Authenticating += (sender, e) =>
+		{
+			e.AuthenticationTask = Task.FromResult(new ClaimsPrincipal());
+		};
+
+		await this.sessionPair.ConnectAsync(authenticate: false).WithTimeout(Timeout);
+
+		const string clientHostname = "client-host.example.com";
+		var presentedPublicKey = presentedHostKey.GetPublicKeyBytes(pkAlg.Name);
+
+		var writer = new SshDataWriter();
+		writer.WriteBinary(this.clientSession.SessionId);
+		writer.Write(AuthenticationRequestMessage.MessageNumber);
+		writer.Write(TestUsername, Encoding.UTF8);
+		writer.Write("ssh-connection", Encoding.ASCII);
+		writer.Write(AuthenticationMethods.HostBased, Encoding.ASCII);
+		writer.Write(pkAlg.Name, Encoding.ASCII);
+		writer.WriteBinary(presentedPublicKey);
+		writer.Write(clientHostname, Encoding.ASCII);
+		writer.Write(TestUsername, Encoding.UTF8);
+
+		// Sign the transcript with a key that does not match the presented host public key.
+		var signer = pkAlg.CreateSigner(signingKey);
+		var rawSignature = new Buffer(signer.DigestLength);
+		signer.Sign(writer.ToBuffer(), rawSignature);
+
+		var request = new PublicKeyRequestMessage(
+			serviceName: "ssh-connection",
+			username: TestUsername,
+			pkAlg,
+			presentedHostKey,
+			signature: pkAlg.CreateSignatureData(rawSignature),
+			clientHostname: clientHostname,
+			clientUsername: TestUsername);
+
+		var bindingFlags = BindingFlags.NonPublic | BindingFlags.Instance;
+		var sendMessageAsync = typeof(SshSession).GetMethod("SendMessageAsync", bindingFlags);
+		try
+		{
+			await (Task)sendMessageAsync.Invoke(
+				this.clientSession,
+				new object[] { new ServiceRequestMessage { ServiceName = "ssh-userauth" }, default(CancellationToken) });
+			await (Task)sendMessageAsync.Invoke(
+				this.clientSession, new object[] { request, default(CancellationToken) });
+		}
+		catch (Exception)
+		{
+			// The session may already be torn down; the assertions below still apply.
+		}
+
+		for (int i = 0; i < 100 && this.serverSession.Principal == null; i++)
+		{
+			await Task.Delay(20);
+		}
+
+		Assert.Null(this.serverSession.Principal);
+		Assert.False(serverRaisedClientAuthenticated);
+		Assert.DoesNotContain(SshAuthenticationType.ClientHostBased, authenticationTypes);
+	}
+
+	/// <summary>
+	/// Signs the public-key authentication transcript
+	/// (sessionId || type || username || service || method || true || algorithm || publicKey)
+	/// using a key that does NOT match the public key included in the transcript.
+	/// </summary>
+	private static Buffer CreateMismatchedSignature(
+		PublicKeyAlgorithm algorithm,
+		IKeyPair signingKey,
+		byte[] sessionId,
+		string username,
+		Buffer claimedPublicKey)
+	{
+		var writer = new SshDataWriter();
+		writer.WriteBinary(sessionId);
+		writer.Write(AuthenticationRequestMessage.MessageNumber);
+		writer.Write(username, Encoding.UTF8);
+		writer.Write("ssh-connection", Encoding.ASCII);
+		writer.Write(AuthenticationMethods.PublicKey, Encoding.ASCII);
+		writer.Write(true);
+		writer.Write(algorithm.Name, Encoding.ASCII);
+		writer.WriteBinary(claimedPublicKey);
+
+		var signer = algorithm.CreateSigner(signingKey);
+		var signature = new Buffer(signer.DigestLength);
+		signer.Sign(writer.ToBuffer(), signature);
+		return algorithm.CreateSignatureData(signature);
 	}
 
 	[Fact]

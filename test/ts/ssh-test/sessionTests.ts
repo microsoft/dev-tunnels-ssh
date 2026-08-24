@@ -3,6 +3,7 @@
 //
 
 import * as assert from 'assert';
+import { Buffer } from 'buffer';
 import { suite, test, slow, timeout, pending, params } from '@testdeck/mocha';
 
 import {
@@ -28,6 +29,9 @@ import {
 	PublicKeyRequestMessage,
 	ServiceRequestMessage,
 	SshTraceEventIds,
+	SshDataWriter,
+	AuthenticationMethod,
+	PublicKeyAlgorithm,
 } from '@microsoft/dev-tunnels-ssh';
 import { DuplexStream, shutdownWebSocketServer } from './duplexStream';
 import { createSessionPair, connectSessionPair } from './sessionPair';
@@ -447,6 +451,197 @@ export class SessionTests {
 		assert(!authenticated);
 		assert(!serverRaisedClientAuthenticated);
 		assert.equal(authenticationType, SshAuthenticationType.clientPassword);
+	}
+
+	/**
+	 * Verifies that a public-key authentication request with a signature that does not match
+	 * the presented public key never reaches the application's `Authenticating` event handler,
+	 * and never results in an authenticated session.
+	 */
+	@test
+	@params({ pkAlg: 'ecdsa-sha2-nistp256' })
+	@params({ pkAlg: 'ecdsa-sha2-nistp384' })
+	@params({ pkAlg: 'rsa-sha2-256', keySize: 2048 })
+	@params({ pkAlg: 'rsa-sha2-512', keySize: 2048 })
+	@params.naming((p) => `authenticateClientWithPublicKeyInvalidSignature(${p.pkAlg})`)
+	public async authenticateClientWithPublicKeyInvalidSignature({
+		pkAlg,
+		keySize,
+	}: {
+		pkAlg: string;
+		keySize?: number;
+	}) {
+		const alg = Object.values(SshAlgorithms.publicKey).find((a) => a?.name === pkAlg)!;
+		const presentedKey = await alg.generateKeyPair(keySize);
+		const signingKey = await alg.generateKeyPair(keySize);
+
+		const [clientSession, serverSession] = await this.createSessions();
+
+		const authenticationTypes: SshAuthenticationType[] = [];
+		serverSession.onAuthenticating((e) => {
+			authenticationTypes.push(e.authenticationType);
+
+			// Approve anything that reaches the application callback, so that the assertions
+			// below fail if the callback is reached for a request with an invalid signature.
+			e.authenticationPromise = Promise.resolve({});
+		});
+
+		let serverRaisedClientAuthenticated = false;
+		serverSession.onClientAuthenticated(() => {
+			serverRaisedClientAuthenticated = true;
+		});
+
+		clientSession.onAuthenticating((e) => {
+			e.authenticationPromise = Promise.resolve({});
+		});
+
+		await connectSessionPair(clientSession, serverSession, undefined, false);
+
+		const presentedPublicKey = (await presentedKey.getPublicKeyBytes(alg.name))!;
+
+		// The request presents one public key, but the signature over the transcript that the
+		// server verifies is produced with a different key.
+		const request = new PublicKeyRequestMessage();
+		request.serviceName = 'ssh-connection';
+		request.username = SessionTests.testUsername;
+		request.keyAlgorithmName = alg.name;
+		request.publicKey = presentedPublicKey;
+		request.signature = await SessionTests.createMismatchedSignature(
+			alg,
+			signingKey,
+			clientSession.sessionId!,
+			SessionTests.testUsername,
+			presentedPublicKey,
+		);
+
+		const serviceRequestMessage = new ServiceRequestMessage();
+		serviceRequestMessage.serviceName = 'ssh-userauth';
+		await clientSession.sendMessage(serviceRequestMessage);
+		await clientSession.sendMessage(request);
+
+		// Allow ample time for the server to process the request before asserting that it
+		// did not authenticate the session.
+		for (let i = 0; i < 100 && !serverSession.principal; i++) {
+			await new Promise((resolve) => setTimeout(resolve, 20));
+		}
+
+		assert(!serverSession.principal, 'Server must not assign a principal.');
+		assert(!serverRaisedClientAuthenticated, 'Server must not raise ClientAuthenticated.');
+		assert(
+			!authenticationTypes.includes(SshAuthenticationType.clientPublicKey),
+			'Server must not raise the clientPublicKey authentication event.',
+		);
+		assert.strictEqual(authenticationTypes.length, 0);
+	}
+
+	/**
+	 * Verifies that a host-based authentication request with a signature that does not match
+	 * the presented host public key never reaches the application's `Authenticating` event
+	 * handler, and never results in an authenticated session. (RFC 4252 Section 9)
+	 */
+	@test
+	public async authenticateClientHostBasedInvalidSignature() {
+		const alg = SshAlgorithms.publicKey.ecdsaSha2Nistp384!;
+		const presentedHostKey = await alg.generateKeyPair();
+		const signingKey = await alg.generateKeyPair();
+
+		const [clientSession, serverSession] = await this.createSessions();
+
+		// Host-based authentication is opt-in; enable it on the server for this test.
+		serverSession.config.authenticationMethods.push(AuthenticationMethod.hostBased);
+
+		const authenticationTypes: SshAuthenticationType[] = [];
+		serverSession.onAuthenticating((e) => {
+			authenticationTypes.push(e.authenticationType);
+			e.authenticationPromise = Promise.resolve({});
+		});
+
+		let serverRaisedClientAuthenticated = false;
+		serverSession.onClientAuthenticated(() => {
+			serverRaisedClientAuthenticated = true;
+		});
+
+		clientSession.onAuthenticating((e) => {
+			e.authenticationPromise = Promise.resolve({});
+		});
+
+		await connectSessionPair(clientSession, serverSession, undefined, false);
+
+		const presentedPublicKey = (await presentedHostKey.getPublicKeyBytes(alg.name))!;
+		const clientHostname = 'client-host.example.com';
+		const clientUsername = SessionTests.testUsername;
+
+		const sessionId = clientSession.sessionId!;
+		const writer = new SshDataWriter(
+			Buffer.alloc(sessionId.length + presentedPublicKey.length + 256),
+		);
+		writer.writeBinary(sessionId);
+		writer.writeByte(50); // SSH_MSG_USERAUTH_REQUEST
+		writer.writeString(clientUsername, 'utf8');
+		writer.writeString('ssh-connection', 'ascii');
+		writer.writeString(AuthenticationMethod.hostBased, 'ascii');
+		writer.writeString(alg.name, 'ascii');
+		writer.writeBinary(presentedPublicKey);
+		writer.writeString(clientHostname, 'ascii');
+		writer.writeString(clientUsername, 'ascii');
+
+		// Sign the transcript with a key that does not match the presented host public key.
+		const signer = alg.createSigner(signingKey);
+		const rawSignature = await signer.sign(writer.toBuffer());
+
+		const request = new PublicKeyRequestMessage();
+		request.serviceName = 'ssh-connection';
+		request.username = clientUsername;
+		request.methodName = AuthenticationMethod.hostBased;
+		request.keyAlgorithmName = alg.name;
+		request.publicKey = presentedPublicKey;
+		request.clientHostname = clientHostname;
+		request.clientUsername = clientUsername;
+		request.signature = alg.createSignatureData(rawSignature);
+
+		const serviceRequestMessage = new ServiceRequestMessage();
+		serviceRequestMessage.serviceName = 'ssh-userauth';
+		await clientSession.sendMessage(serviceRequestMessage);
+		await clientSession.sendMessage(request);
+
+		for (let i = 0; i < 100 && !serverSession.principal; i++) {
+			await new Promise((resolve) => setTimeout(resolve, 20));
+		}
+
+		assert(!serverSession.principal, 'Server must not assign a principal.');
+		assert(!serverRaisedClientAuthenticated, 'Server must not raise ClientAuthenticated.');
+		assert(
+			!authenticationTypes.includes(SshAuthenticationType.clientHostBased),
+			'Server must not raise the clientHostBased authentication event.',
+		);
+		assert.strictEqual(authenticationTypes.length, 0);
+	}
+
+	/**
+	 * Signs the public-key authentication transcript
+	 * (sessionId || type || username || service || method || true || algorithm || publicKey)
+	 * using a key that does NOT match the public key included in the transcript.
+	 */
+	private static async createMismatchedSignature(
+		alg: PublicKeyAlgorithm,
+		signingKey: KeyPair,
+		sessionId: Buffer,
+		username: string,
+		claimedPublicKey: Buffer,
+	): Promise<Buffer> {
+		const writer = new SshDataWriter(Buffer.alloc(sessionId.length + claimedPublicKey.length + 128));
+		writer.writeBinary(sessionId);
+		writer.writeByte(50); // SSH_MSG_USERAUTH_REQUEST
+		writer.writeString(username, 'utf8');
+		writer.writeString('ssh-connection', 'ascii');
+		writer.writeString(AuthenticationMethod.publicKey, 'ascii');
+		writer.writeBoolean(true);
+		writer.writeString(alg.name, 'ascii');
+		writer.writeBinary(claimedPublicKey);
+
+		const signer = alg.createSigner(signingKey);
+		const signature = await signer.sign(writer.toBuffer());
+		return alg.createSignatureData(signature);
 	}
 
 	@test
