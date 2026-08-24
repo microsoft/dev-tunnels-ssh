@@ -146,6 +146,14 @@ internal class AuthenticationService : SshService
 		SshAuthenticatingEventArgs args;
 		if (message.MethodName == AuthenticationMethods.HostBased)
 		{
+			// Verify the client host signature before allowing the application to authorize
+			// the request. (RFC 4252 Section 9)
+			if (!await VerifySignatureAsync(message, algorithm, publicKey, cancellation)
+				.ConfigureAwait(false))
+			{
+				return;
+			}
+
 			args = new SshAuthenticatingEventArgs(
 				SshAuthenticationType.ClientHostBased,
 				username: message.Username,
@@ -162,27 +170,12 @@ internal class AuthenticationService : SshService
 		}
 		else
 		{
-			// Verify that the signature matches the public key.
-			var signature = algorithm.ReadSignatureData(message.Signature);
-
-			var sessionId = Session.SessionId;
-			if (sessionId == null)
+			// Verify that the signature matches the public key, proving that the client
+			// possesses the corresponding private key.
+			if (!await VerifySignatureAsync(message, algorithm, publicKey, cancellation)
+				.ConfigureAwait(false))
 			{
-				throw new InvalidOperationException("Session ID not initialized.");
-			}
-
-			var writer = new SshDataWriter();
-			writer.WriteBinary(sessionId);
-			writer.Write(message.PayloadWithoutSignature);
-			var signedData = writer.ToBuffer();
-
-			var verifier = algorithm.CreateVerifier(publicKey);
-			var verified = verifier.Verify(signedData, signature);
-			if (!verified)
-			{
-				await HandleAuthenticationFailureAsync(
-					"Client authentication failed due to invalid signature.",
-					cancellation).ConfigureAwait(false);
+				return;
 			}
 
 			args = new SshAuthenticatingEventArgs(
@@ -194,6 +187,52 @@ internal class AuthenticationService : SshService
 		// Raise an Authenticating event that allows handlers to do additional verification
 		// of the client's username and public key. Then send a response.
 		await HandleAuthenticatingAsync(args, cancellation).ConfigureAwait(false);
+	}
+
+	/// <summary>
+	/// Verifies the signature on a public-key or host-based authentication request, proving
+	/// that the sender possesses the private key corresponding to the presented public key.
+	/// </summary>
+	/// <returns>True if the signature is valid. False if it is missing or invalid, in which
+	/// case an authentication failure has already been sent and the caller MUST NOT proceed
+	/// to raise the <see cref="SshSession.Authenticating" /> event.</returns>
+	private async Task<bool> VerifySignatureAsync(
+		PublicKeyRequestMessage message,
+		PublicKeyAlgorithm algorithm,
+		IKeyPair publicKey,
+		CancellationToken cancellation)
+	{
+		if (!message.HasSignature)
+		{
+			await HandleAuthenticationFailureAsync(
+				"Client authentication failed due to missing signature.",
+				cancellation).ConfigureAwait(false);
+			return false;
+		}
+
+		var sessionId = Session.SessionId;
+		if (sessionId == null)
+		{
+			throw new InvalidOperationException("Session ID not initialized.");
+		}
+
+		var signature = algorithm.ReadSignatureData(message.Signature);
+
+		var writer = new SshDataWriter();
+		writer.WriteBinary(sessionId);
+		writer.Write(message.PayloadWithoutSignature);
+		var signedData = writer.ToBuffer();
+
+		var verifier = algorithm.CreateVerifier(publicKey);
+		if (!verifier.Verify(signedData, signature))
+		{
+			await HandleAuthenticationFailureAsync(
+				"Client authentication failed due to invalid signature.",
+				cancellation).ConfigureAwait(false);
+			return false;
+		}
+
+		return true;
 	}
 
 	private async Task HandleMessageAsync(

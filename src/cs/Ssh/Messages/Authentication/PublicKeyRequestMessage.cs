@@ -92,6 +92,10 @@ public class PublicKeyRequestMessage : AuthenticationRequestMessage
 
 		if (MethodName != AuthenticationMethods.PublicKey)
 		{
+			// Host-based authentication requests are intentionally rejected here. The
+			// host-based branch below is therefore currently unreachable, but it is kept
+			// correct so that relaxing this check cannot silently break the signature
+			// verification performed by AuthenticationService.
 			throw new ArgumentException($"Method name {MethodName} is not valid.");
 		}
 
@@ -102,6 +106,7 @@ public class PublicKeyRequestMessage : AuthenticationRequestMessage
 			ClientHostname = reader.ReadString(Encoding.ASCII);
 			ClientUsername = reader.ReadString(Encoding.UTF8);
 			Signature = reader.ReadBinary();
+			PayloadWithoutSignature = RawBytes.Slice(0, reader.Position - Signature.Count - 4);
 		}
 		else
 		{
