@@ -6,7 +6,7 @@ import { Buffer } from 'buffer';
 import { SshMessage } from './sshMessage';
 import { SshDataReader, SshDataWriter, formatBuffer } from '../io/sshData';
 
-export abstract class ConnectionMessage extends SshMessage {}
+export abstract class ConnectionMessage extends SshMessage { }
 
 export abstract class ChannelMessage extends ConnectionMessage {
 	private recipientChannelValue?: number;
@@ -91,9 +91,8 @@ export class ChannelOpenMessage extends ConnectionMessage {
 	}
 
 	public toString() {
-		return `${super.toString()}(channelType=${this.channelType}, senderChannel=${
-			this.senderChannel
-		})`;
+		return `${super.toString()}(channelType=${this.channelType}, senderChannel=${this.senderChannel
+			})`;
 	}
 }
 
@@ -161,9 +160,8 @@ export class ChannelOpenFailureMessage extends ChannelMessage {
 	}
 
 	public toString() {
-		return `${super.toString()} (${SshChannelOpenFailureReason[this.reasonCode || 0]}: ${
-			this.description
-		})`;
+		return `${super.toString()} (${SshChannelOpenFailureReason[this.reasonCode || 0]}: ${this.description
+			})`;
 	}
 }
 
@@ -239,9 +237,8 @@ export class ChannelExtendedDataMessage extends ChannelMessage {
 	}
 
 	public toString() {
-		return `${super.toString()} (dataTypeCode=${this.dataTypeCode}, data=${
-			this.data ? formatBuffer(this.data, '') : '[0]'
-		})`
+		return `${super.toString()} (dataTypeCode=${this.dataTypeCode}, data=${this.data ? formatBuffer(this.data, '') : '[0]'
+			})`
 	}
 }
 
@@ -322,6 +319,46 @@ export class CommandRequestMessage extends ChannelRequestMessage {
 
 	public toString(): string {
 		return `${super.toString()} (requestType=${this.requestType})`;
+	}
+}
+
+export class TerminalRequestMessage extends ChannelRequestMessage {
+	public term: string = '';
+	public columns: number = 0;
+	public rows: number = 0;
+	public pixelWidth: number = 0;
+	public pixelHeight: number = 0;
+	public terminalModes: string = '';
+	public wantReply: boolean = true
+
+	public constructor() {
+		super();
+		this.requestType = ChannelRequestType.terminal;
+	}
+
+	protected onRead(reader: SshDataReader): void {
+		super.onRead(reader);
+	}
+
+	protected onWrite(writer: SshDataWriter): void {
+		super.onWrite(writer);
+		writer.writeString(this.term, 'ascii');
+		writer.writeUInt32(this.columns);
+		writer.writeUInt32(this.rows);
+		writer.writeUInt32(this.pixelWidth);
+		writer.writeUInt32(this.pixelHeight);
+		writer.writeString(this.terminalModes, 'ascii');
+	}
+
+	public toString(): string {
+		return `${super.toString()} (requestType=${this.requestType})`;
+	}
+}
+
+export class ShellRequestMessage extends ChannelRequestMessage {
+	public constructor() {
+		super();
+		this.requestType = ChannelRequestType.shell;
 	}
 }
 
