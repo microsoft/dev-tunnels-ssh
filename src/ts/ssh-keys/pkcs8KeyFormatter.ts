@@ -16,6 +16,8 @@ import {
 	Random,
 	ECParameters,
 	ECDsa,
+	Ed25519,
+	EdDSAParameters,
 } from '@microsoft/dev-tunnels-ssh';
 import { KeyFormatter, useWebCrypto } from './keyFormatter';
 import { KeyData } from './keyData';
@@ -23,6 +25,7 @@ import { KeyData } from './keyData';
 const enum Oids {
 	rsa = '1.2.840.113549.1.1.1',
 	ec = '1.2.840.10045.2.1',
+	ed25519 = '1.3.101.112',
 	pkcs5PBKDF2 = '1.2.840.113549.1.5.12',
 	pkcs5PBES2 = '1.2.840.113549.1.5.13',
 	hmacWithSHA256 = '1.2.840.113549.2.9',
@@ -54,10 +57,12 @@ export class Pkcs8KeyFormatter implements KeyFormatter {
 	public constructor() {
 		this.importers.set(Oids.rsa, Pkcs8KeyFormatter.importRsaKey);
 		this.importers.set(Oids.ec, Pkcs8KeyFormatter.importECKey);
+		this.importers.set(Oids.ed25519, Pkcs8KeyFormatter.importEd25519Key);
 		this.exporters.set(Rsa.keyAlgorithmName, Pkcs8KeyFormatter.exportRsaKey);
 		this.exporters.set(ECDsa.ecdsaSha2Nistp256, Pkcs8KeyFormatter.exportECKey);
 		this.exporters.set(ECDsa.ecdsaSha2Nistp384, Pkcs8KeyFormatter.exportECKey);
 		this.exporters.set(ECDsa.ecdsaSha2Nistp521, Pkcs8KeyFormatter.exportECKey);
+		this.exporters.set(Ed25519.keyAlgorithmName, Pkcs8KeyFormatter.exportEd25519Key);
 	}
 
 	/** Mapping from public key algorithm OID to import handler for that algorithm. */
@@ -373,6 +378,86 @@ export class Pkcs8KeyFormatter implements KeyFormatter {
 			return keyWriter.toBuffer();
 		} else {
 			return publicKeyData;
+		}
+	}
+
+	private static async importEd25519Key(
+		keyBytes: Buffer,
+		oidReader: DerReader,
+		includePrivate: boolean,
+	): Promise<KeyPair> {
+		let publicKeyBytes: Buffer;
+		let privateKeyBytes: Buffer | undefined;
+
+		if (includePrivate) {
+			// The private key is wrapped in an OCTET STRING containing the raw 32-byte key.
+			const keyReader = new DerReader(keyBytes);
+			privateKeyBytes = keyReader.readOctetString();
+
+			// For PKCS#8 Ed25519 private keys, the public key may not be present
+			// in the inner structure. We need to derive it or it may be appended.
+			// Some encoders append the public key after the private key bytes.
+			if (privateKeyBytes.length === 64) {
+				// Some formats store private + public concatenated.
+				publicKeyBytes = privateKeyBytes.slice(32);
+				privateKeyBytes = privateKeyBytes.slice(0, 32);
+			} else if (privateKeyBytes.length === 32) {
+				// Generate public key from private key by importing and re-exporting.
+				// For now, create a temporary key pair to derive the public key.
+				const tempKeyPair = new Ed25519.KeyPair();
+				const tempParams: EdDSAParameters = {
+					curve: { name: 'Ed25519' },
+					publicKey: Buffer.alloc(32), // placeholder
+					privateKey: privateKeyBytes,
+				};
+				// We can't derive the public key without importing. Import with a
+				// placeholder and let the key pair handle it via generate + re-import.
+				// Instead, use the raw PKCS#8 bytes directly.
+				await tempKeyPair.importParameters(tempParams);
+				const exported = <EdDSAParameters>await tempKeyPair.exportParameters();
+				publicKeyBytes = exported.publicKey;
+			} else {
+				throw new Error(`Unexpected Ed25519 private key length: ${privateKeyBytes.length}`);
+			}
+		} else {
+			publicKeyBytes = keyBytes;
+		}
+
+		if (publicKeyBytes.length !== 32) {
+			throw new Error(`Unexpected Ed25519 public key length: ${publicKeyBytes.length}`);
+		}
+
+		const parameters: EdDSAParameters = {
+			curve: { name: 'Ed25519' },
+			publicKey: publicKeyBytes,
+			privateKey: privateKeyBytes,
+		};
+
+		const keyPair = new Ed25519.KeyPair();
+		await keyPair.importParameters(parameters);
+		return keyPair;
+	}
+
+	private static async exportEd25519Key(
+		keyPair: KeyPair,
+		oidWriter: DerWriter,
+		includePrivate: boolean,
+	): Promise<Buffer> {
+		const parameters = <EdDSAParameters>await keyPair.exportParameters();
+
+		oidWriter.writeObjectIdentifier(Oids.ed25519);
+
+		if (includePrivate) {
+			if (!parameters.privateKey) {
+				throw new Error('Missing private key parameters.');
+			}
+
+			// Wrap the raw private key in an OCTET STRING.
+			const keyWriter = new DerWriter(Buffer.alloc(64));
+			keyWriter.writeOctetString(parameters.privateKey);
+			return keyWriter.toBuffer();
+		} else {
+			return parameters.publicKey;
 		}
 	}
 
