@@ -343,7 +343,15 @@ func (cs *ClientSession) authenticateServer() bool {
 			PublicKey:           hostKey,
 		}
 		cs.OnAuthenticating(args)
-		return args.AuthenticationResult != nil
+		if args.AuthenticationResult == nil {
+			return false
+		}
+		// The principal returned for the host key marks the session as able to
+		// accept requests from the server (e.g. reverse port forwarding).
+		cs.mu.Lock()
+		cs.Principal = args.AuthenticationResult
+		cs.mu.Unlock()
+		return true
 	}
 
 	// No handler set and there's a host key — reject.

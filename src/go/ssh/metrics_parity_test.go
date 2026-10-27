@@ -158,7 +158,7 @@ func TestSessionLatencyAfterKeepAlive(t *testing.T) {
 	defer cancel()
 
 	// With encrypted sessions, authentication is required before keep-alive
-	// requests are sent (canAcceptRequests checks isAuthenticated).
+	// requests are sent (canAcceptRequests requires a Principal).
 	success, err := client.Authenticate(ctx, &ClientCredentials{
 		Username: "testuser",
 		Password: "testpass",

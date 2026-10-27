@@ -61,12 +61,28 @@ func createEncryptedSessionPair(t *testing.T, clientConfig, serverConfig *Sessio
 		t.Fatalf("server connect failed: %v", serverErr)
 	}
 
+	authenticateTestClient(t, ctx, client)
+
 	t.Cleanup(func() {
 		client.Close()
 		server.Close()
 	})
 
 	return client, server
+}
+
+// authenticateTestClient authenticates a connected client session so that
+// the encrypted session accepts channels and requests. Authentication is
+// required once real encryption is negotiated.
+func authenticateTestClient(t *testing.T, ctx context.Context, client *ClientSession) {
+	t.Helper()
+	ok, err := client.Authenticate(ctx, &ClientCredentials{Username: "test"})
+	if err != nil {
+		t.Fatalf("client authenticate failed: %v", err)
+	}
+	if !ok {
+		t.Fatal("client authentication was rejected")
+	}
 }
 
 // TestProtocolByteCountersIncrement verifies that protocol byte counters

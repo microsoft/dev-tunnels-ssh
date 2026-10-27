@@ -374,6 +374,7 @@ func TestStressRekeyUnderLoad(t *testing.T) {
 		ClientConfig:      clientConfig,
 		ServerConfig:      serverConfig,
 		ServerCredentials: &ServerCredentials{PublicKeys: []KeyPair{serverKey}},
+		Authenticate:      true,
 	})
 
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
