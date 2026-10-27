@@ -2,6 +2,7 @@ package ssh
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -77,14 +78,7 @@ func TestPeerCannotSetServerAuthenticatedWithAuthSuccess(t *testing.T) {
 func TestUnauthenticatedChannelOpenRefused(t *testing.T) {
 	client, _, authCalls := createUnauthenticatedEncryptedPair(t)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-
-	ch, err := client.OpenChannel(ctx)
-	if err == nil {
-		ch.Close()
-		t.Fatal("channel open succeeded on an unauthenticated session")
-	}
+	assertChannelOpenProhibited(t, client, "an unauthenticated session")
 	if *authCalls != 0 {
 		t.Errorf("OnAuthenticating called %d times, want 0", *authCalls)
 	}
@@ -93,10 +87,29 @@ func TestUnauthenticatedChannelOpenRefused(t *testing.T) {
 	if err := client.SendMessage(&messages.AuthenticationSuccessMessage{}); err != nil {
 		t.Fatalf("send auth success: %v", err)
 	}
-	ch, err = client.OpenChannel(ctx)
+	assertChannelOpenProhibited(t, client, "a peer-sent USERAUTH_SUCCESS")
+}
+
+// assertChannelOpenProhibited attempts a channel open with its own deadline
+// and requires an explicit administrativelyProhibited refusal, so a timeout
+// cannot be mistaken for an authentication rejection.
+func assertChannelOpenProhibited(t *testing.T, client *ClientSession, after string) {
+	t.Helper()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	ch, err := client.OpenChannel(ctx)
 	if err == nil {
 		ch.Close()
-		t.Fatal("channel open succeeded after peer-sent USERAUTH_SUCCESS")
+		t.Fatalf("channel open succeeded on %s", after)
+	}
+	var chErr *ChannelError
+	if !errors.As(err, &chErr) {
+		t.Fatalf("channel open on %s failed with %T (%v), want *ChannelError", after, err, err)
+	}
+	if chErr.Reason != messages.ChannelOpenFailureAdministrativelyProhibited {
+		t.Fatalf("channel open on %s reason = %v, want administrativelyProhibited", after, chErr.Reason)
 	}
 }
 
@@ -123,6 +136,16 @@ func TestAuthenticatedChannelOpenSucceeds(t *testing.T) {
 		t.Fatalf("authenticated channel open failed: %v", err)
 	}
 	ch.Close()
+
+	// Reverse direction: the authenticated client must accept a server-opened
+	// channel, which relies on the client Principal set after host
+	// authentication.
+	go func() { _, _ = client.AcceptChannel(ctx) }()
+	serverCh, err := server.OpenChannel(ctx)
+	if err != nil {
+		t.Fatalf("server-to-client channel open failed: %v", err)
+	}
+	serverCh.Close()
 }
 
 // TestServerIgnoresClientDirectionAuthMessages verifies that a
