@@ -213,7 +213,7 @@ jobs:
       - task: EsrpRelease@11
         condition: and(succeeded(), eq('${{ parameters.PublishNpmPackage }}', 'true'))
         inputs:
-          connectedservicename: 'Devtunnels-esrp-ame-msi'
+          connectedservicename: 'Devtunnels-esrp-ame-msi-wif2'
           usemanagedidentity: true
           keyvaultname: 'tunnels-ppe-esrp-kv'
           signcertname: 'esrp-sign'

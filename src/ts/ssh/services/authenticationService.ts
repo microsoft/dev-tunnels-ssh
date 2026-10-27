@@ -159,6 +159,12 @@ export class AuthenticationService extends SshService {
 
 		let args: SshAuthenticatingEventArgs;
 		if (message.methodName === AuthenticationMethod.hostBased) {
+			// Verify the client host signature before allowing the application to authorize
+			// the request. (RFC 4252 Section 9)
+			if (!(await this.verifySignature(message, publicKeyAlg, publicKey, cancellation))) {
+				return;
+			}
+
 			args = new SshAuthenticatingEventArgs(SshAuthenticationType.clientHostBased, {
 				username: message.username ?? '',
 				publicKey: publicKey,
@@ -171,28 +177,10 @@ export class AuthenticationService extends SshService {
 				publicKey: publicKey,
 			});
 		} else {
-			// Verify that the signature matches the public key.
-			const signature = publicKeyAlg.readSignatureData(message.signature!);
-
-			const sessionId = this.session.sessionId;
-			if (sessionId == null) {
-				throw new Error('Session ID not initialized.');
-			}
-
-			const writer = new SshDataWriter(
-				Buffer.alloc(sessionId.length + message.payloadWithoutSignature!.length + 20),
-			);
-			writer.writeBinary(sessionId);
-			writer.write(message.payloadWithoutSignature!);
-
-			const signedData = writer.toBuffer();
-			const verifier = publicKeyAlg.createVerifier(publicKey);
-			const verified = await verifier.verify(signedData, signature);
-			if (!verified) {
-				await this.handleAuthenticationFailure(
-					'Public key authentication failed: invalid signature.',
-					cancellation,
-				);
+			// Verify that the signature matches the public key, proving that the client
+			// possesses the corresponding private key.
+			if (!(await this.verifySignature(message, publicKeyAlg, publicKey, cancellation))) {
+				return;
 			}
 
 			args = new SshAuthenticatingEventArgs(SshAuthenticationType.clientPublicKey, {
@@ -204,6 +192,54 @@ export class AuthenticationService extends SshService {
 		// Raise an Authenticating event that allows handlers to do additional verification
 		// of the client's username and public key.
 		await this.handleAuthenticating(args, cancellation);
+	}
+
+	/**
+	 * Verifies the signature on a public-key or host-based authentication request, proving
+	 * that the sender possesses the private key corresponding to the presented public key.
+	 *
+	 * @returns True if the signature is valid. False if it is missing or invalid, in which case
+	 * an authentication failure has already been sent and the caller MUST NOT proceed to raise
+	 * the `Authenticating` event.
+	 */
+	private async verifySignature(
+		message: PublicKeyRequestMessage,
+		publicKeyAlg: PublicKeyAlgorithm,
+		publicKey: KeyPair,
+		cancellation?: CancellationToken,
+	): Promise<boolean> {
+		if (!message.hasSignature || !message.payloadWithoutSignature) {
+			await this.handleAuthenticationFailure(
+				'Public key authentication failed: missing signature.',
+				cancellation,
+			);
+			return false;
+		}
+
+		const sessionId = this.session.sessionId;
+		if (sessionId == null) {
+			throw new Error('Session ID not initialized.');
+		}
+
+		const signature = publicKeyAlg.readSignatureData(message.signature!);
+
+		const writer = new SshDataWriter(
+			Buffer.alloc(sessionId.length + message.payloadWithoutSignature.length + 20),
+		);
+		writer.writeBinary(sessionId);
+		writer.write(message.payloadWithoutSignature);
+
+		const signedData = writer.toBuffer();
+		const verifier = publicKeyAlg.createVerifier(publicKey);
+		if (!(await verifier.verify(signedData, signature))) {
+			await this.handleAuthenticationFailure(
+				'Public key authentication failed: invalid signature.',
+				cancellation,
+			);
+			return false;
+		}
+
+		return true;
 	}
 
 	private async handlePasswordRequestMessage(

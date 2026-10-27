@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using System.Linq;
+using System.Reflection;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -174,6 +175,127 @@ public class ChannelTests : IDisposable
 					SshChannelOpenFailureReason.ConnectFailed,
 				((SshChannelException)ex).Message);
 		}
+	}
+
+	/// <summary>
+	/// Installs a test hook on the client's internal ConnectionService that deterministically
+	/// reproduces the channel-open cancellation race. The internal hook is reached via
+	/// reflection (as <see cref="ReconnectTests"/> does for KeyRotationThreshold) so the test
+	/// otherwise uses only the public session API. The hook runs on the receive pump thread
+	/// while it holds the ConnectionService lock during open-confirmation processing: it cancels
+	/// the open from another thread, using a dual-registration handshake to deterministically
+	/// confirm the internal callback is contending for the held lock before returning.
+	/// A monitoring callback is registered both BEFORE and AFTER the internal one (via
+	/// the returned action and inside the hook). CancellationToken callbacks fire in LIFO
+	/// order on .NET Core and FIFO on .NET Framework — so one of the two monitoring
+	/// callbacks always fires before the internal one. Since Cancel() executes callbacks
+	/// sequentially on the calling thread, once the monitoring callback completes, the
+	/// internal callback starts immediately on the same thread and blocks on lockObject.
+	/// Before the fix, the pump then disposed the cancellation registration while still
+	/// holding the lock, which blocks on the in-flight callback and deadlocks the session;
+	/// after the fix the registration is disposed after the lock is released.
+	/// </summary>
+	private static void InstallOpenCancelRaceHook(
+		SshSession session,
+		CancellationTokenSource cancellationSource)
+	{
+		var connectionServiceType = typeof(SshSession).Assembly.GetType(
+			"Microsoft.DevTunnels.Ssh.Services.ConnectionService");
+		var activateMethod = typeof(SshSession).GetMethods()
+			.Single(m => m.Name == nameof(SshSession.ActivateService) &&
+				m.IsGenericMethodDefinition &&
+				m.GetParameters().Length == 0)
+			.MakeGenericMethod(connectionServiceType);
+		var connectionService = activateMethod.Invoke(session, null);
+
+		var hookProperty = connectionServiceType.GetProperty(
+			"TestHook_ChannelOpenResponseLocked",
+			BindingFlags.NonPublic | BindingFlags.Instance);
+
+		Action hook = () =>
+		{
+			// Fire only once, on the first (raced) open confirmation.
+			hookProperty.SetValue(connectionService, null);
+
+			// Cancel on a dedicated thread — not via Task.Run, which depends on
+			// the thread pool and can be starved under CI load on .NET Framework
+			// 4.8. Cancel() invokes all registered callbacks synchronously on
+			// the calling thread, so the SSH internal callback will attempt to
+			// acquire the lock we hold.
+			new Thread(() => cancellationSource.Cancel())
+				{ IsBackground = true }.Start();
+
+			// Give the dedicated thread time to start and for Cancel() to reach
+			// the internal callback, which then blocks on the lock we hold.
+			// 200 ms is >100,000x the time needed for thread start + dispatch.
+			//
+			// A signal-based wait (ManualResetEventSlim / TaskCompletionSource)
+			// cannot be used here: it requires registering monitoring callbacks
+			// adjacent to the SSH internal callback to detect contention, but
+			// the callback-ordering difference between runtimes (LIFO on .NET
+			// Core, FIFO on .NET Framework) combined with thread-pool pressure
+			// on CI agents causes hangs on .NET Framework 4.8.
+			Thread.Sleep(200);
+		};
+
+		hookProperty.SetValue(connectionService, hook);
+	}
+
+	[Fact]
+	public async Task OpenChannelCancelDuringConfirmationDoesNotDeadlock()
+	{
+		await this.sessionPair.ConnectAsync().WithTimeout(Timeout);
+
+		using var cancellationSource = new CancellationTokenSource();
+		InstallOpenCancelRaceHook(this.clientSession, cancellationSource);
+
+		var openTask = this.clientSession.OpenChannelAsync(
+			(string)null, cancellationSource.Token);
+
+		// Before the fix this times out (the pump thread deadlocks); after the fix the open
+		// completes, whether it ends up cancelled or opened.
+		try
+		{
+			await openTask.WithTimeout(Timeout);
+		}
+		catch (OperationCanceledException)
+		{
+		}
+		catch (SshChannelException)
+		{
+		}
+	}
+
+	[Fact]
+	public async Task SessionRemainsUsableAfterOpenCancelRace()
+	{
+		await this.sessionPair.ConnectAsync().WithTimeout(Timeout);
+
+		using var cancellationSource = new CancellationTokenSource();
+		InstallOpenCancelRaceHook(this.clientSession, cancellationSource);
+
+		var racedOpenTask = this.clientSession.OpenChannelAsync(
+			(string)null, cancellationSource.Token);
+
+		try
+		{
+			await racedOpenTask.WithTimeout(Timeout);
+		}
+		catch (OperationCanceledException)
+		{
+		}
+		catch (SshChannelException)
+		{
+		}
+
+		// If the pump thread had deadlocked, the receive loop could no longer process
+		// messages, so this subsequent open would hang instead of completing end-to-end.
+		var serverChannelTask = this.serverSession.AcceptChannelAsync();
+		var clientChannel = await this.clientSession.OpenChannelAsync().WithTimeout(Timeout);
+		var serverChannel = await serverChannelTask.WithTimeout(Timeout);
+
+		Assert.NotNull(clientChannel);
+		Assert.NotNull(serverChannel);
 	}
 
 	[Theory]

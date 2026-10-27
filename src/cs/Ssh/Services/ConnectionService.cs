@@ -49,6 +49,14 @@ internal class ConnectionService : SshService
 	private long channelCounter = -1;
 	private Exception? closedException = null;
 
+	/// <summary>
+	/// Test-only hook invoked while holding <see cref="lockObject"/> in the channel-open
+	/// confirmation handler, right before the pending channel's cancellation registration is
+	/// captured. Tests use this to deterministically reproduce the channel-open cancellation
+	/// race. Always null (a no-op) in production.
+	/// </summary>
+	internal Action? TestHook_ChannelOpenResponseLocked { get; set; }
+
 	public ConnectionService(SshSession session) : base(session)
 	{
 		this.channels = new Dictionary<uint, SshChannel>();
@@ -492,6 +500,7 @@ internal class ConnectionService : SshService
 
 		TaskCompletionSource<SshChannel>? completionSource = null;
 		ChannelOpenMessage openMessage;
+		CancellationTokenRegistration cancellationRegistration = default;
 		lock (this.lockObject)
 		{
 			if (this.pendingChannels.TryGetValue(
@@ -499,7 +508,16 @@ internal class ConnectionService : SshService
 			{
 				openMessage = pendingChannel.OpenMessage;
 				completionSource = pendingChannel.CompletionSource;
-				pendingChannel.CancellationRegistration.Dispose();
+
+				this.TestHook_ChannelOpenResponseLocked?.Invoke();
+
+				// Capture the registration and dispose it AFTER releasing the lock.
+				// Disposing here would deadlock: the callback registered in
+				// OpenChannelAsync also acquires this.lockObject, and
+				// CancellationTokenRegistration.Dispose() blocks until an in-flight
+				// callback completes. Removing the pending channel under the lock
+				// makes the callback a no-op, so deferring the dispose is safe.
+				cancellationRegistration = pendingChannel.CancellationRegistration;
 				this.pendingChannels.Remove(message.RecipientChannel);
 			}
 			else if (this.channels.ContainsKey(message.RecipientChannel))
@@ -534,6 +552,8 @@ internal class ConnectionService : SshService
 			this.channels.Add(channel.ChannelId, channel);
 		}
 
+		cancellationRegistration.Dispose();
+
 		var args = new SshChannelOpeningEventArgs(openMessage, channel, isRemoteRequest: false);
 		await Session.OnChannelOpeningAsync(args, cancellation).ConfigureAwait(false);
 
@@ -565,16 +585,23 @@ internal class ConnectionService : SshService
 		cancellation.ThrowIfCancellationRequested();
 
 		TaskCompletionSource<SshChannel>? completionSource = null;
+		CancellationTokenRegistration cancellationRegistration = default;
 		lock (this.lockObject)
 		{
 			if (this.pendingChannels.TryGetValue(
 				message.RecipientChannel, out var pendingChannel))
 			{
 				completionSource = pendingChannel.CompletionSource;
-				pendingChannel.CancellationRegistration.Dispose();
+
+				// Capture the registration and dispose it after releasing the lock;
+				// disposing under the lock can deadlock with the cancellation callback
+				// (which also acquires this.lockObject). See HandleMessageAsync above.
+				cancellationRegistration = pendingChannel.CancellationRegistration;
 				this.pendingChannels.Remove(message.RecipientChannel);
 			}
 		}
+
+		cancellationRegistration.Dispose();
 
 		if (completionSource != null)
 		{
