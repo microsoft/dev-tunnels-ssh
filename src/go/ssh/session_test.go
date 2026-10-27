@@ -38,6 +38,10 @@ type SessionPairOptions struct {
 
 	// ConnectTimeout overrides the connection timeout. Default is 30s.
 	ConnectTimeout time.Duration
+
+	// Authenticate authenticates the client after connecting. Encrypted
+	// sessions only accept channels once authenticated.
+	Authenticate bool
 }
 
 // createSessionPair creates a connected client/server session pair over io.Pipe.
@@ -117,6 +121,10 @@ func createSessionPair(t *testing.T, opts *SessionPairOptions) (*ClientSession, 
 	}
 	if serverErr != nil {
 		t.Fatalf("server connect failed: %v", serverErr)
+	}
+
+	if opts.Authenticate {
+		authenticateTestClient(t, ctx, client)
 	}
 
 	t.Cleanup(func() {

@@ -109,9 +109,6 @@ type Session struct {
 	// Session-level metrics.
 	sessionMetrics SessionMetrics
 
-	// Authentication state
-	isAuthenticated bool
-
 	// Keep-alive state
 	keepAliveResetCh          chan struct{}
 	keepAliveResponseReceived bool
@@ -234,7 +231,9 @@ func (s *Session) trace(level TraceLevel, eventID int, message string) {
 
 // canAcceptRequests returns true if the session can process session requests.
 // Returns true if no key exchange occurred (no-security mode), or if encryption
-// is active and the session is authenticated. Must be called with s.mu held.
+// is active and the application has supplied a principal (client credentials on
+// the server side, the verified host key on the client side). The check must not
+// depend on any state a remote peer can write directly. Must be called with s.mu held.
 func (s *Session) canAcceptRequests() bool {
 	// No kex service = no encryption = always accept.
 	if s.kexService == nil {
@@ -245,7 +244,7 @@ func (s *Session) canAcceptRequests() bool {
 		return true
 	}
 	// Encryption active = require authentication.
-	return s.isAuthenticated
+	return s.Principal != nil
 }
 
 
