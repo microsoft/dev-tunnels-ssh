@@ -1,6 +1,6 @@
 # Dev Tunnels SSH - Cross-Platform Benchmark Suite
 
-This directory contains a cross-platform benchmark suite that measures the performance of the Dev Tunnels SSH library across its three implementations: **C#**, **TypeScript**, and **Go**.
+This directory contains a cross-platform benchmark suite that measures the performance of the Dev Tunnels SSH library across its two implementations: **C#** and **TypeScript**.
 
 ## Quick Start
 
@@ -21,10 +21,8 @@ bench/
 │   └── report-generator.js  # Generates Markdown comparison report from JSON
 ├── cs/
 │   └── Ssh.Benchmark/       # C# benchmark harness (.NET 8)
-├── ts/
-│   └── ssh-bench/           # TypeScript benchmark harness (Node.js)
-└── go/
-    └── cmd/bench/           # Go benchmark harness
+└── ts/
+    └── ssh-bench/           # TypeScript benchmark harness (Node.js)
 ```
 
 ## What's Being Tested
@@ -77,10 +75,8 @@ The orchestrator coordinates the full benchmark run:
 orchestrator.sh
   ├─ build.js build-cs --release    → out/bin/Release/Ssh.Benchmark/
   ├─ build.js build-ts --release    → out/lib/ssh-bench/
-  ├─ build.js build-go --release    → bench/go/cmd/bench/ (go run)
   ├─ dotnet Ssh.Benchmark.dll       → <outdir>/cs-results.json
   ├─ node main.js                   → <outdir>/ts-results.json
-  ├─ go run .                       → <outdir>/go-results.json
   └─ report-generator.js            → <outdir>/report.md
 ```
 
@@ -88,15 +84,15 @@ orchestrator.sh
 
 ```
 --runs <N>          Number of timed iterations per scenario (default: 20)
---platforms <list>  Comma-separated platforms to run (default: cs,ts,go)
+--platforms <list>  Comma-separated platforms to run (default: cs,ts)
 --report            Generate Markdown comparison report
 --verify            Run correctness checks after each benchmark (see Verification below)
 ```
 
 Examples:
 ```bash
-# Run only C# and Go with 10 iterations
-bash bench/orchestrator.sh --runs=10 --platforms=cs,go --report
+# Run only C# with 10 iterations
+bash bench/orchestrator.sh --runs=10 --platforms=cs --report
 
 # Quick TS-only run
 bash bench/orchestrator.sh --runs=5 --platforms=ts
@@ -200,21 +196,6 @@ node out/lib/ssh-bench/main.js session encrypted-200
 
 The TS harness accepts the same argument pattern as C#.
 
-### Go
-
-```bash
-# Run all benchmarks
-cd bench/go/cmd/bench && go run . --json=results.json --runs=20
-
-# Run specific benchmarks
-cd bench/go/cmd/bench && go run . --runs=20 --scenarios=session,session-with-latency
-```
-
-The Go harness uses flag-style arguments:
-- `--json <path>` — Write JSON results to file
-- `--runs <N>` — Number of timed iterations (default: 7)
-- `--scenarios <list>` — Comma-separated scenario names to run (default: all)
-
 ## Verification (`--verify`)
 
 The `--verify` flag runs a correctness check after each benchmark to prove the operation actually did what it claims. These checks are separate from timing — they run once after all timed iterations complete and do not affect performance numbers.
@@ -291,83 +272,53 @@ Specific fields checked per message type:
 3. Count bytes received on the server side (with timeout)
 4. **Check:** total bytes received equals total bytes sent
 
-#### E2E: Multi-Channel (Go only)
-
-1. Create an unencrypted session pair
-2. Open a channel and send test data
-3. **Check:** server receives the exact data sent
-
-#### E2E: Port Forward (Go only)
-
-1. Start a local TCP echo server
-2. Create a session pair with port forwarding enabled
-3. Request a remote port forward through the SSH tunnel
-4. Connect to the forwarded port via TCP
-5. Send test data through the forwarded connection
-6. **Check:** echo server returns the exact data sent (full tunnel round-trip)
-
-#### E2E: Reconnect (Go only)
-
-1. Create an initial session pair with reconnect protocol extension enabled
-2. Open a channel, send data, confirm it works
-3. Force-disconnect by closing the underlying TCP streams
-4. Create new TCP streams and reconnect (client reconnects, server accepts)
-5. Open a new channel on the reconnected session
-6. Send test data through the new channel
-7. **Check:** data is received correctly after reconnection (session state restored)
-
 ### Verification coverage by platform
 
-| Category | C# | TypeScript | Go |
-|----------|-----|-----------|-----|
-| Encryption | Yes | Yes | Yes |
-| HMAC | Yes | Yes | Yes |
-| Key Exchange | Yes | Yes | Yes |
-| Key Generation | Yes | Yes | Yes |
-| Signature | Yes | Yes | Yes |
-| Serialization | Yes | Yes | Yes |
-| KEX Cycle | — | — | — |
-| Session Setup | Yes | Yes | Yes |
-| Throughput | Yes | Yes | Yes |
-| Multi-Channel | — | — | Yes |
-| Port Forward | — | — | Yes |
-| Reconnect | — | — | Yes |
-
-All algorithm, protocol serialization, and session benchmarks have consistent verification across all three platforms. The E2E benchmarks (multi-channel, port forward, reconnect) currently have verification only in Go.
+| Category | C# | TypeScript |
+|----------|-----|-----------|
+| Encryption | Yes | Yes |
+| HMAC | Yes | Yes |
+| Key Exchange | Yes | Yes |
+| Key Generation | Yes | Yes |
+| Signature | Yes | Yes |
+| Serialization | Yes | Yes |
+| KEX Cycle | — | — |
+| Session Setup | Yes | Yes |
+| Throughput | Yes | Yes |
 
 ## Platform Differences
 
-| Aspect | C# | TypeScript | Go |
-|--------|-----|-----------|-----|
-| Runtime | .NET 8 | Node.js 20 | Go (compiled) |
-| Session transport | TCP (loopback) | TCP (loopback) | TCP (loopback) |
-| AES-GCM | Conditional (`SSH_ENABLE_AESGCM`) | Always available | Always available |
-| ECDH | Conditional (`SSH_ENABLE_ECDH`) | Always available | Always available |
-| AES-CBC | Available | Not available | Not available |
-| Port forwarding | Full `PortForwardingService` | Full `PortForwardingService` | `tcp.ForwardPort()` |
+| Aspect | C# | TypeScript |
+|--------|-----|-----------|
+| Runtime | .NET 8 | Node.js 20 |
+| Session transport | TCP (loopback) | TCP (loopback) |
+| AES-GCM | Conditional (`SSH_ENABLE_AESGCM`) | Always available |
+| ECDH | Conditional (`SSH_ENABLE_ECDH`) | Always available |
+| AES-CBC | Available | Not available |
+| Port forwarding | Full `PortForwardingService` | Full `PortForwardingService` |
 
 ### Expected Performance Differences
 
-Go will often appear **significantly faster** (10–100x) in algorithm-level and serialization benchmarks. This is expected and reflects real differences in the underlying crypto and runtime implementations — not a bug in the benchmarks.
+Differences between platforms in algorithm-level and serialization benchmarks mostly reflect the underlying crypto libraries and runtimes (.NET vs Node.js) — not a bug in the benchmarks.
 
-**Why Go's algorithm benchmarks are faster:**
+**Why algorithm benchmarks can diverge:**
 
-- **Crypto primitives use hand-written assembly.** Go's standard library includes assembly-optimized implementations for common architectures (amd64, arm64). AES-GCM uses [AES-NI + CLMUL hardware instructions](https://pkg.go.dev/crypto/aes) directly via [dedicated assembly](https://github.com/golang/go/blob/2ebe77a2fda1ee9ff6fd9a3e08933ad1ebaea039/src/crypto/aes/gcm_amd64.s); SHA-256/SHA-512 use [platform-specific assembly](https://github.com/golang/go/blob/master/src/crypto/sha256/sha256block_amd64.s) with AVX2 and SHA-NI instructions (see [issue #50543](https://github.com/golang/go/issues/50543)); elliptic curve P-256 uses [optimized field arithmetic in assembly](https://github.com/golang/go/blob/master/src/crypto/internal/fips140/nistec/p256_asm_amd64.s) based on work by Gueron and Krasnov (see [Cloudflare's analysis](https://blog.cloudflare.com/go-crypto-bridging-the-performance-gap/) showing 21–30x speedups). C# and TypeScript rely on their respective runtimes' managed crypto, which generally cannot match hand-tuned assembly for raw throughput.
+- **Crypto library differences.** C# uses CNG/OpenSSL via .NET; TypeScript uses Node.js `crypto` (OpenSSL). Hardware acceleration and per-call overhead differ between them.
 
-- **Sub-microsecond operations amplify fixed overhead.** Many algorithm benchmarks (HMAC on 256 bytes, ECDSA P-256 keygen, small-buffer encryption) complete in under 1 microsecond in Go. At these scales, the fixed per-operation overhead in managed runtimes (GC barriers, JIT compilation artifacts, Node.js event loop scheduling) becomes a large fraction of the total time, making Go appear disproportionately faster than it would be for larger workloads.
+- **Sub-microsecond operations amplify fixed overhead.** Many algorithm benchmarks (HMAC on 256 bytes, ECDSA P-256 keygen, small-buffer encryption) complete in very little time. At these scales, fixed per-operation overhead (GC, JIT warm-up, Node.js event loop scheduling) becomes a large fraction of the total time.
 
-- **Serialization benchmarks measure runtime overhead, not SSH logic.** Protocol message serialization (ChannelData, ChannelOpen, KexInit) involves allocating small buffers and writing a few fields. Go's zero-overhead memory model (no GC pauses during allocation, stack-allocated small structs) makes these operations extremely fast compared to managed runtimes with heap allocation and garbage collection.
+- **Serialization benchmarks measure runtime overhead, not SSH logic.** Protocol message serialization (ChannelData, ChannelOpen, KexInit) involves allocating small buffers and writing a few fields, so results mostly reflect runtime allocation behavior.
 
 **Where performance is comparable across platforms:**
 
-- **Session setup** — Dominated by network round-trips (TCP + SSH handshake), so all three platforms produce similar numbers.
+- **Session setup** — Dominated by network round-trips (TCP + SSH handshake), so both platforms produce similar numbers.
 - **Throughput** — Measures sustained data transfer over an established SSH session. The SSH protocol framing and TCP stack dominate, so differences are modest (typically < 3x).
 - **RSA key generation** — Depends on probabilistic prime-number finding, which is comparable across platforms.
 - **KEX cycle** — A full key exchange between two in-process sessions involves multiple round-trips, amortizing the per-operation crypto advantage.
 
 **What the report does about this:**
 
-The report generator uses a **200x ratio threshold** for algorithm and serialization categories (vs 10x for session/E2E categories) before flagging cross-platform differences as suspicious. This prevents the expected Go advantages from generating false-positive warnings while still catching genuine methodology mismatches in session-level benchmarks.
+The report generator uses a **200x ratio threshold** for algorithm and serialization categories (vs 10x for session/E2E categories) before flagging cross-platform differences as suspicious. This prevents expected runtime-level differences from generating false-positive warnings while still catching genuine methodology mismatches in session-level benchmarks.
 
 ## Troubleshooting
 

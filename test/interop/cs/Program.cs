@@ -1,5 +1,5 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
-// Minimal SSH server/client helper for Go interop testing.
+// Minimal SSH server/client helper for E2E testing.
 // Usage: dotnet run -- <server|client> <port> <kex> <pk> <enc> <hmac>
 //
 // Protocol:

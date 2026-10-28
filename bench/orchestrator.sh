@@ -14,16 +14,16 @@ fi
 
 # Defaults
 RUNS=20
-PLATFORMS="cs,ts,go"
+PLATFORMS="cs,ts"
 REPORT=false
 VERIFY=false
 
 usage() {
-    echo "Usage: $0 [--runs <N>] [--platforms <cs,ts,go>] [--report]"
+    echo "Usage: $0 [--runs <N>] [--platforms <cs,ts>] [--report]"
     echo ""
     echo "Options:"
     echo "  --runs <N>          Number of timed iterations per scenario (default: 7)"
-    echo "  --platforms <list>  Comma-separated platforms to run (default: cs,ts,go)"
+    echo "  --platforms <list>  Comma-separated platforms to run (default: cs,ts)"
     echo "  --report            Generate markdown comparison report"
     echo "  --verify            Run correctness verification after each benchmark"
     echo "  --help              Show this help message"
@@ -117,9 +117,6 @@ for platform in "${PLATFORM_LIST[@]}"; do
         ts)
             TS_MAIN="$LIB_DIR/ssh-bench/main.js"
             node "$TS_MAIN" "--json=$JSON_OUT" $VERIFY_FLAG "$RUNS"
-            ;;
-        go)
-            (cd "$PROJECT_ROOT/bench/go/cmd/bench" && go run . "--json=$JSON_OUT" "--runs=$RUNS" $VERIFY_FLAG)
             ;;
         *)
             echo "Unknown platform: $platform"

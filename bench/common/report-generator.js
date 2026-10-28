@@ -23,8 +23,8 @@ const argv = yargs
 	.argv;
 
 // Platform display names and order
-const PLATFORMS = ['cs', 'ts', 'go'];
-const PLATFORM_NAMES = { cs: 'C#', ts: 'TypeScript', go: 'Go' };
+const PLATFORMS = ['cs', 'ts'];
+const PLATFORM_NAMES = { cs: 'C#', ts: 'TypeScript' };
 
 // Category display names and order
 const CATEGORY_ORDER = [
@@ -60,23 +60,14 @@ const CATEGORY_NAMES = {
 const CATEGORY_DESCRIPTIONS = {
 	'algorithm-encryption':
 		'Measures raw encrypt + decrypt round-trip time and throughput for symmetric ciphers, ' +
-		'isolated from the SSH protocol. Each iteration encrypts then decrypts a single buffer. ' +
-		'**Note:** Go uses hardware-accelerated AES-NI/GCM assembly in its standard library, ' +
-		'which can be 10-100x faster than C#/.NET or Node.js for small buffers where the ' +
-		'sub-microsecond operation time amplifies fixed runtime overhead.',
+		'isolated from the SSH protocol. Each iteration encrypts then decrypts a 		single buffer.',
 	'algorithm-hmac':
-		'Measures HMAC sign + verify time for each MAC algorithm, isolated from the SSH protocol. ' +
-		'**Note:** Go uses assembly-optimized SHA-256/SHA-512 in its crypto/hmac package. ' +
-		'HMAC on 256 bytes is a sub-microsecond operation in Go, so large cross-platform ' +
-		'ratios reflect real crypto-library performance differences amplified by timer resolution.',
+		'Measures HMAC sign + verify time for each MAC algorithm, 		isolated from the SSH protocol.',
 	'algorithm-kex':
 		'Measures the time for a single Diffie-Hellman or ECDH key exchange operation ' +
 		'(one side only, not a full handshake).',
 	'algorithm-keygen':
-		'Measures key pair generation time for RSA and ECDSA at various key sizes. ' +
-		'**Note:** Go uses assembly-optimized elliptic curve operations in crypto/ecdsa, ' +
-		'which can be significantly faster for ECDSA key generation. RSA keygen times are ' +
-		'more comparable across platforms since they depend on probabilistic prime finding.',
+		'Measures key pair generation time for RSA and ECDSA 		at various key sizes.',
 	'algorithm-signature':
 		'Measures sign + verify time for RSA and ECDSA signature algorithms. ' +
 		'**Note:** Large differences in RSA signature time may indicate differences in the ' +
@@ -399,7 +390,7 @@ function generateReport(results) {
 }
 
 // Categories where large cross-platform ratios are expected due to differences
-// in underlying crypto libraries (Go's assembly-optimized stdlib vs managed runtimes).
+// in underlying crypto libraries (.NET vs Node.js).
 // These use a much higher threshold before flagging as suspicious.
 const EXPECTED_DIVERGENCE_CATEGORIES = new Set([
 	'algorithm-encryption',
@@ -422,9 +413,9 @@ function validateResults(groups) {
 		}
 
 		// Algorithm and serialization categories use a higher ratio threshold
-		// because Go's crypto stdlib uses hardware-accelerated assembly that is
-		// genuinely 10-100x faster for sub-microsecond operations. The default
-		// 10x threshold would generate many false positives for these categories.
+		// because sub-microsecond operations amplify differences between the
+		// underlying crypto libraries. The default 10x threshold would generate
+		// many false positives for these categories.
 		const ratioThreshold = EXPECTED_DIVERGENCE_CATEGORIES.has(group.category) ? 200 : 10;
 
 		for (const metricName of allMetricNames) {

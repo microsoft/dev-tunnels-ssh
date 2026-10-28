@@ -27,7 +27,7 @@ export class ThroughputBenchmark extends Benchmark {
 	private readonly client: SshClient;
 	private readonly messageData: Buffer;
 
-	// Reuse a single session+channel across all runs (matching Go).
+	// Reuse a single session+channel across all runs.
 	// Creating a fresh TCP+SSH session per run causes backpressure deadlocks
 	// with large encrypted messages where TCP send/receive buffers create
 	// a circular dependency between the client's send and the server's
