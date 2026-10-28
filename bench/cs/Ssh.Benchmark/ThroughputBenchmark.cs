@@ -30,7 +30,7 @@ class ThroughputBenchmark : Benchmark
 	private readonly byte[] messageData;
 	private readonly bool withEncryption;
 
-	// Reuse a single session+channel across all runs (matching Go).
+	// Reuse a single session+channel across all runs.
 	// Creating a fresh TCP+SSH session per run causes backpressure deadlocks
 	// with large encrypted messages where TCP send/receive buffers create
 	// a circular dependency between the client's send and the server's
