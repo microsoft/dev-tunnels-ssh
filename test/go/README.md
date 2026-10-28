@@ -101,6 +101,10 @@ pair := helpers.NewSessionPairWithConfig(t, &helpers.SessionPairConfig{
 })
 ```
 
+Encrypted sessions only accept channels after the client authenticates.
+`pair.OpenChannel` does this automatically; call `pair.Authenticate(ctx)` to
+authenticate explicitly before sending session requests.
+
 ### MockNetworkStream — Failure Injection
 
 Wraps any stream to simulate network failures:
