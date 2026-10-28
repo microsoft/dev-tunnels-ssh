@@ -206,6 +206,17 @@ func createSessionPairWithStreams(clientStream, serverStream io.ReadWriteCloser,
 		return nil, nil, fmt.Errorf("server connect: %w", serverErr)
 	}
 
+	// Encrypted sessions only accept channels after the client authenticates.
+	if encrypted {
+		ok, err := client.Authenticate(ctx, &ssh.ClientCredentials{Username: "benchmark"})
+		if err != nil {
+			return nil, nil, fmt.Errorf("client authenticate: %w", err)
+		}
+		if !ok {
+			return nil, nil, fmt.Errorf("client authentication was rejected")
+		}
+	}
+
 	return client, server, nil
 }
 
