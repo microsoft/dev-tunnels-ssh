@@ -59,20 +59,27 @@ func (s *authenticationService) Close() error                                   
 
 // handleMessage routes an authentication message to the appropriate handler.
 func (s *authenticationService) handleMessage(msgType byte, payload []byte) error {
+	// Messages are only valid in one direction; ignore those sent by a peer
+	// that is not allowed to send them (e.g. a client sending USERAUTH_SUCCESS).
+	if s.session.isClient {
+		switch msgType {
+		case messages.MsgNumAuthenticationSuccess:
+			return s.handleAuthSuccess()
+		case messages.MsgNumAuthenticationFailure:
+			return s.handleAuthFailure(payload)
+		case messages.MsgNumPublicKeyOk: // type 60 — PublicKeyOk or AuthInfoRequest
+			return s.handleMessage60(payload)
+		}
+		return nil
+	}
+
 	switch msgType {
 	case messages.MsgNumAuthenticationRequest:
 		return s.handleAuthRequest(payload)
-	case messages.MsgNumAuthenticationSuccess:
-		return s.handleAuthSuccess()
-	case messages.MsgNumAuthenticationFailure:
-		return s.handleAuthFailure(payload)
-	case messages.MsgNumPublicKeyOk: // type 60 — PublicKeyOk or AuthInfoRequest
-		return s.handleMessage60(payload)
 	case messages.MsgNumAuthInfoResponse: // type 61
 		return s.handleAuthInfoResponse(payload)
-	default:
-		return nil
 	}
+	return nil
 }
 
 // handleMessage60 handles message type 60 which is overloaded:
@@ -289,9 +296,8 @@ func (s *authenticationService) handleAuthenticating(args *AuthenticatingEventAr
 		// Authentication succeeded.
 		s.currentMethodName = ""
 
-		// Mark session as authenticated and store the principal.
+		// Store the principal; this is what marks the session as authenticated.
 		s.session.mu.Lock()
-		s.session.isAuthenticated = true
 		s.session.Principal = args.AuthenticationResult
 		s.session.mu.Unlock()
 
@@ -433,11 +439,6 @@ func (s *authenticationService) sendAuthFailure() error {
 
 // handleAuthSuccess processes an authentication success message (client side).
 func (s *authenticationService) handleAuthSuccess() error {
-	// Mark session as authenticated.
-	s.session.mu.Lock()
-	s.session.isAuthenticated = true
-	s.session.mu.Unlock()
-
 	s.session.reportProgress(ProgressCompletedSessionAuthentication)
 	s.session.trace(TraceLevelInfo, TraceEventSessionAuthenticated,
 		"Client authentication succeeded.")

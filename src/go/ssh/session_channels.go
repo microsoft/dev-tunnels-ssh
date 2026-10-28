@@ -440,6 +440,21 @@ func (s *Session) handleChannelOpen(payload []byte) error {
 	}
 
 	s.mu.Lock()
+	canAccept := s.canAcceptRequests()
+	s.mu.Unlock()
+
+	if !canAccept {
+		s.trace(TraceLevelWarning, TraceEventChannelOpenFailed,
+			"Channel open request blocked because the session is not yet authenticated.")
+		failMsg := &messages.ChannelOpenFailureMessage{
+			RecipientChannel: msg.SenderChannel,
+			ReasonCode:       messages.ChannelOpenFailureAdministrativelyProhibited,
+			Description:      "Authenticate before opening channels.",
+		}
+		return s.protocol.sendMessage(failMsg.ToBuffer())
+	}
+
+	s.mu.Lock()
 	localID := s.nextChannelID
 	s.nextChannelID++
 	s.mu.Unlock()

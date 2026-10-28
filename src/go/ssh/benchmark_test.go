@@ -387,7 +387,26 @@ func benchCreateSessionPairDirect(b *testing.B, clientConfig, serverConfig *Sess
 		b.Fatalf("server connect: %v", serverErr)
 	}
 
+	benchAuthenticateIfEncrypted(b, ctx, client, serverConfig)
+
 	return client, server
+}
+
+// benchAuthenticateIfEncrypted authenticates the client when the session is
+// encrypted, because servers refuse channel opens until a principal is set.
+func benchAuthenticateIfEncrypted(b *testing.B, ctx context.Context, client *ClientSession, serverConfig *SessionConfig) {
+	b.Helper()
+
+	if !hasNonNone(serverConfig.KeyExchangeAlgorithms) {
+		return
+	}
+	ok, err := client.Authenticate(ctx, &ClientCredentials{Username: "bench"})
+	if err != nil {
+		b.Fatalf("client authenticate: %v", err)
+	}
+	if !ok {
+		b.Fatal("client authentication was rejected")
+	}
 }
 
 func benchOpenChannel(b *testing.B, ctx context.Context, client, server *Session) (*Channel, *Channel) {
@@ -573,6 +592,8 @@ func benchCreateSessionPairWithStreams(b *testing.B, clientStream, serverStream 
 	if serverErr != nil {
 		b.Fatalf("server connect: %v", serverErr)
 	}
+
+	benchAuthenticateIfEncrypted(b, ctx, client, serverConfig)
 
 	return client, server
 }

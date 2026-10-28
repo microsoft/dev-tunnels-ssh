@@ -39,6 +39,8 @@ type SessionPair struct {
 
 	t      *testing.T
 	config *SessionPairConfig
+
+	authenticated bool
 }
 
 // SessionPairConfig provides configuration options for creating a SessionPair.
@@ -70,6 +72,30 @@ type SessionPairConfig struct {
 	ConnectTimeout time.Duration
 }
 
+// ensureAuthentication gives a hand-built encrypted config the default
+// services and authentication methods, which real encryption needs because
+// the session only accepts channels after the client authenticates.
+func ensureAuthentication(cfg *ssh.SessionConfig) {
+	if len(cfg.ServiceRegistrations) > 0 {
+		return
+	}
+	encrypted := false
+	for _, kex := range cfg.KeyExchangeAlgorithms {
+		if kex != ssh.AlgoKexNone {
+			encrypted = true
+		}
+	}
+	if !encrypted {
+		return
+	}
+
+	defaults := ssh.NewDefaultConfig()
+	cfg.ServiceRegistrations = defaults.ServiceRegistrations
+	if len(cfg.AuthenticationMethods) == 0 {
+		cfg.AuthenticationMethods = defaults.AuthenticationMethods
+	}
+}
+
 // NewSessionPair creates a new SessionPair with no-security configuration.
 // The pair generates test keys, creates client and server sessions, and
 // sets up auto-approval authentication handlers on both sides.
@@ -95,6 +121,8 @@ func NewSessionPairWithConfig(t *testing.T, config *SessionPairConfig) *SessionP
 	if clientConfig == nil {
 		clientConfig = ssh.NewNoSecurityConfig()
 	}
+	ensureAuthentication(serverConfig)
+	ensureAuthentication(clientConfig)
 
 	// Generate test keys.
 	clientKey, err := rsa.GenerateKey(rand.Reader, TestKeySize)
@@ -209,10 +237,32 @@ func (p *SessionPair) Connect(ctx context.Context) {
 	}
 }
 
+// Authenticate authenticates the client with no credentials against the
+// server's OnAuthenticating handler. Encrypted sessions only accept channels
+// and requests after authentication.
+func (p *SessionPair) Authenticate(ctx context.Context) {
+	p.t.Helper()
+
+	ok, err := p.ClientSession.Authenticate(ctx, &ssh.ClientCredentials{Username: "test"})
+	if err != nil {
+		p.t.Fatalf("client authenticate failed: %v", err)
+	}
+	if !ok {
+		p.t.Fatal("client authentication was rejected")
+	}
+	p.authenticated = true
+}
+
 // OpenChannel opens a channel from the client side and accepts it on the server side.
-// Returns the client channel and server channel.
+// Returns the client channel and server channel. Encrypted sessions (identified by
+// server host key credentials) are authenticated first if needed, because they
+// refuse channel opens from unauthenticated peers.
 func (p *SessionPair) OpenChannel(ctx context.Context) (*ssh.Channel, *ssh.Channel) {
 	p.t.Helper()
+
+	if p.ServerSession.Credentials != nil && !p.authenticated {
+		p.Authenticate(ctx)
+	}
 
 	var clientChannel, serverChannel *ssh.Channel
 	var clientErr, serverErr error

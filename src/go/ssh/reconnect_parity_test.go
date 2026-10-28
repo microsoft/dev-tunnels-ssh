@@ -79,6 +79,8 @@ func newEncryptedReconnectPair(t *testing.T, clientConfig, serverConfig *Session
 		t.Fatalf("reconnect not enabled: %v", err)
 	}
 
+	authenticateTestClient(t, ctx, client)
+
 	reconnSessions.add(server)
 
 	return &encryptedReconnectPair{

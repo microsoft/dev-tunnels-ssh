@@ -182,6 +182,7 @@ func TestConcurrentRekeyAndDataTransfer(t *testing.T) {
 		ClientConfig:      clientConfig,
 		ServerConfig:      serverConfig,
 		ServerCredentials: &ServerCredentials{PublicKeys: []KeyPair{serverKey}},
+		Authenticate:      true,
 	})
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
