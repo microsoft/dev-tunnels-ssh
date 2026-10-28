@@ -83,6 +83,8 @@ export {
 	RsaParameters,
 	ECDsa,
 	ECParameters,
+	Ed25519,
+	EdDSAParameters,
 	Random,
 } from './algorithms/sshAlgorithms';
 
