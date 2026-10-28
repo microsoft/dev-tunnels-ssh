@@ -12,7 +12,7 @@ import (
 
 // createUnauthenticatedEncryptedPair connects an encrypted pair where the
 // server denies every authentication attempt and counts callback invocations.
-func createUnauthenticatedEncryptedPair(t *testing.T) (*ClientSession, *ServerSession, *int) {
+func createUnauthenticatedEncryptedPair(t *testing.T) (*ClientSession, *ServerSession, *int32) {
 	t.Helper()
 
 	hostKey, err := GenerateKeyPair(AlgoPKEcdsaSha2P256)
@@ -20,13 +20,13 @@ func createUnauthenticatedEncryptedPair(t *testing.T) (*ClientSession, *ServerSe
 		t.Fatalf("generate host key: %v", err)
 	}
 
-	authCalls := 0
+	var authCalls int32
 	client, server := createSessionPair(t, &SessionPairOptions{
 		ClientConfig:      NewDefaultConfig(),
 		ServerConfig:      NewDefaultConfig(),
 		ServerCredentials: &ServerCredentials{PublicKeys: []KeyPair{hostKey}},
 		ServerOnAuthenticating: func(args *AuthenticatingEventArgs) {
-			authCalls++
+			atomic.AddInt32(&authCalls, 1)
 		},
 	})
 	return client, server, &authCalls
@@ -69,8 +69,8 @@ func TestPeerCannotSetServerAuthenticatedWithAuthSuccess(t *testing.T) {
 	if principal != nil {
 		t.Errorf("server Principal = %v, want nil", principal)
 	}
-	if *authCalls != 0 {
-		t.Errorf("OnAuthenticating called %d times, want 0", *authCalls)
+	if got := atomic.LoadInt32(authCalls); got != 0 {
+		t.Errorf("OnAuthenticating called %d times, want 0", got)
 	}
 }
 
@@ -80,8 +80,8 @@ func TestUnauthenticatedChannelOpenRefused(t *testing.T) {
 	client, _, authCalls := createUnauthenticatedEncryptedPair(t)
 
 	assertChannelOpenProhibited(t, client, "an unauthenticated session")
-	if *authCalls != 0 {
-		t.Errorf("OnAuthenticating called %d times, want 0", *authCalls)
+	if got := atomic.LoadInt32(authCalls); got != 0 {
+		t.Errorf("OnAuthenticating called %d times, want 0", got)
 	}
 
 	// The same bypass attempt (USERAUTH_SUCCESS then open) must still fail.
