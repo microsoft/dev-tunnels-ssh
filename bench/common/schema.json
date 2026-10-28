@@ -13,7 +13,7 @@
       "properties": {
         "platform": {
           "type": "string",
-          "description": "Runtime platform identifier (e.g. cs, ts, go)."
+          "description": "Runtime platform identifier (e.g. cs, ts)."
         },
         "platformVersion": {
           "type": "string",

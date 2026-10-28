@@ -3,16 +3,10 @@
 # Master E2E validation orchestrator.
 # Runs the full validation pipeline:
 #   1. Build all implementations
-#   2. Run Go unit tests (gate check)
-#   3. Build Go interop helper binary
-#   4. C# self-test (3 tests)
-#   5. TS self-test (3 tests)
-#   6. Go self-test (8 tests: 5 algo combos + 3 feature modes)
-#   7. Go reconnect test (3 tests: 3 algo combos)
-#   8. Go port forwarding test (3 tests: 3 algo combos)
-#   9. Cross-implementation interop (24 tests: 4 pairings x 5 algo combos + 4 feature mode tests)
-#  10. Print summary
-# Exits 0 only if all ~44 tests pass.
+#   2. C# self-test
+#   3. TS self-test
+#   4. Print summary
+# Exits 0 only if all tests pass.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -104,23 +98,6 @@ echo ""
 
 print_header "Step 1: Build all implementations"
 
-echo "--- Building Go library ---"
-(cd "$REPO_ROOT/src/go" && go build ./...) || {
-  echo -e "${RED}FAIL: Go library build failed${NC}"
-  exit 1
-}
-echo "Go build OK"
-
-echo ""
-echo "--- Building Go interop binary ---"
-GO_INTEROP_DIR="$REPO_ROOT/test/interop/go"
-(cd "$GO_INTEROP_DIR" && go build -o go-ssh-interop .) || {
-  echo -e "${RED}FAIL: Go interop binary build failed${NC}"
-  exit 1
-}
-echo "Go interop binary OK"
-
-echo ""
 echo "--- Building TS library ---"
 if [ ! -d "$REPO_ROOT/out/lib/node_modules" ]; then
   (cd "$REPO_ROOT" && node build.js build-ts) || {
@@ -149,26 +126,7 @@ else
   CS_AVAILABLE=false
 fi
 
-# ─── Step 2: Go unit tests (gate check) ───
-
-print_header "Step 2: Go unit tests (gate check)"
-
-echo "Running go vet..."
-(cd "$REPO_ROOT/src/go" && go vet ./...) || {
-  echo -e "${RED}FAIL: go vet failed${NC}"
-  exit 1
-}
-echo "go vet OK"
-
-echo ""
-echo "Running go test -race -short (gate check)..."
-(cd "$REPO_ROOT/src/go" && go test -race -short -timeout=120s ./ssh/... ./keys/... ./tcp/...) || {
-  echo -e "${RED}FAIL: Go unit tests failed — aborting E2E validation${NC}"
-  exit 1
-}
-echo "Go unit tests OK"
-
-# ─── Step 3-7: Self-tests ───
+# ─── Step 2-3: Self-tests ───
 
 if [ "$CS_AVAILABLE" = true ]; then
   run_suite "C# Self-Test" "$SCRIPT_DIR/e2e-cs-selftest.sh"
@@ -180,29 +138,7 @@ fi
 
 run_suite "TS Self-Test" "$SCRIPT_DIR/e2e-ts-selftest.sh"
 
-run_suite "Go Self-Test" "$SCRIPT_DIR/e2e-go-selftest.sh"
-
-run_suite "Go Reconnect Test" "$SCRIPT_DIR/e2e-go-reconnect.sh"
-
-run_suite "Go Port Forwarding Test" "$SCRIPT_DIR/e2e-go-portfwd.sh"
-
-run_suite "Go Concurrent Requests Test" "$SCRIPT_DIR/e2e-go-concurrent-requests.sh"
-
-run_suite "Go Pipe Request Test" "$SCRIPT_DIR/e2e-go-pipe-request.sh"
-
-run_suite "Go Signals Test" "$SCRIPT_DIR/e2e-go-signals.sh"
-
-run_suite "Go Extended Data Test" "$SCRIPT_DIR/e2e-go-extended-data.sh"
-
-run_suite "Go Rekey Test" "$SCRIPT_DIR/e2e-go-rekey.sh"
-
-run_suite "Go Keyboard-Interactive Auth Test" "$SCRIPT_DIR/e2e-go-kbdinteractive.sh"
-
-# ─── Step 8: Cross-implementation interop ───
-
-run_suite "Cross-Implementation Interop" "$SCRIPT_DIR/e2e-interop.sh"
-
-# ─── Step 9: Summary ───
+# ─── Step 4: Summary ───
 
 TOTAL=$((TOTAL_PASSED + TOTAL_FAILED))
 
