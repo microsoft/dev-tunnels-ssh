@@ -113,25 +113,29 @@ internal class SshProtocol : IDisposable
 			return Array.Empty<SshMessage>();
 		}
 
-		if (this.recentSentMessages.Count > 0 &&
-			startingSequenceNumber < this.recentSentMessages.Peek().Sequence)
+		// Sending and acknowledgement processing can update the cache during reconnect.
+		lock (this.recentSentMessages)
 		{
-			// The cached recent messages do not go back as far as the requested sequence number.
-			// This should never happen because messages are not dropped from this list until
-			// the other side acknowledges they have been received, so they should not be
-			// requested again after reconnecting.
-			return null;
-		}
+			if (this.recentSentMessages.Count > 0 &&
+				startingSequenceNumber < this.recentSentMessages.Peek().Sequence)
+			{
+				// The cached recent messages do not go back as far as the requested sequence number.
+				// This should never happen because messages are not dropped from this list until
+				// the other side acknowledges they have been received, so they should not be
+				// requested again after reconnecting.
+				return null;
+			}
 
-		// Return all messages starting with the requested sequence number.
-		// Exclude key exchange messages because they cannot be retransmitted; a reconnected
-		// session will do key exchange separately. Also exclude any disconnect messages that
-		// may have been attempted when the connection was lost.
-		return this.recentSentMessages
-			.Where((m) => m.Sequence >= startingSequenceNumber)
-			.Select((m) => m.Message)
-			.Where((m) => !(m is KeyExchangeMessage || m is DisconnectMessage))
-			.ToArray();
+			// Return all messages starting with the requested sequence number.
+			// Exclude key exchange messages because they cannot be retransmitted; a reconnected
+			// session will do key exchange separately. Also exclude any disconnect messages that
+			// may have been attempted when the connection was lost.
+			return this.recentSentMessages
+				.Where((m) => m.Sequence >= startingSequenceNumber)
+				.Select((m) => m.Message)
+				.Where((m) => !(m is KeyExchangeMessage || m is DisconnectMessage))
+				.ToArray();
+		}
 	}
 
 	internal async Task<string> ReadProtocolVersionAsync(CancellationToken cancellation)
