@@ -99,7 +99,7 @@ jobs:
             limit-access-to-actor: true
 
       - name: Publish test results
-        uses: dorny/test-reporter@cc52f364a405169afe07bb00dab3d375b451229d # v1
+        uses: dorny/test-reporter@b94dfe179d7ff66342276f4bd6b82c3c0f659f52 # v1
         with:
           name: Test SSH on ${{ matrix.os }}
           path: out/TestResults/*.trx
