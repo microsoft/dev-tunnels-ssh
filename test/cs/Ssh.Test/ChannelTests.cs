@@ -974,6 +974,51 @@ public class ChannelTests : IDisposable
 		Assert.True(await receivedCompletion.Task.WithTimeout(LongTimeout));
 	}
 
+	/// <summary>
+	/// Window-adjust messages are applied on the session's receive loop while a send on the same
+	/// channel continues on another thread. No send-window credit may be lost or gained when the
+	/// two overlap; a lost window adjustment makes the send wait forever.
+	/// </summary>
+	[Fact]
+	public async Task SendWindowAdjustedConcurrently()
+	{
+		const int AdjustmentCount = 16 * 1024 * 1024;
+
+		var (clientChannel, serverChannel) = await OpenClientChannelAsync();
+
+		// The receiver does not adjust its window, so after the initial window the only
+		// send credit is what this test adds.
+		clientChannel.DataReceived += (sender, data) => { };
+
+		var remoteWindowSizeField = typeof(SshChannel).GetField(
+			"remoteWindowSize", BindingFlags.Instance | BindingFlags.NonPublic);
+		var adjustRemoteWindow = (Action<uint>)typeof(SshChannel).GetMethod(
+			"AdjustRemoteWindow", BindingFlags.Instance | BindingFlags.NonPublic)
+			.CreateDelegate(typeof(Action<uint>), serverChannel);
+
+		long totalCredit = (uint)remoteWindowSizeField.GetValue(serverChannel) + (long)AdjustmentCount;
+		var sendTask = serverChannel.SendAsync(new Buffer((int)totalCredit), CancellationToken.None);
+
+		// Add credit one byte at a time from another thread, as the receive loop does when
+		// window-adjust messages arrive, while the send is in progress.
+		await Task.Run(() =>
+		{
+			for (int i = 0; i < AdjustmentCount; i++)
+			{
+				adjustRemoteWindow(1);
+			}
+		});
+
+		// The sender now has exactly enough credit to send all the data.
+		await Task.WhenAny(sendTask, Task.Delay(Timeout));
+
+		long bytesSent = serverChannel.Metrics.BytesSent;
+		uint remoteWindowSize = (uint)remoteWindowSizeField.GetValue(serverChannel);
+		Assert.Equal(totalCredit - bytesSent, (long)remoteWindowSize);
+		Assert.True(sendTask.IsCompleted, $"Send stopped after {bytesSent} of {totalCredit} bytes.");
+		await sendTask;
+	}
+
 	[Fact]
 	public async Task CloseSessionClosesChannel()
 	{
