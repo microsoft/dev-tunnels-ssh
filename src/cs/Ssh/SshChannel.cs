@@ -56,6 +56,9 @@ public class SshChannel : IDisposable
 	private readonly ConcurrentQueue<TaskCompletionSource<bool>> requestCompletionSources = new ();
 	private readonly TaskChain taskChain;
 
+	// The send task decrements remoteWindowSize while the session's receive loop increments it
+	// (on window-adjust messages), so both updates take this lock.
+	private readonly object remoteWindowSizeLock = new object();
 	private uint remoteWindowSize;
 	private uint maxWindowSize;
 	private uint windowSize;
@@ -329,7 +332,11 @@ public class SshChannel : IDisposable
 
 				await Session.SendMessageAsync(msg, cancellation).ConfigureAwait(false);
 
-				this.remoteWindowSize -= (uint)packetSize;
+				lock (this.remoteWindowSizeLock)
+				{
+					this.remoteWindowSize -= (uint)packetSize;
+				}
+
 				count -= packetSize;
 				offset += packetSize;
 
@@ -534,7 +541,10 @@ public class SshChannel : IDisposable
 
 	internal void AdjustRemoteWindow(uint bytesToAdd)
 	{
-		this.remoteWindowSize += bytesToAdd;
+		lock (this.remoteWindowSizeLock)
+		{
+			this.remoteWindowSize += bytesToAdd;
+		}
 
 		// If the semaphore count is 0, a sender is waiting for the window to open.
 		if (this.sendingWindowSemaphore.CurrentCount == 0)
