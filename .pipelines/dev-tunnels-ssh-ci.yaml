@@ -32,17 +32,13 @@ jobs:
     displayName: 'SSH Windows'
     timeoutInMinutes: '90'
     pool:
-      name: VSEngSS-MicroBuild2022-1ES
+      name: VSEng-MicroBuildVSStable
 
     steps:
       - checkout: self
         fetchDepth: -1
         clean: true
         fetchTags: false
-
-      - task: GoTool@0
-        inputs:
-          version: '1.26.2'
 
       - task: UseDotNet@2
         displayName: Install .NET 8 Runtime
@@ -63,10 +59,10 @@ jobs:
           selectOrConfig: config
           nugetConfigPath: NuGet.config
 
-      - task: NodeTool@0
-        displayName: Use Node 20.x
+      - task: UseNode@1
+        displayName: Use Node 24.x
         inputs:
-          versionSpec: 20.x
+          version: 24.x
 
       - task: Npm@1
         displayName: Restore npm packages
@@ -74,9 +70,9 @@ jobs:
           verbose: false
       
       - task: NuGetToolInstaller@1
-        displayName: Use NuGet 6.4.x
+        displayName: Use NuGet 7.9.x
         inputs:
-          versionSpec: '6.4.x'
+          versionSpec: '7.9.x'
       
       # To archive our debug symbols wiht symweb, we need to convert the portable .pdb files that we build to windows .pdb files first
       # https://devdiv.visualstudio.com/DevDiv/_wiki/wikis/DevDiv.wiki/672/Archive-Symbols-with-Symweb?anchor=portable-pdbs
@@ -250,10 +246,6 @@ jobs:
             export OPENSSL3_VERSION=$(brew list --versions openssl@3 | head -n 1 | sed "s/.* //")
             sudo ln -sfn $(brew --prefix)/Cellar/openssl\@3/$OPENSSL3_VERSION/lib/libssl.3.dylib /usr/local/lib/libssl.3.dylib
             sudo ln -sfn $(brew --prefix)/Cellar/openssl\@3/$OPENSSL3_VERSION/lib/libcrypto.3.dylib /usr/local/lib/libcrypto.3.dylib
-
-      - task: GoTool@0
-        inputs:
-          version: '1.26.2'
 
       - task: UseDotNet@2
         displayName: Install .NET 8 Runtime
